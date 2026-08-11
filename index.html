@@ -7,6 +7,66 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+    <style>
+        /* ==================================================================
+           EXTENDED MODULES — supplemental styles (additive, namespaced so
+           nothing here overrides the base styles.css). Uses the same CSS
+           custom properties as the rest of the app, with safe fallbacks.
+        ================================================================== */
+        .ext-scroll-x { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .ext-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; width: 100%; }
+        .ext-grid-wide { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; width: 100%; }
+
+        .status-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:999px; font-size:.74rem; font-weight:700; letter-spacing:.02em; white-space:nowrap; }
+        .status-pending_approval { background: color-mix(in srgb, var(--warning, #d97706) 16%, transparent); color: var(--warning, #b45309); }
+        .status-approved { background: color-mix(in srgb, var(--success, #16a34a) 16%, transparent); color: var(--success, #15803d); }
+        .status-rejected { background: color-mix(in srgb, var(--danger, #dc2626) 16%, transparent); color: var(--danger, #b91c1c); }
+
+        .progress-track { width:100%; height:8px; border-radius:999px; background: var(--border, #e2e8f0); overflow:hidden; }
+        .progress-fill { height:100%; border-radius:999px; background: var(--primary, #2563eb); transition: width .3s ease; }
+
+        .ext-card { background: var(--surface, #fff); border:1px solid var(--border, #e2e8f0); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+        .ext-card h4 { margin:0; font-size:.95rem; display:flex; align-items:center; gap:8px; }
+        .ext-card .ext-sub { font-size:.78rem; color: var(--text-muted, #64748b); }
+        .ext-card .ext-row { display:flex; justify-content:space-between; font-size:.85rem; gap:8px; }
+
+        .bank-card { cursor:pointer; border:2px solid transparent; transition: border-color .15s ease, transform .1s ease; }
+        .bank-card:hover { transform: translateY(-2px); }
+        .bank-card.selected { border-color: var(--primary, #2563eb); }
+
+        .approval-note { font-size:.78rem; color: var(--text-muted,#64748b); background: var(--bg, #f8fafc); border:1px dashed var(--border,#e2e8f0); border-radius:10px; padding:8px 12px; margin-top:6px; }
+
+        .chart-box { background: var(--surface,#fff); border:1px solid var(--border,#e2e8f0); border-radius:14px; padding:16px; min-width:0; }
+        .chart-box canvas { max-width:100%; }
+        .chart-box-title { font-size:.9rem; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+
+        .locked-note { font-size:.75rem; color: var(--text-muted,#64748b); font-style:italic; }
+
+        .module-empty { text-align:center; padding:34px 12px; color: var(--text-muted,#64748b); }
+        .module-empty i { font-size:1.6rem; margin-bottom:8px; display:block; }
+
+        .btn-approve { background: var(--success,#16a34a); color:#fff; border:none; }
+        .btn-approve:hover { filter:brightness(1.05); }
+        .btn-reject { background:#fff; color: var(--danger,#dc2626); border:1px solid var(--danger,#dc2626); }
+        .btn-reject:hover { background: var(--danger,#dc2626); color:#fff; }
+
+        .row-actions-wrap { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+        .row-actions-wrap .icon-action-btn, .row-actions-wrap button { flex-shrink:0; }
+
+        .sidebar-section-title.ext { margin-top:10px; }
+
+        /* Wide-fit responsiveness: tables always scroll instead of breaking layout */
+        .data-table { min-width: 640px; }
+        @media (max-width: 720px) {
+            .ext-grid, .ext-grid-wide { grid-template-columns: 1fr; }
+            .modal-content { width: 95vw !important; max-width: 95vw !important; }
+            .financial-statement-card, .form-card, .table-card { padding: 14px !important; }
+        }
+        @media (max-width: 1024px) {
+            .metrics-row, .admin-grid { grid-template-columns: 1fr !important; }
+        }
+    </style>
 </head>
 <body>
 
@@ -100,6 +160,27 @@
                 </div>
             </nav>
 
+            <!-- Extended modules — available to every signed-in role, scoped to their own department/presbytery -->
+            <div class="sidebar-section-title ext"><i class="fa-solid fa-briefcase"></i> Finance Tools</div>
+            <nav class="sidebar-menu">
+                <button type="button" class="nav-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i> Invoices <span class="count-chip" id="nav-invoices-count">0</span></button>
+                <button type="button" class="nav-item" data-view="bills"><i class="fa-solid fa-receipt"></i> Pay Bills <span class="count-chip" id="nav-bills-count">0</span></button>
+                <button type="button" class="nav-item" data-view="cheques"><i class="fa-solid fa-money-check"></i> Cheques <span class="count-chip" id="nav-cheques-count">0</span></button>
+                <button type="button" class="nav-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i> Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
+                <button type="button" class="nav-item" data-view="customers"><i class="fa-solid fa-address-book"></i> Customer Hub <span class="count-chip" id="nav-customers-count">0</span></button>
+                <button type="button" class="nav-item" data-view="projects"><i class="fa-solid fa-diagram-project"></i> Projects <span class="count-chip" id="nav-projects-count">0</span></button>
+            </nav>
+
+            <!-- Superadmin-only strategic tools -->
+            <div id="ext-admin-menu" class="hidden">
+                <div class="sidebar-section-title ext"><i class="fa-solid fa-user-shield"></i> Admin Tools</div>
+                <nav class="sidebar-menu">
+                    <button type="button" class="nav-item" data-view="budget"><i class="fa-solid fa-scale-balanced"></i> Budget Management</button>
+                    <button type="button" class="nav-item" data-view="banks"><i class="fa-solid fa-building-columns"></i> Bank Management <span class="count-chip" id="nav-banks-count">0</span></button>
+                    <button type="button" class="nav-item" data-view="coa"><i class="fa-solid fa-chart-line"></i> Chart of Accounts</button>
+                </nav>
+            </div>
+
             <!-- Superadmin only: live quick filters -->
             <div id="admin-filter-section">
                 <div class="sidebar-section-title"><i class="fa-solid fa-building"></i> Departments</div>
@@ -177,7 +258,7 @@
 
                 <!-- Superadmin Dynamic Global Controls -->
                 <div id="superadmin-filter-bar" class="scope-bar hidden">
-                    <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies to Overview, Transactions &amp; Reports</h4>
+                    <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies to Overview, Transactions, Reports, Invoices, Bills, Cheques, Suppliers, Customers &amp; Projects</h4>
                     <div class="scope-fields">
                         <div class="scope-field">
                             <label>Filter Presbytery / Location</label>
@@ -261,6 +342,12 @@
                         <h3><i class="fa-solid fa-layer-group"></i> Breakdown by Department <span class="muted-sm">(click a card to jump into Transactions filtered to it)</span></h3>
                         <div class="dept-grid" id="dept-breakdown-grid"></div>
                     </div>
+
+                    <!-- Pending approvals widget: visible to whoever can approve something -->
+                    <div id="pending-approvals-wrap" class="dept-breakdown hidden">
+                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Waiting on your approval</h3>
+                        <div class="ext-grid" id="pending-approvals-grid"></div>
+                    </div>
                 </section>
 
                 <!-- ============ View: Transactions ============ -->
@@ -292,7 +379,7 @@
                         <button class="ft-reset" id="tx-filter-reset"><i class="fa-solid fa-xmark"></i> Clear filters</button>
                     </div>
 
-                    <div class="table-wrap">
+                    <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -416,7 +503,7 @@
                                             <option value="superadmin">Superadmin (EPR Central)</option>
                                         </select>
                                     </div>
-                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Staff are locked to one assignment below.</div>
+                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Finance users can approve cheques. Staff are locked to one assignment below.</div>
                                 </div>
                                 <div id="user-scope-fields">
                                     <div class="form-group">
@@ -449,7 +536,7 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="table-wrap">
+                            <div class="table-wrap ext-scroll-x">
                                 <table class="data-table">
                                     <thead>
                                         <tr>
@@ -466,6 +553,176 @@
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============ View: Invoices ============ -->
+                <section id="view-invoices" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Customer Invoices</h2>
+                            <p id="invoices-scope-note">Every invoice raised by staff needs Superadmin approval before it counts as issued.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-invoice-modal-btn"><i class="fa-solid fa-plus"></i> New Invoice</button>
+                    </div>
+                    <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Managers and Finance users submit invoices for approval. Only a Superadmin can approve or reject one — once approved, an invoice is locked and counted as issued.</div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Description</th><th>Amount (RF)</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="invoices-table-body"><tr class="table-empty-row"><td colspan="9">Loading invoices…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Bills ============ -->
+                <section id="view-bills" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Pay Bills</h2>
+                            <p id="bills-scope-note">Bills raised for payment need Superadmin approval before they are marked as paid.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-bill-modal-btn"><i class="fa-solid fa-plus"></i> New Bill</button>
+                    </div>
+                    <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Managers and Finance users submit bills to be paid. Only a Superadmin can approve (mark paid) or reject a bill.</div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Date</th><th>Bill #</th><th>Supplier</th><th>Description</th><th>Amount (RF)</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="bills-table-body"><tr class="table-empty-row"><td colspan="9">Loading bills…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Cheques ============ -->
+                <section id="view-cheques" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Cheques</h2>
+                            <p id="cheques-scope-note">New cheques wait for approval from a Finance user or Superadmin before they are valid.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-cheque-modal-btn"><i class="fa-solid fa-plus"></i> New Cheque</button>
+                    </div>
+                    <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Any staff member can prepare a cheque. It must be approved by a Finance user (or Superadmin) before it can be cashed.</div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Date</th><th>Cheque #</th><th>Payee</th><th>Bank</th><th>Amount (RF)</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="cheques-table-body"><tr class="table-empty-row"><td colspan="9">Loading cheques…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Suppliers ============ -->
+                <section id="view-suppliers" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Suppliers</h2>
+                            <p id="suppliers-scope-note">Manage the vendors your department buys from.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-supplier-modal-btn"><i class="fa-solid fa-plus"></i> New Supplier</button>
+                    </div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead><tr><th>Name</th><th>Contact Person</th><th>Phone</th><th>Email</th><th>Department</th><th>Presbytery</th><th>Actions</th></tr></thead>
+                            <tbody id="suppliers-table-body"><tr class="table-empty-row"><td colspan="7">Loading suppliers…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Customer Hub ============ -->
+                <section id="view-customers" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Customer Hub</h2>
+                            <p id="customers-scope-note">Everyone you invoice or receive income from, in one place.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-customer-modal-btn"><i class="fa-solid fa-plus"></i> New Customer</button>
+                    </div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead><tr><th>Name</th><th>Contact Person</th><th>Phone</th><th>Email</th><th>Department</th><th>Presbytery</th><th>Actions</th></tr></thead>
+                            <tbody id="customers-table-body"><tr class="table-empty-row"><td colspan="7">Loading customers…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Projects ============ -->
+                <section id="view-projects" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Projects</h2>
+                            <p id="projects-scope-note">Track every project your department runs and how far along it is.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-project-modal-btn"><i class="fa-solid fa-plus"></i> New Project</button>
+                    </div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead><tr><th>Project</th><th>Department</th><th>Presbytery</th><th>Timeline</th><th>Budget (RF)</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead>
+                            <tbody id="projects-table-body"><tr class="table-empty-row"><td colspan="8">Loading projects…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Budget Management (superadmin only) ============ -->
+                <section id="view-budget" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Budget Management</h2>
+                            <p>System-wide budget planning. Superadmin only.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-budget-modal-btn"><i class="fa-solid fa-plus"></i> New Budget Line</button>
+                    </div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead><tr><th>Department</th><th>Presbytery</th><th>Category</th><th>Period</th><th>Planned Amount (RF)</th><th>Notes</th><th>Actions</th></tr></thead>
+                            <tbody id="budget-table-body"><tr class="table-empty-row"><td colspan="7">Loading budgets…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Bank Management (superadmin only) ============ -->
+                <section id="view-banks" class="view-panel">
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Bank Management</h2>
+                            <p>Every bank account EPR uses. Superadmin only.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-bank-modal-btn"><i class="fa-solid fa-plus"></i> New Bank</button>
+                    </div>
+                    <div class="table-wrap ext-scroll-x">
+                        <table class="data-table">
+                            <thead><tr><th>Bank Name</th><th>Branch</th><th>Account Number</th><th>Currency</th><th>Opening Balance</th><th>Actions</th></tr></thead>
+                            <tbody id="banks-table-body"><tr class="table-empty-row"><td colspan="6">Loading banks…</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ============ View: Chart of Accounts (superadmin only) ============ -->
+                <section id="view-coa" class="view-panel">
+                    <div class="view-header">
+                        <h2>Chart of Accounts</h2>
+                        <p>Pick a bank to see its cheque activity trend and overall department performance. Superadmin only.</p>
+                    </div>
+
+                    <div class="ext-grid-wide" id="coa-bank-grid" style="margin-bottom:20px;"></div>
+                    <div id="coa-empty" class="module-empty">
+                        <i class="fa-solid fa-building-columns"></i>
+                        Add a bank under Bank Management, then select it here to see its trend.
+                    </div>
+
+                    <div id="coa-charts" class="ext-grid-wide hidden">
+                        <div class="chart-box">
+                            <div class="chart-box-title"><i class="fa-solid fa-money-check"></i> <span id="coa-selected-bank-label">Cheque activity</span></div>
+                            <canvas id="coa-bank-chart" height="220"></canvas>
+                        </div>
+                        <div class="chart-box">
+                            <div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Income vs Expense by department (current scope)</div>
+                            <canvas id="coa-dept-chart" height="220"></canvas>
                         </div>
                     </div>
                 </section>
@@ -541,6 +798,191 @@
                     <button class="btn btn-danger" id="confirm-ok-btn">Yes, continue</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Invoice ============ -->
+    <div id="invoice-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="invoice-modal-title">Record Invoice</h3><button class="close-btn" id="close-invoice-modal">&times;</button></div>
+            <form id="invoice-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="invoice-edit-id" value="">
+                    <div class="form-group"><label>Invoice Number <span class="req">*</span></label><input type="text" id="invoice-number" required placeholder="e.g. INV-0001"></div>
+                    <div class="form-group"><label>Customer <span class="req">*</span></label>
+                        <div class="select-wrap"><select id="invoice-customer" required><option value="">-- Select customer --</option></select></div>
+                    </div>
+                    <div class="form-group"><label>Description <span class="req">*</span></label><input type="text" id="invoice-desc" required placeholder="What is this invoice for?"></div>
+                    <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="invoice-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Invoice Date</label><input type="date" id="invoice-date"></div>
+                    <div class="form-group"><label>Due Date</label><input type="date" id="invoice-due"></div>
+                    <div class="form-group" id="invoice-dept-group"><label>Department</label><div class="select-wrap"><select id="invoice-dept"></select></div></div>
+                    <div class="form-group" id="invoice-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="invoice-subsection"></select></div></div>
+                    <div class="form-group" id="invoice-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="invoice-pres"></select></div></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="invoice-submit-btn">Submit Invoice</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Bill ============ -->
+    <div id="bill-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="bill-modal-title">Record Bill</h3><button class="close-btn" id="close-bill-modal">&times;</button></div>
+            <form id="bill-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="bill-edit-id" value="">
+                    <div class="form-group"><label>Bill Number <span class="req">*</span></label><input type="text" id="bill-number" required placeholder="e.g. BILL-0001"></div>
+                    <div class="form-group"><label>Supplier <span class="req">*</span></label>
+                        <div class="select-wrap"><select id="bill-supplier" required><option value="">-- Select supplier --</option></select></div>
+                    </div>
+                    <div class="form-group"><label>Description <span class="req">*</span></label><input type="text" id="bill-desc" required placeholder="What is being paid for?"></div>
+                    <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="bill-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Bill Date</label><input type="date" id="bill-date"></div>
+                    <div class="form-group"><label>Due Date</label><input type="date" id="bill-due"></div>
+                    <div class="form-group" id="bill-dept-group"><label>Department</label><div class="select-wrap"><select id="bill-dept"></select></div></div>
+                    <div class="form-group" id="bill-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="bill-subsection"></select></div></div>
+                    <div class="form-group" id="bill-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="bill-pres"></select></div></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="bill-submit-btn">Submit Bill</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Cheque ============ -->
+    <div id="cheque-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="cheque-modal-title">Prepare Cheque</h3><button class="close-btn" id="close-cheque-modal">&times;</button></div>
+            <form id="cheque-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="cheque-edit-id" value="">
+                    <div class="form-group"><label>Cheque Number <span class="req">*</span></label><input type="text" id="cheque-number" required placeholder="e.g. 000123"></div>
+                    <div class="form-group"><label>Payee <span class="req">*</span></label><input type="text" id="cheque-payee" required placeholder="Who receives this cheque?"></div>
+                    <div class="form-group"><label>Bank Account <span class="req">*</span></label>
+                        <div class="select-wrap"><select id="cheque-bank" required><option value="">-- Select bank --</option></select></div>
+                    </div>
+                    <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="cheque-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Date</label><input type="date" id="cheque-date"></div>
+                    <div class="form-group"><label>Memo</label><input type="text" id="cheque-memo" placeholder="Optional note"></div>
+                    <div class="form-group" id="cheque-dept-group"><label>Department</label><div class="select-wrap"><select id="cheque-dept"></select></div></div>
+                    <div class="form-group" id="cheque-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="cheque-subsection"></select></div></div>
+                    <div class="form-group" id="cheque-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="cheque-pres"></select></div></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="cheque-submit-btn">Submit Cheque</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Supplier ============ -->
+    <div id="supplier-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="supplier-modal-title">Add Supplier</h3><button class="close-btn" id="close-supplier-modal">&times;</button></div>
+            <form id="supplier-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="supplier-edit-id" value="">
+                    <div class="form-group"><label>Supplier Name <span class="req">*</span></label><input type="text" id="supplier-name" required></div>
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="supplier-contact"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" id="supplier-phone"></div>
+                    <div class="form-group"><label>Email</label><input type="email" id="supplier-email"></div>
+                    <div class="form-group"><label>Address</label><input type="text" id="supplier-address"></div>
+                    <div class="form-group" id="supplier-dept-group"><label>Department</label><div class="select-wrap"><select id="supplier-dept"></select></div></div>
+                    <div class="form-group" id="supplier-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="supplier-pres"></select></div></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="supplier-submit-btn">Save Supplier</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Customer ============ -->
+    <div id="customer-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="customer-modal-title">Add Customer</h3><button class="close-btn" id="close-customer-modal">&times;</button></div>
+            <form id="customer-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="customer-edit-id" value="">
+                    <div class="form-group"><label>Customer Name <span class="req">*</span></label><input type="text" id="customer-name" required></div>
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="customer-contact"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" id="customer-phone"></div>
+                    <div class="form-group"><label>Email</label><input type="email" id="customer-email"></div>
+                    <div class="form-group"><label>Address</label><input type="text" id="customer-address"></div>
+                    <div class="form-group" id="customer-dept-group"><label>Department</label><div class="select-wrap"><select id="customer-dept"></select></div></div>
+                    <div class="form-group" id="customer-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="customer-pres"></select></div></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="customer-submit-btn">Save Customer</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Project ============ -->
+    <div id="project-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="project-modal-title">Add Project</h3><button class="close-btn" id="close-project-modal">&times;</button></div>
+            <form id="project-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="project-edit-id" value="">
+                    <div class="form-group"><label>Project Name <span class="req">*</span></label><input type="text" id="project-name" required></div>
+                    <div class="form-group"><label>Description</label><input type="text" id="project-desc" placeholder="Short description"></div>
+                    <div class="form-group"><label>Start Date</label><input type="date" id="project-start"></div>
+                    <div class="form-group"><label>Target End Date</label><input type="date" id="project-end"></div>
+                    <div class="form-group"><label>Budget (RF)</label><input type="number" id="project-budget" step="any" min="0" placeholder="0.00"></div>
+                    <div class="form-group">
+                        <label>Progress: <span id="project-progress-val">0%</span></label>
+                        <input type="range" id="project-progress" min="0" max="100" step="5" value="0">
+                    </div>
+                    <div class="form-group"><label>Status</label>
+                        <div class="select-wrap">
+                            <select id="project-status">
+                                <option>Not Started</option>
+                                <option>In Progress</option>
+                                <option>On Hold</option>
+                                <option>Completed</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" id="project-dept-group"><label>Department</label><div class="select-wrap"><select id="project-dept"></select></div></div>
+                    <div class="form-group" id="project-subsection-group"><label>Sub-Section / Project Line</label><div class="select-wrap"><select id="project-subsection"></select></div></div>
+                    <div class="form-group" id="project-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="project-pres"></select></div></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="project-submit-btn">Save Project</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Budget Line (superadmin only) ============ -->
+    <div id="budget-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="budget-modal-title">Add Budget Line</h3><button class="close-btn" id="close-budget-modal">&times;</button></div>
+            <form id="budget-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="budget-edit-id" value="">
+                    <div class="form-group"><label>Department <span class="req">*</span></label><div class="select-wrap"><select id="budget-dept" required></select></div></div>
+                    <div class="form-group"><label>Presbytery <span class="req">*</span></label><div class="select-wrap"><select id="budget-pres" required></select></div></div>
+                    <div class="form-group"><label>Category <span class="req">*</span></label><input type="text" id="budget-category" required placeholder="e.g. Operations, Travel, Salaries"></div>
+                    <div class="form-group"><label>Period <span class="req">*</span></label><input type="text" id="budget-period" required placeholder="e.g. 2026 or 2026-Q3"></div>
+                    <div class="form-group"><label>Planned Amount (RF) <span class="req">*</span></label><input type="number" id="budget-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Notes</label><input type="text" id="budget-notes" placeholder="Optional"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="budget-submit-btn">Save Budget Line</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ Modal: Bank (superadmin only) ============ -->
+    <div id="bank-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="bank-modal-title">Add Bank</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
+            <form id="bank-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="bank-edit-id" value="">
+                    <div class="form-group"><label>Bank Name <span class="req">*</span></label><input type="text" id="bank-name" required placeholder="e.g. Bank of Kigali"></div>
+                    <div class="form-group"><label>Branch</label><input type="text" id="bank-branch"></div>
+                    <div class="form-group"><label>Account Number <span class="req">*</span></label><input type="text" id="bank-account" required></div>
+                    <div class="form-group"><label>Currency</label><input type="text" id="bank-currency" value="RWF"></div>
+                    <div class="form-group"><label>Opening Balance</label><input type="number" id="bank-balance" step="any" min="0" placeholder="0.00"></div>
+                    <div class="form-group"><label>Notes</label><input type="text" id="bank-notes" placeholder="Optional"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="bank-submit-btn">Save Bank</button></div>
+            </form>
         </div>
     </div>
 
