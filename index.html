@@ -6,12 +6,12 @@
     <title>EPR Management System</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- SheetJS for Excel Export -->
+    <!-- SheetJS CDN for Excel Exports -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
-    <!-- Authentication Container -->
+    <!-- Authentication Screen -->
     <div id="auth-container" class="auth-screen">
         <div class="auth-card">
             <div class="brand-header">
@@ -33,7 +33,7 @@
         </div>
     </div>
 
-    <!-- Main Dashboard Application Container -->
+    <!-- Dashboard App Screen -->
     <div id="app-container" class="app-layout hidden">
         
         <!-- Sidebar Navigation -->
@@ -73,10 +73,10 @@
             </div>
         </aside>
 
-        <!-- Main Content View -->
+        <!-- Main Wrapper -->
         <main class="main-wrapper">
             
-            <!-- Top Navbar -->
+            <!-- Topbar -->
             <header class="topbar">
                 <div class="search-bar">
                     <i class="fa-solid fa-magnifying-glass"></i>
@@ -85,74 +85,73 @@
                 <div class="user-profile">
                     <span id="user-display-name">Loading...</span>
                     <span id="user-role-badge" class="badge"></span>
-                    <button id="logout-btn" class="btn btn-icon"><i class="fa-solid fa-right-from-bracket"></i></button>
+                    <button id="logout-btn" class="btn btn-secondary" style="padding: 6px 12px;" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
                 </div>
             </header>
 
-            <!-- Dynamic Views (AJAX / DOM Navigation Container) -->
             <div class="content-body">
                 
-                <!-- 1. OVERVIEW VIEW -->
+                <!-- Overview Panel -->
                 <section id="view-overview" class="view-panel active">
                     <div class="view-header">
                         <h2>Overview</h2>
-                        <p id="scope-indicator">All departments and presbyteries — EPR System</p>
+                        <p id="scope-indicator" style="color: var(--text-muted); font-size: 0.9rem;">All departments and presbyteries — EPR System</p>
                     </div>
 
-                    <!-- Department & Presbytery Grid Stat Cards -->
                     <div class="grid-cards" id="overview-grid">
-                        <!-- Stat cards injected dynamically via JS -->
-                    </div>
-
-                    <div class="quick-jump-container">
-                        <h4>Jump to a section</h4>
-                        <div class="chip-group" id="quick-chips">
-                            <span class="chip">Department of Church Growth</span>
-                            <span class="chip">Department of Development and Diakonia</span>
-                            <span class="chip">Department of Finance and Administration</span>
-                            <span class="chip">Department of Education</span>
-                            <span class="chip">Department of Health</span>
-                            <span class="chip">EPR Presbytery Zinga</span>
-                            <span class="chip">EPR Presbytery Kigali</span>
+                        <div class="card-item">
+                            <h5>TOTAL ACTIVE SCOPE</h5>
+                            <div class="value" id="stat-count">0 Records</div>
                         </div>
                     </div>
 
-                    <!-- Metrics / Financial Glance -->
+                    <!-- Quick Jump Section -->
+                    <div class="quick-jump-container">
+                        <h4 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Quick Jump Filters</h4>
+                        <div class="chip-group">
+                            <span class="chip">Church Growth</span>
+                            <span class="chip">Development</span>
+                            <span class="chip">Education</span>
+                            <span class="chip">Health</span>
+                            <span class="chip">Presbytery Kigali</span>
+                        </div>
+                    </div>
+
                     <div class="metrics-row">
                         <div class="metric-card">
-                            <div class="card-head">
+                            <div class="flex-between">
                                 <h3>PROFIT & LOSS</h3>
-                                <span class="text-muted">Last Month</span>
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">Summary</span>
                             </div>
-                            <h1 id="net-profit-val">RF0</h1>
-                            <p class="trend-up"><i class="fa-solid fa-arrow-trend-up"></i> Income vs Expense</p>
+                            <h1 id="net-profit-val" style="margin-top: 10px;">RF 0</h1>
+                            <p style="color: var(--success); font-size: 0.85rem; margin-top: 5px;"><i class="fa-solid fa-arrow-trend-up"></i> Income vs Expense</p>
                             <div class="progress-bar-group">
-                                <label>Income: <span id="pl-income">RF0</span></label>
-                                <div class="progress"><div class="bar bar-success" id="income-bar"></div></div>
-                                <label>Expenses: <span id="pl-expense">RF0</span></label>
-                                <div class="progress"><div class="bar bar-danger" id="expense-bar"></div></div>
+                                <label style="font-size: 0.85rem; font-weight: 600;">Income: <span id="pl-income">RF 0</span></label>
+                                <div class="progress"><div class="bar-success" id="income-bar"></div></div>
+                                <label style="font-size: 0.85rem; font-weight: 600;">Expenses: <span id="pl-expense">RF 0</span></label>
+                                <div class="progress"><div class="bar-danger" id="expense-bar"></div></div>
                             </div>
                         </div>
 
                         <div class="metric-card">
-                            <div class="card-head">
+                            <div class="flex-between">
                                 <h3>CASH FLOW SUMMARY</h3>
-                                <span class="text-muted">As of today</span>
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">As of today</span>
                             </div>
-                            <div class="cash-flow-totals">
-                                <div>Total Inflow: <strong id="cash-in">RF0</strong></div>
-                                <div>Total Outflow: <strong id="cash-out">RF0</strong></div>
+                            <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 1rem;">
+                                <div>Total Inflow: <strong id="cash-in" style="color: var(--success);">RF 0</strong></div>
+                                <div>Total Outflow: <strong id="cash-out" style="color: var(--danger);">RF 0</strong></div>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <!-- 2. TRANSACTIONS VIEW -->
+                <!-- Transactions Panel -->
                 <section id="view-transactions" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
                             <h2>Transactions & Record Entry</h2>
-                            <p>Manage entries associated with your presbytery and department.</p>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Manage entries associated with your presbytery and department.</p>
                         </div>
                         <button class="btn btn-primary" id="open-tx-modal-btn"><i class="fa-solid fa-plus"></i> New Transaction</button>
                     </div>
@@ -169,37 +168,37 @@
                             </tr>
                         </thead>
                         <tbody id="tx-table-body">
-                            <!-- Injected dynamically -->
+                            <tr><td colspan="6" style="text-align: center;">Loading transactions...</td></tr>
                         </tbody>
                     </table>
                 </section>
 
-                <!-- 3. REPORTS & FINANCIAL STATEMENTS VIEW -->
+                <!-- Reports Panel -->
                 <section id="view-reports" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
                             <h2>Financial Statements & Reports</h2>
-                            <p>View Balance Sheet, Income Statements, and Export to Excel.</p>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">View Balance Sheet, Income Statements, and Export to Excel.</p>
                         </div>
-                        <div class="action-buttons">
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" id="print-btn"><i class="fa-solid fa-print"></i> Print</button>
                             <button class="btn btn-success" id="export-excel-btn"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
                         </div>
                     </div>
 
-                    <div class="financial-statement-card no-print-shadow" id="printable-report">
-                        <h3 class="statement-title">EPR FINANCIAL STATEMENT</h3>
-                        <p class="statement-subtitle" id="statement-scope">System Wide Statement</p>
+                    <div class="financial-statement-card" id="printable-report">
+                        <h3 style="text-align: center; font-size: 1.3rem;">EPR FINANCIAL STATEMENT</h3>
+                        <p style="text-align: center; color: var(--text-muted); margin-bottom: 25px;" id="statement-scope">System Wide Statement</p>
 
-                        <div class="statement-section">
-                            <h4>Profit & Loss Summary</h4>
+                        <div style="margin-bottom: 25px;">
+                            <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit & Loss Summary</h4>
                             <div class="statement-row"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong></div>
                             <div class="statement-row"><span>Total Operating Expenses</span><strong id="stmt-expenses">RF 0</strong></div>
                             <div class="statement-row highlight"><span>Net Profit / (Loss)</span><strong id="stmt-net">RF 0</strong></div>
                         </div>
 
-                        <div class="statement-section">
-                            <h4>Balance Sheet Overview</h4>
+                        <div>
+                            <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
                             <div class="statement-row"><span>Current Assets (Cash & Bank)</span><strong id="stmt-assets">RF 0</strong></div>
                             <div class="statement-row"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong></div>
                             <div class="statement-row highlight"><span>Total Equity</span><strong id="stmt-equity">RF 0</strong></div>
@@ -207,22 +206,22 @@
                     </div>
                 </section>
 
-                <!-- 4. USER ADMINISTRATION VIEW -->
+                <!-- User Admin Panel -->
                 <section id="view-users" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
                             <h2>User & Privilege Management</h2>
-                            <p>Assign Superadmin, Manager, or Finance roles with Scope Access.</p>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Assign Superadmin, Manager, or Finance roles with Scope Access.</p>
                         </div>
                     </div>
 
                     <div class="admin-grid">
                         <div class="form-card">
-                            <h3>Add / Assign User</h3>
+                            <h3 style="margin-bottom: 15px;">Add / Assign User</h3>
                             <form id="add-user-form">
                                 <div class="form-group">
-                                    <label>User UID (From Auth)</label>
-                                    <input type="text" id="user-uid" required placeholder="Firebase Auth UID">
+                                    <label>User UID (From Firebase Auth)</label>
+                                    <input type="text" id="user-uid" required placeholder="Paste User UID">
                                 </div>
                                 <div class="form-group">
                                     <label>Full Name</label>
@@ -262,12 +261,12 @@
                                         <option value="EPR Presbytery Gisenyi">EPR Presbytery Gisenyi</option>
                                     </select>
                                 </div>
-                                <button type="submit" class="btn btn-primary">Save User Rights</button>
+                                <button type="submit" class="btn btn-primary btn-block">Save User Rights</button>
                             </form>
                         </div>
 
                         <div class="table-card">
-                            <h3>System Users</h3>
+                            <h3 style="margin-bottom: 15px;">System Users</h3>
                             <table class="data-table">
                                 <thead>
                                     <tr>
@@ -278,7 +277,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="users-table-body">
-                                    <!-- Dynamic -->
+                                    <!-- Injected dynamically -->
                                 </tbody>
                             </table>
                         </div>
@@ -289,7 +288,7 @@
         </main>
     </div>
 
-    <!-- Modal for New Transaction Entry -->
+    <!-- Modal for New Transaction -->
     <div id="tx-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -312,14 +311,14 @@
                 </div>
                 <div class="form-group">
                     <label>Amount (RF)</label>
-                    <input type="number" id="tx-amount" required placeholder="0.00">
+                    <input type="number" id="tx-amount" step="any" required placeholder="0.00">
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">Save Record</button>
             </form>
         </div>
     </div>
 
-    <!-- Firebase v10 Modular Application Logic -->
+    <!-- Load App Script via CDN ES Module -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
