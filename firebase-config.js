@@ -23,5 +23,13 @@ export const firebaseConfig = {
 export const COLLECTIONS = {
     USERS: "users",
     TRANSACTIONS: "transactions",
-    META: "meta" // holds a single doc "system" => { initialized: boolean }
+    META: "meta",
+    INVOICES: "invoices",
+    BILLS: "bills",
+    CHEQUES: "cheques",
+    SUPPLIERS: "suppliers",
+    CUSTOMERS: "customers",
+    PROJECTS: "projects",
+    BUDGETS: "budgets",
+    BANKS: "banks"
 };
