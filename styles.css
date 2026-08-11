@@ -1,414 +1,489 @@
-:root {
-    --bg-dark: #0b1329;
-    --bg-light: #f4f7fe;
-    --primary: #0077e6;
-    --primary-dark: #005bb5;
-    --card-bg: #ffffff;
-    --text-main: #2d3748;
-    --text-muted: #718096;
-    --border-color: #e2e8f0;
-    --success: #10b981;
-    --danger: #ef4444;
+// Map of EPR Departments and their respective Sub-sections / Projects based on Hierarchy
+const EPR_STRUCTURE = {
+    "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
+    "Department of Development and Diakonia": ["Development", "Project SCA", "Project CCDP", "Diakonia"],
+    "Department of Finance and Administration": ["Functioning", "Information"],
+    "Department of Education": ["Education", "CPAJ"],
+    "Department of Health": ["Health Projects"]
+};
+
+const PRESBYTERIES = [
+    "EPR Presbytery Zinga",
+    "EPR Presbytery Kigali",
+    "EPR Presbytery Remera",
+    "EPR Presbytery Gitarama",
+    "EPR Presbytery Rubengera",
+    "EPR Presbytery Kirinda",
+    "EPR Presbytery Gisenyi"
+];
+
+// Initial In-Memory Users Data
+let usersDb = [
+    {
+        email: "admin@epr.org",
+        password: "admin",
+        name: "Central Superadmin",
+        role: "superadmin",
+        presbytery: "ALL",
+        department: "ALL",
+        subsection: "ALL"
+    },
+    {
+        email: "growth@epr.org",
+        password: "123",
+        name: "Jean Ndayisaba",
+        role: "finance",
+        presbytery: "EPR Presbytery Kigali",
+        department: "Department of Church Growth",
+        subsection: "Youth"
+    },
+    {
+        email: "health@epr.org",
+        password: "123",
+        name: "Marie Claire",
+        role: "manager",
+        presbytery: "EPR Presbytery Gisenyi",
+        department: "Department of Health",
+        subsection: "Health Projects"
+    }
+];
+
+// Initial Transactions Data
+let transactionsDb = [
+    {
+        id: 1,
+        date: "2026-08-10",
+        type: "Income",
+        desc: "Youth Ministry Offering",
+        amount: 250000,
+        department: "Department of Church Growth",
+        subsection: "Youth",
+        presbytery: "EPR Presbytery Kigali",
+        createdBy: "growth@epr.org"
+    },
+    {
+        id: 2,
+        date: "2026-08-09",
+        type: "Expense",
+        desc: "Health Center Medical Supplies",
+        amount: 120000,
+        department: "Department of Health",
+        subsection: "Health Projects",
+        presbytery: "EPR Presbytery Gisenyi",
+        createdBy: "health@epr.org"
+    },
+    {
+        id: 3,
+        date: "2026-08-08",
+        type: "Income",
+        desc: "Project SCA Grant",
+        amount: 1500000,
+        department: "Department of Development and Diakonia",
+        subsection: "Project SCA",
+        presbytery: "EPR Presbytery Remera",
+        createdBy: "admin@epr.org"
+    }
+];
+
+// Application State
+let currentUser = null;
+let currentScope = {
+    presbytery: "ALL",
+    department: "ALL",
+    searchQuery: ""
+};
+
+// Formatting Helper
+const formatRF = (amount) => "RF " + Number(amount).toLocaleString();
+
+// DOM Elements
+const authContainer = document.getElementById('auth-container');
+const appContainer = document.getElementById('app-container');
+const loginForm = document.getElementById('login-form');
+const authError = document.getElementById('auth-error');
+const logoutBtn = document.getElementById('logout-btn');
+const globalSearch = document.getElementById('global-search');
+
+const userDisplayName = document.getElementById('user-display-name');
+const userRoleBadge = document.getElementById('user-role-badge');
+const adminMenuItem = document.getElementById('admin-menu-item');
+const superadminFilterBar = document.getElementById('superadmin-filter-bar');
+
+const saPresbyterySelect = document.getElementById('sa-presbytery-select');
+const saDepartmentSelect = document.getElementById('sa-department-select');
+
+// Application Initialization
+document.addEventListener('DOMContentLoaded', () => {
+    setupEventListeners();
+    populateSubsections('user-dept', 'user-subsection');
+});
+
+function setupEventListeners() {
+    // Auth logic
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const pass = document.getElementById('login-password').value;
+
+        const foundUser = usersDb.find(u => u.email === email && u.password === pass);
+
+        if (foundUser) {
+            currentUser = foundUser;
+            authError.textContent = "";
+            initAppSession();
+        } else {
+            authError.textContent = "Invalid email or password.";
+        }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+        currentUser = null;
+        appContainer.classList.add('hidden');
+        authContainer.classList.remove('hidden');
+    });
+
+    // Sidebar View Switcher
+    document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
+            item.classList.add('active');
+
+            const targetView = item.getAttribute('data-view');
+            document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+            document.getElementById(`view-${targetView}`).classList.add('active');
+        });
+    });
+
+    // Sidebar Filters (Fast Switching)
+    document.querySelectorAll('.filter-dept').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentUser.role !== 'superadmin') return;
+            const dept = item.getAttribute('data-dept');
+            saDepartmentSelect.value = dept;
+            currentScope.department = dept;
+            refreshAllViews();
+        });
+    });
+
+    document.querySelectorAll('.filter-pres').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentUser.role !== 'superadmin') return;
+            const pres = item.getAttribute('data-pres');
+            saPresbyterySelect.value = pres;
+            currentScope.presbytery = pres;
+            refreshAllViews();
+        });
+    });
+
+    // Superadmin Dropdown Filters
+    saPresbyterySelect.addEventListener('change', (e) => {
+        currentScope.presbytery = e.target.value;
+        refreshAllViews();
+    });
+
+    saDepartmentSelect.addEventListener('change', (e) => {
+        currentScope.department = e.target.value;
+        refreshAllViews();
+    });
+
+    // Global Search Bar (Live Dynamic Filtering)
+    globalSearch.addEventListener('input', (e) => {
+        currentScope.searchQuery = e.target.value.toLowerCase().trim();
+        refreshAllViews();
+    });
+
+    // Dynamic User Creation Subsections Mapping
+    document.getElementById('user-dept').addEventListener('change', () => {
+        populateSubsections('user-dept', 'user-subsection');
+    });
+
+    // Add New User Form
+    document.getElementById('add-user-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const newUser = {
+            name: document.getElementById('user-name').value,
+            email: document.getElementById('user-email').value,
+            password: document.getElementById('user-password').value,
+            role: document.getElementById('user-role').value,
+            presbytery: document.getElementById('user-pres').value,
+            department: document.getElementById('user-dept').value,
+            subsection: document.getElementById('user-subsection').value
+        };
+
+        usersDb.push(newUser);
+        alert('User assigned successfully!');
+        document.getElementById('add-user-form').reset();
+        populateSubsections('user-dept', 'user-subsection');
+        renderUsersTable();
+    });
+
+    // Add Transaction Modal Controls
+    const txModal = document.getElementById('tx-modal');
+    document.getElementById('open-tx-modal-btn').addEventListener('click', () => {
+        prepareTransactionModal();
+        txModal.classList.remove('hidden');
+    });
+
+    document.getElementById('close-tx-modal').addEventListener('click', () => {
+        txModal.classList.add('hidden');
+    });
+
+    document.getElementById('tx-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        let dept = currentUser.department;
+        let subsec = currentUser.subsection;
+        let pres = currentUser.presbytery;
+
+        if (currentUser.role === 'superadmin') {
+            dept = document.getElementById('tx-dept').value;
+            subsec = document.getElementById('tx-subsection').value;
+            pres = document.getElementById('tx-pres').value;
+        }
+
+        const newTx = {
+            id: Date.now(),
+            date: new Date().toISOString().split('T')[0],
+            type: document.getElementById('tx-type').value,
+            desc: document.getElementById('tx-desc').value,
+            amount: parseFloat(document.getElementById('tx-amount').value),
+            department: dept,
+            subsection: subsec,
+            presbytery: pres,
+            createdBy: currentUser.email
+        };
+
+        transactionsDb.unshift(newTx);
+        txModal.classList.add('hidden');
+        document.getElementById('tx-form').reset();
+        refreshAllViews();
+    });
+
+    // Report Actions
+    document.getElementById('print-btn').addEventListener('click', () => window.print());
+    document.getElementById('export-excel-btn').addEventListener('click', exportReportToExcel);
 }
 
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+// Session Initializer
+function initAppSession() {
+    authContainer.classList.add('hidden');
+    appContainer.classList.remove('hidden');
+
+    userDisplayName.textContent = currentUser.name;
+    userRoleBadge.textContent = currentUser.role;
+
+    if (currentUser.role === 'superadmin') {
+        adminMenuItem.classList.remove('hidden');
+        superadminFilterBar.classList.remove('hidden');
+        currentScope.presbytery = "ALL";
+        currentScope.department = "ALL";
+    } else {
+        adminMenuItem.classList.add('hidden');
+        superadminFilterBar.classList.add('hidden');
+        currentScope.presbytery = currentUser.presbytery;
+        currentScope.department = currentUser.department;
+    }
+
+    renderUsersTable();
+    refreshAllViews();
 }
 
-body {
-    background-color: var(--bg-light);
-    color: var(--text-main);
-    min-height: 100vh;
+// Helper to populate subsections dropdowns
+function populateSubsections(deptSelectId, subSelectId) {
+    const deptVal = document.getElementById(deptSelectId).value;
+    const subSelect = document.getElementById(subSelectId);
+    subSelect.innerHTML = '';
+
+    const list = EPR_STRUCTURE[deptVal] || [];
+    list.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item;
+        opt.textContent = item;
+        subSelect.appendChild(opt);
+    });
 }
 
-.hidden {
-    display: none !important;
+// Transaction Modal Dynamic Field Builder
+function prepareTransactionModal() {
+    const deptSelect = document.getElementById('tx-dept');
+    const subsecSelect = document.getElementById('tx-subsection');
+    const presSelect = document.getElementById('tx-pres');
+
+    if (currentUser.role === 'superadmin') {
+        document.getElementById('tx-dept-group').style.display = 'block';
+        document.getElementById('tx-subsection-group').style.display = 'block';
+        document.getElementById('tx-pres-group').style.display = 'block';
+
+        deptSelect.innerHTML = '';
+        Object.keys(EPR_STRUCTURE).forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d; opt.textContent = d;
+            deptSelect.appendChild(opt);
+        });
+
+        presSelect.innerHTML = '';
+        PRESBYTERIES.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p; opt.textContent = p;
+            presSelect.appendChild(opt);
+        });
+
+        populateSubsections('tx-dept', 'tx-subsection');
+        deptSelect.onchange = () => populateSubsections('tx-dept', 'tx-subsection');
+    } else {
+        document.getElementById('tx-dept-group').style.display = 'none';
+        document.getElementById('tx-subsection-group').style.display = 'none';
+        document.getElementById('tx-pres-group').style.display = 'none';
+    }
 }
 
-.error-msg {
-    color: var(--danger);
-    font-size: 0.85rem;
-    margin-top: 10px;
-    text-align: center;
+// Core Data Filter Engine
+function getFilteredTransactions() {
+    return transactionsDb.filter(tx => {
+        // Location Scope Match
+        if (currentScope.presbytery !== "ALL" && tx.presbytery !== currentScope.presbytery) {
+            return false;
+        }
+        // Department Scope Match
+        if (currentScope.department !== "ALL" && tx.department !== currentScope.department) {
+            return false;
+        }
+        // Non-Superadmin strict ownership filter (only see transactions within their scope)
+        if (currentUser.role !== 'superadmin') {
+            if (tx.department !== currentUser.department || tx.presbytery !== currentUser.presbytery) {
+                return false;
+            }
+        }
+        // Search bar query match
+        if (currentScope.searchQuery !== "") {
+            const q = currentScope.searchQuery;
+            const matchesDesc = tx.desc.toLowerCase().includes(q);
+            const matchesDept = tx.department.toLowerCase().includes(q);
+            const matchesSub = tx.subsection.toLowerCase().includes(q);
+            const matchesPres = tx.presbytery.toLowerCase().includes(q);
+            const matchesAmount = tx.amount.toString().includes(q);
+            return matchesDesc || matchesDept || matchesSub || matchesPres || matchesAmount;
+        }
+
+        return true;
+    });
 }
 
-/* Auth Page */
-.auth-screen {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    background-color: var(--bg-dark);
+// Master Render Method
+function refreshAllViews() {
+    const list = getFilteredTransactions();
+
+    // 1. Update Dynamic Indicator Text
+    const indicator = document.getElementById('scope-indicator');
+    const stmtScope = document.getElementById('statement-scope');
+    const scopeDesc = `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`;
+    indicator.textContent = `Current Scope: ${scopeDesc}`;
+    stmtScope.textContent = scopeDesc;
+
+    // 2. Compute Aggregates
+    let income = 0;
+    let expense = 0;
+    let assets = 0;
+    let liabilities = 0;
+
+    list.forEach(tx => {
+        if (tx.type === 'Income') income += tx.amount;
+        if (tx.type === 'Expense') expense += tx.amount;
+        if (tx.type === 'Asset') assets += tx.amount;
+        if (tx.type === 'Liability') liabilities += tx.amount;
+    });
+
+    const netProfit = income - expense;
+    const netWorth = assets - liabilities;
+
+    // 3. Update Overview
+    document.getElementById('stat-count').textContent = `${list.length} Records`;
+    document.getElementById('stat-revenue').textContent = formatRF(income);
+    document.getElementById('stat-expenses').textContent = formatRF(expense);
+
+    document.getElementById('net-profit-val').textContent = formatRF(netProfit);
+    document.getElementById('pl-income').textContent = formatRF(income);
+    document.getElementById('pl-expense').textContent = formatRF(expense);
+
+    const totalPL = income + expense || 1;
+    document.getElementById('income-bar').style.width = `${(income / totalPL) * 100}%`;
+    document.getElementById('expense-bar').style.width = `${(expense / totalPL) * 100}%`;
+
+    document.getElementById('cash-in').textContent = formatRF(income);
+    document.getElementById('cash-out').textContent = formatRF(expense);
+
+    // 4. Update Statement / Reports
+    document.getElementById('stmt-income').textContent = formatRF(income);
+    document.getElementById('stmt-expenses').textContent = formatRF(expense);
+    document.getElementById('stmt-net').textContent = formatRF(netProfit);
+
+    document.getElementById('stmt-assets').textContent = formatRF(assets);
+    document.getElementById('stmt-liabilities').textContent = formatRF(liabilities);
+    document.getElementById('stmt-equity').textContent = formatRF(netWorth);
+
+    // 5. Render Transactions Table
+    renderTransactionsTable(list);
 }
 
-.auth-card {
-    background: var(--card-bg);
-    padding: 2.5rem;
-    border-radius: 12px;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+function renderTransactionsTable(list) {
+    const tbody = document.getElementById('tx-table-body');
+    tbody.innerHTML = '';
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No records found in this scope.</td></tr>`;
+        return;
+    }
+
+    list.forEach(tx => {
+        const tr = document.createElement('tr');
+        const isInc = tx.type === 'Income' || tx.type === 'Asset';
+        tr.innerHTML = `
+            <td>${tx.date}</td>
+            <td><span class="badge" style="background: ${isInc ? '#d1fae5' : '#fee2e2'}; color: ${isInc ? '#065f46' : '#991b1b'};">${tx.type}</span></td>
+            <td>${tx.desc}</td>
+            <td>${tx.department}</td>
+            <td><strong>${tx.subsection}</strong></td>
+            <td>${tx.presbytery}</td>
+            <td style="font-weight: bold; color: ${isInc ? 'var(--success)' : 'var(--danger)'};">${formatRF(tx.amount)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
-.brand-header {
-    text-align: center;
-    margin-bottom: 2rem;
+function renderUsersTable() {
+    const tbody = document.getElementById('users-table-body');
+    tbody.innerHTML = '';
+
+    usersDb.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${u.name}</strong></td>
+            <td>${u.email}</td>
+            <td><span class="badge">${u.role}</span></td>
+            <td>${u.presbytery}</td>
+            <td>${u.department} (${u.subsection})</td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
-.brand-header .logo {
-    background: var(--primary);
-    color: #fff;
-    font-weight: bold;
-    display: inline-block;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin-bottom: 10px;
-}
+function exportReportToExcel() {
+    const list = getFilteredTransactions();
+    const data = list.map(item => ({
+        Date: item.date,
+        Type: item.type,
+        Description: item.desc,
+        Department: item.department,
+        Section: item.subsection,
+        Presbytery: item.presbytery,
+        Amount: item.amount
+    }));
 
-/* App Layout */
-.app-layout {
-    display: flex;
-    min-height: 100vh;
-}
-
-/* Sidebar Styling */
-.sidebar {
-    width: 280px;
-    background-color: var(--bg-dark);
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    padding: 1.5rem 1rem;
-    flex-shrink: 0;
-}
-
-.sidebar-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 2rem;
-}
-
-.logo-box {
-    background: #22d3ee;
-    color: #000;
-    font-weight: bold;
-    padding: 6px 12px;
-    border-radius: 6px;
-}
-
-.sidebar-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.nav-item {
-    color: #94a3b8;
-    text-decoration: none;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    transition: all 0.2s;
-}
-
-.nav-item:hover, .nav-item.active {
-    background-color: var(--primary);
-    color: #fff;
-}
-
-.sidebar-section-title {
-    font-size: 0.75rem;
-    color: #64748b;
-    font-weight: 700;
-    margin: 1.5rem 0 0.5rem 10px;
-    letter-spacing: 0.05em;
-}
-
-.sub-menu .nav-item {
-    font-size: 0.85rem;
-    padding: 8px 12px;
-}
-
-/* Main Content Area */
-.main-wrapper {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-.topbar {
-    background: #fff;
-    height: 60px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 2rem;
-}
-
-.search-bar {
-    background: var(--bg-light);
-    display: flex;
-    align-items: center;
-    padding: 8px 16px;
-    border-radius: 20px;
-    width: 450px;
-    gap: 10px;
-    color: var(--text-muted);
-}
-
-.search-bar input {
-    border: none;
-    background: transparent;
-    outline: none;
-    width: 100%;
-}
-
-.user-profile {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.badge {
-    background: #e0f2fe;
-    color: var(--primary-dark);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    font-weight: bold;
-}
-
-/* Dynamic Views Container */
-.content-body {
-    padding: 2rem;
-    flex-grow: 1;
-}
-
-.view-panel {
-    display: none;
-}
-
-.view-panel.active {
-    display: block;
-}
-
-.view-header {
-    margin-bottom: 1.5rem;
-}
-
-.flex-between {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-/* Overview Grid */
-.grid-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 15px;
-    margin-bottom: 2rem;
-}
-
-.card-item {
-    background: #fff;
-    border-left: 4px solid var(--primary);
-    padding: 1rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.card-item h5 {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-}
-
-.card-item .value {
-    font-size: 1.5rem;
-    font-weight: bold;
-    margin-top: 5px;
-}
-
-.quick-jump-container {
-    background: #fff;
-    padding: 1rem;
-    border-radius: 8px;
-    margin-bottom: 2rem;
-}
-
-.chip-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.chip {
-    background: var(--bg-light);
-    border: 1px solid var(--border-color);
-    padding: 6px 14px;
-    border-radius: 16px;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
-/* Financial Glance Cards */
-.metrics-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-}
-
-.metric-card {
-    background: #fff;
-    padding: 1.5rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.progress-bar-group {
-    margin-top: 15px;
-}
-
-.progress {
-    height: 10px;
-    background: #e2e8f0;
-    border-radius: 5px;
-    margin: 5px 0 15px;
-    overflow: hidden;
-}
-
-.bar-success { background: var(--success); height: 100%; width: 0%; transition: width 0.4s; }
-.bar-danger { background: var(--danger); height: 100%; width: 0%; transition: width 0.4s; }
-
-/* Tables */
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #fff;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.data-table th, .data-table td {
-    padding: 12px 16px;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.data-table th {
-    background: #f8fafc;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
-
-/* Forms & Inputs */
-.form-group {
-    margin-bottom: 1rem;
-}
-
-.form-group label {
-    display: block;
-    font-size: 0.85rem;
-    margin-bottom: 5px;
-    font-weight: 600;
-}
-
-.form-group input, .form-group select {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    outline: none;
-}
-
-/* Buttons */
-.btn {
-    padding: 10px 18px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-secondary { background: #64748b; color: #fff; }
-.btn-success { background: var(--success); color: #fff; }
-.btn-block { width: 100%; }
-
-/* Admin Grid Layout */
-.admin-grid {
-    display: grid;
-    grid-template-columns: 350px 1fr;
-    gap: 20px;
-}
-
-.form-card, .table-card {
-    background: #fff;
-    padding: 1.5rem;
-    border-radius: 8px;
-}
-
-/* Modal */
-.modal {
-    position: fixed;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.modal-content {
-    background: #fff;
-    padding: 2rem;
-    border-radius: 8px;
-    width: 400px;
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-}
-
-.close-btn { cursor: pointer; font-size: 1.5rem; }
-
-/* Print Statement Rules */
-.financial-statement-card {
-    background: #fff;
-    padding: 2.5rem;
-    border-radius: 8px;
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.statement-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px dashed var(--border-color);
-}
-
-.statement-row.highlight {
-    font-weight: bold;
-    border-top: 2px solid #000;
-    border-bottom: 2px solid #000;
-}
-
-@media print {
-    body * { visibility: hidden; }
-    #printable-report, #printable-report * { visibility: visible; }
-    #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "EPR Report");
+    XLSX.writeFile(workbook, "EPR_Financial_Report.xlsx");
 }
