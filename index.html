@@ -10,145 +10,176 @@
 </head>
 <body>
 
-    <!-- Authentication Screen -->
+    <!-- ============ Authentication Screen ============ -->
     <div id="auth-container" class="auth-screen">
         <div class="auth-card">
             <div class="brand-header">
                 <div class="logo">EPR</div>
                 <h2>EPR System Sign In</h2>
+                <p>Financial &amp; Operations Management</p>
             </div>
-            <form id="login-form">
+            <form id="login-form" novalidate>
                 <div class="form-group">
                     <label>Email Address</label>
-                    <input type="email" id="login-email" required placeholder="admin@epr.org">
+                    <input type="email" id="login-email" required placeholder="admin@epr.org" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label>Password</label>
-                    <input type="password" id="login-password" required placeholder="••••••••">
+                    <div class="pw-input-wrap">
+                        <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
+                        <button type="button" class="pw-toggle-btn" data-toggle-for="login-password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">Sign In</button>
             </form>
             <p id="auth-error" class="error-msg"></p>
+
+            <div class="demo-creds">
+                <strong>Demo accounts</strong> (click to autofill):<br>
+                <button type="button" class="demo-fill" data-email="admin@epr.org" data-pass="admin">Superadmin — admin@epr.org / admin</button><br>
+                <button type="button" class="demo-fill" data-email="growth@epr.org" data-pass="123">Finance (Church Growth · Kigali) — growth@epr.org / 123</button><br>
+                <button type="button" class="demo-fill" data-email="health@epr.org" data-pass="123">Manager (Health · Gisenyi) — health@epr.org / 123</button>
+            </div>
         </div>
     </div>
 
-    <!-- Application Layout -->
+    <!-- ============ Application Layout ============ -->
     <div id="app-container" class="app-layout hidden">
-        
+
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="logo-box">EPR</div>
-                <h3>EPR System</h3>
+                <div>
+                    <h3>EPR System</h3>
+                    <span class="sub">Financial &amp; Operations</span>
+                </div>
+                <button class="sidebar-close-btn" id="sidebar-close-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
             <nav class="sidebar-menu">
-                <a href="#" class="nav-item active" data-view="overview"><i class="fa-solid fa-chart-pie"></i> Overview</a>
-                <a href="#" class="nav-item" data-view="transactions"><i class="fa-solid fa-list-check"></i> Transactions</a>
-                <a href="#" class="nav-item" data-view="reports"><i class="fa-solid fa-file-invoice-dollar"></i> Reports</a>
+                <button type="button" class="nav-item active" data-view="overview"><i class="fa-solid fa-chart-pie"></i> Overview</button>
+                <button type="button" class="nav-item" data-view="transactions"><i class="fa-solid fa-list-check"></i> Transactions <span class="count-chip" id="nav-tx-count">0</span></button>
+                <button type="button" class="nav-item" data-view="reports"><i class="fa-solid fa-file-invoice-dollar"></i> Reports</button>
+                <button type="button" class="nav-item" data-view="departments"><i class="fa-solid fa-sitemap"></i> Departments &amp; Presbyteries</button>
                 <div id="admin-menu-item" class="hidden">
-                    <a href="#" class="nav-item" data-view="users"><i class="fa-solid fa-users-gear"></i> User Admin</a>
+                    <button type="button" class="nav-item" data-view="users"><i class="fa-solid fa-users-gear"></i> User Admin <span class="count-chip" id="nav-users-count">0</span></button>
                 </div>
             </nav>
 
-            <div class="sidebar-section-title">DEPARTMENTS</div>
-            <div class="sidebar-menu sub-menu" id="dept-sidebar-menu">
-                <a href="#" class="nav-item filter-dept" data-dept="ALL"><i class="fa-solid fa-layer-group"></i> All Departments</a>
-                <a href="#" class="nav-item filter-dept" data-dept="Department of Church Growth"><i class="fa-solid fa-church"></i> Church Growth</a>
-                <a href="#" class="nav-item filter-dept" data-dept="Department of Development and Diakonia"><i class="fa-solid fa-hand-holding-hand"></i> Development & Diakonia</a>
-                <a href="#" class="nav-item filter-dept" data-dept="Department of Finance and Administration"><i class="fa-solid fa-coins"></i> Finance & Admin</a>
-                <a href="#" class="nav-item filter-dept" data-dept="Department of Education"><i class="fa-solid fa-graduation-cap"></i> Education</a>
-                <a href="#" class="nav-item filter-dept" data-dept="Department of Health"><i class="fa-solid fa-notes-medical"></i> Health</a>
-            </div>
+            <div class="sidebar-section-title" id="dept-filter-title"><i class="fa-solid fa-building"></i> Departments</div>
+            <div class="sidebar-menu sub-menu" id="dept-sidebar-menu"></div>
 
-            <div class="sidebar-section-title">PRESBYTERIES</div>
-            <div class="sidebar-menu sub-menu" id="pres-sidebar-menu">
-                <a href="#" class="nav-item filter-pres" data-pres="ALL"><i class="fa-solid fa-globe"></i> All Presbyteries</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Zinga"><i class="fa-solid fa-location-dot"></i> Presbytery Zinga</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Kigali"><i class="fa-solid fa-location-dot"></i> Presbytery Kigali</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Remera"><i class="fa-solid fa-location-dot"></i> Presbytery Remera</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Gitarama"><i class="fa-solid fa-location-dot"></i> Presbytery Gitarama</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Rubengera"><i class="fa-solid fa-location-dot"></i> Presbytery Rubengera</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Kirinda"><i class="fa-solid fa-location-dot"></i> Presbytery Kirinda</a>
-                <a href="#" class="nav-item filter-pres" data-pres="EPR Presbytery Gisenyi"><i class="fa-solid fa-location-dot"></i> Presbytery Gisenyi</a>
-            </div>
+            <div class="sidebar-section-title" id="pres-filter-title"><i class="fa-solid fa-map-location-dot"></i> Presbyteries</div>
+            <div class="sidebar-menu sub-menu" id="pres-sidebar-menu"></div>
+
+            <div class="sidebar-footer">EPR System &copy; 2026 &middot; v2.0</div>
         </aside>
 
         <!-- Main Content Area -->
         <main class="main-wrapper">
-            
+
             <!-- Topbar -->
             <header class="topbar">
-                <div class="search-bar">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="text" id="global-search" placeholder="Live search transactions, amounts, sections...">
+                <button class="hamburger-btn" id="hamburger-btn"><i class="fa-solid fa-bars"></i></button>
+
+                <div class="search-wrap">
+                    <div class="search-bar">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="global-search" placeholder="Search transactions, amounts, sections, presbyteries...">
+                        <button class="search-clear-btn" id="search-clear-btn"><i class="fa-solid fa-circle-xmark"></i></button>
+                    </div>
+                    <div id="search-results-dropdown" class="search-results-dropdown hidden"></div>
                 </div>
-                <div class="user-profile">
-                    <span id="user-display-name">Loading...</span>
-                    <span id="user-role-badge" class="badge"></span>
-                    <button id="logout-btn" class="btn btn-secondary" style="padding: 6px 12px;" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+
+                <div class="topbar-actions">
+                    <button class="icon-btn" id="notif-btn" title="Notifications">
+                        <i class="fa-solid fa-bell"></i>
+                        <span class="notif-dot hidden" id="notif-dot"></span>
+                    </button>
+
+                    <div class="user-profile-wrap">
+                        <div class="user-profile" id="profile-toggle">
+                            <div class="avatar-circle" id="avatar-initials">?</div>
+                            <div>
+                                <div class="u-name" id="user-display-name">Loading...</div>
+                                <div class="u-scope" id="user-scope-line"></div>
+                            </div>
+                            <i class="fa-solid fa-chevron-down" style="font-size:.7rem;color:var(--text-muted)"></i>
+                        </div>
+                        <div id="profile-dropdown" class="profile-dropdown hidden">
+                            <div class="pd-head">
+                                <div class="u-name" id="pd-name"></div>
+                                <div class="u-email" id="pd-email"></div>
+                                <span class="badge" id="pd-role-badge" style="margin-top:8px;"></span>
+                            </div>
+                            <div class="pd-body">
+                                <div class="pd-row"><strong>Presbytery:</strong> <span id="pd-presbytery"></span></div>
+                                <div class="pd-row"><strong>Department:</strong> <span id="pd-department"></span></div>
+                                <div class="pd-row"><strong>Section:</strong> <span id="pd-subsection"></span></div>
+                            </div>
+                            <button id="logout-btn" class="pd-logout"><i class="fa-solid fa-right-from-bracket"></i> Sign out</button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
             <div class="content-body">
-                
+
                 <!-- Superadmin Dynamic Global Controls -->
-                <div id="superadmin-filter-bar" class="quick-jump-container hidden" style="margin-bottom: 1.5rem;">
-                    <h4 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Superadmin Scope Selector</h4>
-                    <div style="display: flex; gap: 15px;">
-                        <div style="flex: 1;">
-                            <label style="font-size: 0.8rem; font-weight: 600;">Filter Presbytery / Location:</label>
+                <div id="superadmin-filter-bar" class="scope-bar hidden">
+                    <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies to Overview, Transactions &amp; Reports</h4>
+                    <div class="scope-fields">
+                        <div class="scope-field">
+                            <label>Filter Presbytery / Location</label>
                             <select id="sa-presbytery-select">
                                 <option value="ALL">-- All Presbyteries --</option>
-                                <option value="EPR Presbytery Zinga">EPR Presbytery Zinga</option>
-                                <option value="EPR Presbytery Kigali">EPR Presbytery Kigali</option>
-                                <option value="EPR Presbytery Remera">EPR Presbytery Remera</option>
-                                <option value="EPR Presbytery Gitarama">EPR Presbytery Gitarama</option>
-                                <option value="EPR Presbytery Rubengera">EPR Presbytery Rubengera</option>
-                                <option value="EPR Presbytery Kirinda">EPR Presbytery Kirinda</option>
-                                <option value="EPR Presbytery Gisenyi">EPR Presbytery Gisenyi</option>
                             </select>
                         </div>
-                        <div style="flex: 1;">
-                            <label style="font-size: 0.8rem; font-weight: 600;">Filter Main Department:</label>
+                        <div class="scope-field">
+                            <label>Filter Main Department</label>
                             <select id="sa-department-select">
                                 <option value="ALL">-- All Departments --</option>
-                                <option value="Department of Church Growth">Department of Church Growth</option>
-                                <option value="Department of Development and Diakonia">Department of Development and Diakonia</option>
-                                <option value="Department of Finance and Administration">Department of Finance and Administration</option>
-                                <option value="Department of Education">Department of Education</option>
-                                <option value="Department of Health">Department of Health</option>
                             </select>
+                        </div>
+                        <div style="display:flex; align-items:flex-end;">
+                            <button type="button" class="btn btn-outline scope-reset-btn" id="scope-reset-btn"><i class="fa-solid fa-rotate-left"></i> Reset scope</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- View Panel: Overview -->
+                <!-- ============ View: Overview ============ -->
                 <section id="view-overview" class="view-panel active">
                     <div class="view-header">
                         <h2>Overview Dashboard</h2>
-                        <p id="scope-indicator" style="color: var(--text-muted); font-size: 0.9rem;">Current Scope: All EPR Records</p>
+                        <p id="scope-indicator">Current Scope: All EPR Records</p>
                     </div>
 
                     <div class="grid-cards">
-                        <div class="card-item">
-                            <h5>ACTIVE RECORDS</h5>
+                        <div class="card-item neutral">
+                            <h5>Active Records</h5>
                             <div class="value" id="stat-count">0 Records</div>
                         </div>
-                        <div class="card-item">
-                            <h5>TOTAL REVENUE</h5>
+                        <div class="card-item success">
+                            <h5>Total Revenue</h5>
                             <div class="value" id="stat-revenue" style="color: var(--success);">RF 0</div>
                         </div>
-                        <div class="card-item">
-                            <h5>TOTAL EXPENSES</h5>
+                        <div class="card-item danger">
+                            <h5>Total Expenses</h5>
                             <div class="value" id="stat-expenses" style="color: var(--danger);">RF 0</div>
+                        </div>
+                        <div class="card-item" id="stat-net-card">
+                            <h5>Net Balance</h5>
+                            <div class="value" id="stat-net">RF 0</div>
                         </div>
                     </div>
 
                     <div class="metrics-row">
                         <div class="metric-card">
                             <div class="flex-between">
-                                <h3>PROFIT & LOSS</h3>
+                                <h3>Profit &amp; Loss</h3>
                                 <span style="color: var(--text-muted); font-size: 0.85rem;">Summary</span>
                             </div>
                             <h1 id="net-profit-val" style="margin-top: 10px;">RF 0</h1>
@@ -162,54 +193,78 @@
 
                         <div class="metric-card">
                             <div class="flex-between">
-                                <h3>CASH FLOW SUMMARY</h3>
+                                <h3>Cash Flow Summary</h3>
                                 <span style="color: var(--text-muted); font-size: 0.85rem;">Real-time</span>
                             </div>
                             <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 1rem;">
                                 <div>Total Inflow: <strong id="cash-in" style="color: var(--success);">RF 0</strong></div>
                                 <div>Total Outflow: <strong id="cash-out" style="color: var(--danger);">RF 0</strong></div>
+                                <div>Assets Recorded: <strong id="cash-assets">RF 0</strong></div>
+                                <div>Liabilities Recorded: <strong id="cash-liabilities">RF 0</strong></div>
                             </div>
                         </div>
                     </div>
+
+                    <div class="dept-breakdown" id="dept-breakdown-wrap">
+                        <h3><i class="fa-solid fa-layer-group"></i> Breakdown by Department <span style="font-weight:400;color:var(--text-muted);font-size:.78rem;">(click a card to jump into Transactions filtered to it)</span></h3>
+                        <div class="dept-grid" id="dept-breakdown-grid"></div>
+                    </div>
                 </section>
 
-                <!-- View Panel: Transactions -->
+                <!-- ============ View: Transactions ============ -->
                 <section id="view-transactions" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
                             <h2>Transactions Log</h2>
-                            <p style="color: var(--text-muted); font-size: 0.9rem;">Isolated by role permissions and scope.</p>
+                            <p>Isolated by role permissions and scope.</p>
                         </div>
                         <button class="btn btn-primary" id="open-tx-modal-btn"><i class="fa-solid fa-plus"></i> New Transaction</button>
                     </div>
 
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Type</th>
-                                <th>Description</th>
-                                <th>Department</th>
-                                <th>Section / Project</th>
-                                <th>Presbytery Location</th>
-                                <th>Amount (RF)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tx-table-body">
-                            <!-- Injected dynamically -->
-                        </tbody>
-                    </table>
+                    <div class="filter-toolbar">
+                        <span class="ft-label"><i class="fa-solid fa-filter"></i> Filters:</span>
+                        <select id="tx-filter-type">
+                            <option value="ALL">All Types</option>
+                            <option value="Income">Income</option>
+                            <option value="Expense">Expense</option>
+                            <option value="Asset">Asset</option>
+                            <option value="Liability">Liability</option>
+                        </select>
+                        <input type="date" id="tx-filter-from" title="From date">
+                        <input type="date" id="tx-filter-to" title="To date">
+                        <div class="ft-spacer"></div>
+                        <button class="ft-reset" id="tx-filter-reset">Clear filters</button>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Description</th>
+                                    <th>Department</th>
+                                    <th>Section / Project</th>
+                                    <th>Presbytery Location</th>
+                                    <th>Amount (RF)</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tx-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="table-footer" id="tx-table-footer"></div>
                 </section>
 
-                <!-- View Panel: Reports -->
+                <!-- ============ View: Reports ============ -->
                 <section id="view-reports" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Financial Statements & Reports</h2>
-                            <p style="color: var(--text-muted); font-size: 0.9rem;">View Balance Sheet, Income Statements, and Export data.</p>
+                            <h2>Financial Statements &amp; Reports</h2>
+                            <p>View Balance Sheet, Income Statements, and export data for the selected scope.</p>
                         </div>
                         <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" id="print-btn"><i class="fa-solid fa-print"></i> Print</button>
+                            <button class="btn btn-outline" id="print-btn"><i class="fa-solid fa-print"></i> Print</button>
                             <button class="btn btn-success" id="export-excel-btn"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
                         </div>
                     </div>
@@ -219,7 +274,7 @@
                         <p style="text-align: center; color: var(--text-muted); margin-bottom: 25px;" id="statement-scope">System Wide Statement</p>
 
                         <div style="margin-bottom: 25px;">
-                            <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit & Loss Summary</h4>
+                            <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss Summary</h4>
                             <div class="statement-row"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong></div>
                             <div class="statement-row"><span>Total Operating Expenses</span><strong id="stmt-expenses">RF 0</strong></div>
                             <div class="statement-row highlight"><span>Net Operating Balance</span><strong id="stmt-net">RF 0</strong></div>
@@ -227,94 +282,113 @@
 
                         <div>
                             <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
-                            <div class="statement-row"><span>Current Assets (Cash & Bank)</span><strong id="stmt-assets">RF 0</strong></div>
+                            <div class="statement-row"><span>Current Assets (Cash &amp; Bank)</span><strong id="stmt-assets">RF 0</strong></div>
                             <div class="statement-row"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong></div>
                             <div class="statement-row highlight"><span>Calculated Net Worth</span><strong id="stmt-equity">RF 0</strong></div>
                         </div>
+
+                        <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
                     </div>
                 </section>
 
-                <!-- View Panel: User Management -->
+                <!-- ============ View: Departments & Presbyteries ============ -->
+                <section id="view-departments" class="view-panel">
+                    <div class="view-header">
+                        <h2>Departments &amp; Presbyteries</h2>
+                        <p>Every EPR location carries the full set of departments below; each sub-section is managed by whichever user has been assigned to it.</p>
+                    </div>
+
+                    <div class="org-tabs">
+                        <button class="org-tab-btn active" data-org-tab="departments">Departments</button>
+                        <button class="org-tab-btn" data-org-tab="presbyteries">Presbyteries</button>
+                    </div>
+
+                    <div id="org-panel-departments" class="org-chart-root">
+                        <div class="org-root-node">EPR</div>
+                        <div class="org-dept-grid" id="org-dept-grid"></div>
+                    </div>
+
+                    <div id="org-panel-presbyteries" class="org-chart-root hidden">
+                        <div class="org-root-node">EPR</div>
+                        <div class="pres-grid" id="org-pres-grid"></div>
+                    </div>
+                </section>
+
+                <!-- ============ View: User Management ============ -->
                 <section id="view-users" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>User & Privilege Management</h2>
-                            <p style="color: var(--text-muted); font-size: 0.9rem;">Create accounts and restrict them to location and department scopes.</p>
+                            <h2>User &amp; Privilege Management</h2>
+                            <p>Create accounts and restrict them to a presbytery location and department scope.</p>
                         </div>
                     </div>
 
                     <div class="admin-grid">
                         <div class="form-card">
-                            <h3 style="margin-bottom: 15px;">Add New System User</h3>
-                            <form id="add-user-form">
+                            <h3 id="user-form-title">Add New System User</h3>
+                            <form id="add-user-form" novalidate>
+                                <input type="hidden" id="user-edit-id" value="">
                                 <div class="form-group">
-                                    <label>Full Name</label>
+                                    <label>Full Name <span class="req">*</span></label>
                                     <input type="text" id="user-name" required placeholder="John Doe">
                                 </div>
                                 <div class="form-group">
-                                    <label>Email Address</label>
+                                    <label>Email Address <span class="req">*</span></label>
                                     <input type="email" id="user-email" required placeholder="user@epr.org">
                                 </div>
                                 <div class="form-group">
-                                    <label>Set Password</label>
-                                    <input type="password" id="user-password" required placeholder="••••••••">
+                                    <label>Set Password <span class="req">*</span></label>
+                                    <div class="pw-input-wrap">
+                                        <input type="password" id="user-password" required placeholder="Minimum 3 characters">
+                                        <button type="button" class="pw-toggle-btn" data-toggle-for="user-password"><i class="fa-solid fa-eye"></i></button>
+                                    </div>
+                                    <div class="field-hint">The user will sign in with this email &amp; password.</div>
                                 </div>
                                 <div class="form-group">
-                                    <label>Assign Role</label>
+                                    <label>Assign Role <span class="req">*</span></label>
                                     <select id="user-role" required>
                                         <option value="finance">Finance User</option>
                                         <option value="manager">Department Manager</option>
                                         <option value="superadmin">Superadmin (EPR Central)</option>
                                     </select>
+                                    <div class="field-hint">Superadmins can view and manage every presbytery and department.</div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Assign Presbytery Location</label>
-                                    <select id="user-pres" required>
-                                        <option value="EPR Presbytery Zinga">EPR Presbytery Zinga</option>
-                                        <option value="EPR Presbytery Kigali">EPR Presbytery Kigali</option>
-                                        <option value="EPR Presbytery Remera">EPR Presbytery Remera</option>
-                                        <option value="EPR Presbytery Gitarama">EPR Presbytery Gitarama</option>
-                                        <option value="EPR Presbytery Rubengera">EPR Presbytery Rubengera</option>
-                                        <option value="EPR Presbytery Kirinda">EPR Presbytery Kirinda</option>
-                                        <option value="EPR Presbytery Gisenyi">EPR Presbytery Gisenyi</option>
-                                    </select>
+                                <div id="user-scope-fields">
+                                    <div class="form-group">
+                                        <label>Assign Presbytery Location <span class="req">*</span></label>
+                                        <select id="user-pres" required></select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Assign Main Department <span class="req">*</span></label>
+                                        <select id="user-dept" required></select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Assign Sub-Section / Project <span class="req">*</span></label>
+                                        <select id="user-subsection" required></select>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Assign Main Department</label>
-                                    <select id="user-dept" required>
-                                        <option value="Department of Church Growth">Department of Church Growth</option>
-                                        <option value="Department of Development and Diakonia">Department of Development and Diakonia</option>
-                                        <option value="Department of Finance and Administration">Department of Finance and Administration</option>
-                                        <option value="Department of Education">Department of Education</option>
-                                        <option value="Department of Health">Department of Health</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Assign Sub-Section / Project</label>
-                                    <select id="user-subsection" required>
-                                        <!-- Injected dynamically based on selected Department -->
-                                    </select>
-                                </div>
-                                <button type="submit" class="btn btn-primary btn-block">Create & Assign User</button>
+                                <button type="submit" class="btn btn-primary btn-block" id="user-submit-btn">Create &amp; Assign User</button>
+                                <button type="button" class="btn btn-outline btn-block hidden" id="user-cancel-edit-btn" style="margin-top:8px;">Cancel edit</button>
                             </form>
                         </div>
 
                         <div class="table-card">
-                            <h3 style="margin-bottom: 15px;">Configured System Users</h3>
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Email</th>
-                                        <th>Role</th>
-                                        <th>Presbytery</th>
-                                        <th>Department / Section</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="users-table-body">
-                                    <!-- Injected dynamically -->
-                                </tbody>
-                            </table>
+                            <h3>Configured System Users</h3>
+                            <div class="table-wrap">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Role</th>
+                                            <th>Presbytery</th>
+                                            <th>Department / Section</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-table-body"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -323,48 +397,76 @@
         </main>
     </div>
 
-    <!-- Modal for New Transaction -->
+    <!-- ============ Modal: New / Edit Transaction ============ -->
     <div id="tx-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Record Transaction</h3>
-                <span class="close-btn" id="close-tx-modal">&times;</span>
+                <h3 id="tx-modal-title">Record Transaction</h3>
+                <button class="close-btn" id="close-tx-modal">&times;</button>
             </div>
-            <form id="tx-form">
-                <div class="form-group">
-                    <label>Transaction Type</label>
-                    <select id="tx-type" required>
-                        <option value="Income">Income / Sales</option>
-                        <option value="Expense">Expense / Payment</option>
-                        <option value="Asset">Asset Entry</option>
-                        <option value="Liability">Liability Entry</option>
-                    </select>
+            <form id="tx-form" novalidate>
+                <div class="modal-body">
+                    <input type="hidden" id="tx-edit-id" value="">
+                    <div class="form-group">
+                        <label>Transaction Type <span class="req">*</span></label>
+                        <select id="tx-type" required>
+                            <option value="Income">Income / Sales</option>
+                            <option value="Expense">Expense / Payment</option>
+                            <option value="Asset">Asset Entry</option>
+                            <option value="Liability">Liability Entry</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Description <span class="req">*</span></label>
+                        <input type="text" id="tx-desc" required placeholder="e.g. Project Operations Fee">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount (RF) <span class="req">*</span></label>
+                        <input type="number" id="tx-amount" step="any" min="0" required placeholder="0.00">
+                    </div>
+                    <div class="form-group" id="tx-date-group">
+                        <label>Date</label>
+                        <input type="date" id="tx-date">
+                    </div>
+                    <div class="form-group" id="tx-dept-group">
+                        <label>Department</label>
+                        <select id="tx-dept"></select>
+                    </div>
+                    <div class="form-group" id="tx-subsection-group">
+                        <label>Sub-Section / Project</label>
+                        <select id="tx-subsection"></select>
+                    </div>
+                    <div class="form-group" id="tx-pres-group">
+                        <label>Presbytery Location</label>
+                        <select id="tx-pres"></select>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Description</label>
-                    <input type="text" id="tx-desc" required placeholder="e.g. Project Operations Fee">
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary btn-block" id="tx-submit-btn">Save Transaction</button>
                 </div>
-                <div class="form-group">
-                    <label>Amount (RF)</label>
-                    <input type="number" id="tx-amount" step="any" required placeholder="0.00">
-                </div>
-                <div class="form-group" id="tx-dept-group">
-                    <label>Department</label>
-                    <select id="tx-dept"></select>
-                </div>
-                <div class="form-group" id="tx-subsection-group">
-                    <label>Sub-Section / Project</label>
-                    <select id="tx-subsection"></select>
-                </div>
-                <div class="form-group" id="tx-pres-group">
-                    <label>Presbytery Location</label>
-                    <select id="tx-pres"></select>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Save Transaction</button>
             </form>
         </div>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <!-- ============ Modal: Confirm Delete ============ -->
+    <div id="confirm-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="confirm-title">Confirm action</h3>
+                <button class="close-btn" id="close-confirm-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="confirm-text" id="confirm-text">Are you sure?</p>
+                <div class="confirm-actions">
+                    <button class="btn btn-outline" id="confirm-cancel-btn">Cancel</button>
+                    <button class="btn btn-danger" id="confirm-ok-btn">Yes, continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="app.js"></script>
 </body>
 </html>
