@@ -1,14 +1,38 @@
 /* ======================================================================
-   EPR FINANCIAL & OPERATIONS SYSTEM
-   Single-page app: no reloads, everything re-renders instantly (AJAX-style)
-   from in-memory data. Swap the *Db arrays + persist functions for real
-   API calls to move this onto a backend.
+   EPR FINANCIAL & OPERATIONS SYSTEM — Firestore-backed
+   ----------------------------------------------------------------------
+   All users and transactions live in Cloud Firestore. Nothing in this
+   file is hardcoded demo data — usersDb / transactionsDb are just local
+   in-memory *caches* kept in sync with Firestore via onSnapshot()
+   listeners, so every screen updates live the moment data changes.
+
+   Data scoping is enforced at the QUERY level, not just in the UI:
+   a non-superadmin's transactions query always carries
+   where('department','==', theirDept) + where('presbytery','==', theirPres),
+   so they can only ever fetch documents inside their own assignment.
+
+   NOTE ON SECURITY: this app authenticates by matching an email/password
+   field stored on the Firestore user document (no Firebase Auth). That's
+   fine for an internal tool behind Firestore rules you control, but if
+   this is ever exposed publicly, swap this for Firebase Authentication
+   and keep the same role/department/presbytery fields on the profile
+   doc — everything else in this file stays the same.
 ====================================================================== */
+
+import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+    getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
+    onSnapshot, query, where, getDocs, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 // ---------------------------------------------------------------------
 // 1. FIXED ORGANIZATION STRUCTURE
 //    Every EPR presbytery carries this exact same set of departments;
-//    each sub-section is what an individual user gets assigned to manage.
+//    each sub-section is what an individual staff account gets assigned to.
 // ---------------------------------------------------------------------
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
@@ -27,46 +51,32 @@ const DEPT_ICONS = {
 };
 
 const PRESBYTERIES = [
-    "EPR Presbytery Zinga",
-    "EPR Presbytery Kigali",
-    "EPR Presbytery Remera",
-    "EPR Presbytery Gitarama",
-    "EPR Presbytery Rubengera",
-    "EPR Presbytery Kirinda",
-    "EPR Presbytery Gisenyi"
+    "EPR Presbytery Zinga", "EPR Presbytery Kigali", "EPR Presbytery Remera",
+    "EPR Presbytery Gitarama", "EPR Presbytery Rubengera", "EPR Presbytery Kirinda", "EPR Presbytery Gisenyi"
 ];
 
 const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User" };
 
 // ---------------------------------------------------------------------
-// 2. IN-MEMORY DATA (seed) — id counters kept separately
+// 2. LOCAL CACHES (populated live from Firestore — never hand-edited)
 // ---------------------------------------------------------------------
-let usersDb = [
-    { id: "u1", email: "admin@epr.org", password: "admin", name: "Central Superadmin", role: "superadmin", presbytery: "ALL", department: "ALL", subsection: "ALL" },
-    { id: "u2", email: "growth@epr.org", password: "123", name: "Jean Ndayisaba", role: "finance", presbytery: "EPR Presbytery Kigali", department: "Department of Church Growth", subsection: "Youth" },
-    { id: "u3", email: "health@epr.org", password: "123", name: "Marie Claire", role: "manager", presbytery: "EPR Presbytery Gisenyi", department: "Department of Health", subsection: "Health Projects" }
-];
-let userIdSeq = 4;
-
-let transactionsDb = [
-    { id: 1, date: "2026-08-10", type: "Income", desc: "Youth Ministry Offering", amount: 250000, department: "Department of Church Growth", subsection: "Youth", presbytery: "EPR Presbytery Kigali", createdBy: "growth@epr.org" },
-    { id: 2, date: "2026-08-09", type: "Expense", desc: "Health Center Medical Supplies", amount: 120000, department: "Department of Health", subsection: "Health Projects", presbytery: "EPR Presbytery Gisenyi", createdBy: "health@epr.org" },
-    { id: 3, date: "2026-08-08", type: "Income", desc: "Project SCA Grant", amount: 1500000, department: "Department of Development and Diakonia", subsection: "Project SCA", presbytery: "EPR Presbytery Remera", createdBy: "admin@epr.org" },
-    { id: 4, date: "2026-08-05", type: "Asset", desc: "Office Equipment Purchase", amount: 640000, department: "Department of Finance and Administration", subsection: "Functioning", presbytery: "EPR Presbytery Zinga", createdBy: "admin@epr.org" },
-    { id: 5, date: "2026-08-03", type: "Expense", desc: "School Materials", amount: 310000, department: "Department of Education", subsection: "Education", presbytery: "EPR Presbytery Gitarama", createdBy: "admin@epr.org" }
-];
-let txIdSeq = 6;
+let usersDb = [];
+let transactionsDb = [];
 
 // ---------------------------------------------------------------------
 // 3. APPLICATION STATE
 // ---------------------------------------------------------------------
-let currentUser = null;
-
-let currentScope = { presbytery: "ALL", department: "ALL" };   // superadmin scope selector
-let searchQuery = "";                                          // global live search
-let txFilters = { type: "ALL", from: "", to: "" };              // transactions view filters
-let pendingConfirm = null;                                      // {text, onConfirm}
+let currentUser = null;               // { id, name, email, role, presbytery, department, subsection, ... }
+let currentScope = { presbytery: "ALL", department: "ALL" };
+let searchQuery = "";
+let txFilters = { type: "ALL", from: "", to: "" };
+let userListRoleFilter = "ALL";
+let pendingConfirm = null;
 let activeOrgTab = "departments";
+
+let unsubTx = null;
+let unsubUsers = null;
+let unsubOwnProfile = null;
 
 // ---------------------------------------------------------------------
 // 4. DOM SHORTCUTS
@@ -74,35 +84,47 @@ let activeOrgTab = "departments";
 const $ = (id) => document.getElementById(id);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-const authContainer = $('auth-container');
-const appContainer = $('app-container');
-const loginForm = $('login-form');
-const authError = $('auth-error');
-const globalSearch = $('global-search');
-
 // ---------------------------------------------------------------------
-// 5. INIT
+// 5. BOOT
 // ---------------------------------------------------------------------
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     buildStaticSelectOptions();
     setupEventListeners();
     populateSubsections('user-dept', 'user-subsection');
+    await checkFirstRun();
 });
 
-function buildStaticSelectOptions() {
-    // Superadmin scope selectors
-    fillSelect($('sa-presbytery-select'), PRESBYTERIES, "ALL", "-- All Presbyteries --", true);
-    fillSelect($('sa-department-select'), Object.keys(EPR_STRUCTURE), "ALL", "-- All Departments --", true);
+async function checkFirstRun() {
+    try {
+        const snap = await getDocs(collection(db, COLLECTIONS.USERS));
+        $('boot-screen').classList.add('hidden');
+        if (snap.empty) {
+            $('setup-container').classList.remove('hidden');
+        } else {
+            $('auth-container').classList.remove('hidden');
+        }
+    } catch (err) {
+        $('boot-screen').innerHTML = `
+            <div style="max-width:420px;text-align:center;color:#fecaca;">
+                <i class="fa-solid fa-triangle-exclamation" style="font-size:1.8rem;margin-bottom:10px;"></i>
+                <p><strong>Couldn't connect to Firestore.</strong></p>
+                <p style="font-size:.82rem;margin-top:6px;color:#94a3b8;">Check firebase-config.js has your real project keys, and that your Firestore security rules allow read access. (${err.message})</p>
+            </div>`;
+    }
+}
 
-    // User-admin form selects
+// ---------------------------------------------------------------------
+// 6. STATIC SELECT OPTIONS
+// ---------------------------------------------------------------------
+function buildStaticSelectOptions() {
+    fillSelect($('sa-presbytery-select'), PRESBYTERIES, "ALL", "-- All Presbyteries --");
+    fillSelect($('sa-department-select'), Object.keys(EPR_STRUCTURE), "ALL", "-- All Departments --");
     fillSelect($('user-pres'), PRESBYTERIES);
     fillSelect($('user-dept'), Object.keys(EPR_STRUCTURE));
-
-    // Sidebar quick filters
     renderSidebarFilters();
 }
 
-function fillSelect(select, values, prependValue, prependLabel, keepPrepend) {
+function fillSelect(select, values, prependValue, prependLabel) {
     select.innerHTML = '';
     if (prependValue !== undefined) {
         const opt = document.createElement('option');
@@ -123,90 +145,55 @@ function renderSidebarFilters() {
     presMenu.innerHTML = '';
 
     const allDept = document.createElement('button');
-    allDept.type = 'button';
-    allDept.className = 'nav-item filter-dept';
-    allDept.dataset.dept = 'ALL';
+    allDept.type = 'button'; allDept.className = 'nav-item filter-dept'; allDept.dataset.dept = 'ALL';
     allDept.innerHTML = `<i class="fa-solid fa-layer-group"></i> All Departments`;
     deptMenu.appendChild(allDept);
 
     Object.keys(EPR_STRUCTURE).forEach(d => {
         const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'nav-item filter-dept';
-        btn.dataset.dept = d;
+        btn.type = 'button'; btn.className = 'nav-item filter-dept'; btn.dataset.dept = d;
         btn.innerHTML = `<i class="fa-solid ${DEPT_ICONS[d] || 'fa-building'}"></i> ${shortDeptName(d)}`;
         deptMenu.appendChild(btn);
     });
 
     const allPres = document.createElement('button');
-    allPres.type = 'button';
-    allPres.className = 'nav-item filter-pres';
-    allPres.dataset.pres = 'ALL';
+    allPres.type = 'button'; allPres.className = 'nav-item filter-pres'; allPres.dataset.pres = 'ALL';
     allPres.innerHTML = `<i class="fa-solid fa-globe"></i> All Presbyteries`;
     presMenu.appendChild(allPres);
 
     PRESBYTERIES.forEach(p => {
         const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'nav-item filter-pres';
-        btn.dataset.pres = p;
+        btn.type = 'button'; btn.className = 'nav-item filter-pres'; btn.dataset.pres = p;
         btn.innerHTML = `<i class="fa-solid fa-location-dot"></i> ${p.replace('EPR Presbytery ', '')}`;
         presMenu.appendChild(btn);
     });
 
-    // (Re)bind click handlers since nodes were rebuilt
     qsa('.filter-dept', deptMenu).forEach(item => item.addEventListener('click', onSidebarDeptFilter));
     qsa('.filter-pres', presMenu).forEach(item => item.addEventListener('click', onSidebarPresFilter));
 }
 
-function shortDeptName(d) { return d.replace('Department of ', ''); }
+function shortDeptName(d) { return (d || '').replace('Department of ', ''); }
 
 // ---------------------------------------------------------------------
-// 6. EVENT WIRING
+// 7. EVENT WIRING
 // ---------------------------------------------------------------------
 function setupEventListeners() {
+    // ---- First-run setup ----
+    $('setup-form').addEventListener('submit', onSubmitSetupForm);
+
     // ---- Auth ----
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const email = $('login-email').value.trim();
-        const pass = $('login-password').value;
-        const foundUser = usersDb.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass);
-
-        if (foundUser) {
-            currentUser = foundUser;
-            authError.textContent = "";
-            loginForm.reset();
-            initAppSession();
-        } else {
-            authError.textContent = "Invalid email or password. Please try again.";
-        }
-    });
-
-    qsa('.demo-fill').forEach(btn => {
-        btn.addEventListener('click', () => {
-            $('login-email').value = btn.dataset.email;
-            $('login-password').value = btn.dataset.pass;
-        });
-    });
+    $('login-form').addEventListener('submit', onSubmitLogin);
 
     qsa('.pw-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const target = $(btn.dataset.toggleFor);
             const icon = btn.querySelector('i');
-            if (target.type === 'password') {
-                target.type = 'text'; icon.className = 'fa-solid fa-eye-slash';
-            } else {
-                target.type = 'password'; icon.className = 'fa-solid fa-eye';
-            }
+            if (target.type === 'password') { target.type = 'text'; icon.className = 'fa-solid fa-eye-slash'; }
+            else { target.type = 'password'; icon.className = 'fa-solid fa-eye'; }
         });
     });
 
-    $('logout-btn').addEventListener('click', () => {
-        currentUser = null;
-        appContainer.classList.add('hidden');
-        authContainer.classList.remove('hidden');
-        $('profile-dropdown').classList.add('hidden');
-    });
+    $('logout-btn').addEventListener('click', doLogout);
 
     // ---- Sidebar mobile toggle ----
     $('hamburger-btn').addEventListener('click', () => toggleSidebar(true));
@@ -214,10 +201,7 @@ function setupEventListeners() {
     $('sidebar-overlay').addEventListener('click', () => toggleSidebar(false));
 
     // ---- Profile dropdown ----
-    $('profile-toggle').addEventListener('click', (e) => {
-        e.stopPropagation();
-        $('profile-dropdown').classList.toggle('hidden');
-    });
+    $('profile-toggle').addEventListener('click', (e) => { e.stopPropagation(); $('profile-dropdown').classList.toggle('hidden'); });
     document.addEventListener('click', () => {
         $('profile-dropdown').classList.add('hidden');
         $('search-results-dropdown').classList.add('hidden');
@@ -230,53 +214,41 @@ function setupEventListeners() {
     });
 
     // ---- Sidebar View Switcher ----
-    qsa('.nav-item[data-view]').forEach(item => {
-        item.addEventListener('click', () => switchView(item.getAttribute('data-view')));
-    });
+    qsa('.nav-item[data-view]').forEach(item => item.addEventListener('click', () => switchView(item.getAttribute('data-view'))));
 
-    // ---- Sidebar Quick Filters (bound in renderSidebarFilters) ----
-
-    // ---- Superadmin Dropdown Filters ----
-    $('sa-presbytery-select').addEventListener('change', (e) => {
-        currentScope.presbytery = e.target.value;
-        refreshAllViews();
-    });
-    $('sa-department-select').addEventListener('change', (e) => {
-        currentScope.department = e.target.value;
-        refreshAllViews();
-    });
+    // ---- Superadmin Dropdown Filters (re-queries Firestore live) ----
+    $('sa-presbytery-select').addEventListener('change', (e) => { currentScope.presbytery = e.target.value; onScopeChanged(); });
+    $('sa-department-select').addEventListener('change', (e) => { currentScope.department = e.target.value; onScopeChanged(); });
     $('scope-reset-btn').addEventListener('click', () => {
         currentScope = { presbytery: 'ALL', department: 'ALL' };
-        $('sa-presbytery-select').value = 'ALL';
-        $('sa-department-select').value = 'ALL';
-        refreshAllViews();
+        $('sa-presbytery-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
+        onScopeChanged();
         showToast('info', 'Scope reset to all presbyteries and departments.');
     });
 
-    // ---- Global Search (live, no reload) ----
-    globalSearch.addEventListener('input', (e) => {
+    // ---- Global Search (live, client-side over the already-scoped cache) ----
+    $('global-search').addEventListener('input', (e) => {
         searchQuery = e.target.value.toLowerCase().trim();
         $('search-clear-btn').style.display = searchQuery ? 'inline-flex' : 'none';
         renderSearchDropdown();
-        refreshAllViews();
+        renderTransactionsTable(getFilteredTransactions());
     });
-    globalSearch.addEventListener('focus', () => { if (searchQuery) renderSearchDropdown(); });
+    $('global-search').addEventListener('focus', () => { if (searchQuery) renderSearchDropdown(); });
     $('search-clear-btn').addEventListener('click', () => {
-        globalSearch.value = '';
-        searchQuery = '';
+        $('global-search').value = ''; searchQuery = '';
         $('search-clear-btn').style.display = 'none';
         $('search-results-dropdown').classList.add('hidden');
-        refreshAllViews();
+        renderTransactionsTable(getFilteredTransactions());
     });
 
     // ---- Transactions view filters ----
-    $('tx-filter-type').addEventListener('change', (e) => { txFilters.type = e.target.value; refreshAllViews(); });
-    $('tx-filter-from').addEventListener('change', (e) => { txFilters.from = e.target.value; refreshAllViews(); });
-    $('tx-filter-to').addEventListener('change', (e) => { txFilters.to = e.target.value; refreshAllViews(); });
+    $('tx-filter-type').addEventListener('change', (e) => { txFilters.type = e.target.value; renderTransactionsTable(getFilteredTransactions()); });
+    $('tx-filter-from').addEventListener('change', (e) => { txFilters.from = e.target.value; renderTransactionsTable(getFilteredTransactions()); });
+    $('tx-filter-to').addEventListener('change', (e) => { txFilters.to = e.target.value; renderTransactionsTable(getFilteredTransactions()); });
     $('tx-filter-reset').addEventListener('click', () => {
         txFilters = { type: 'ALL', from: '', to: '' };
         $('tx-filter-type').value = 'ALL'; $('tx-filter-from').value = ''; $('tx-filter-to').value = '';
-        refreshAllViews();
+        renderTransactionsTable(getFilteredTransactions());
     });
 
     // ---- Org chart tabs ----
@@ -295,20 +267,18 @@ function setupEventListeners() {
         $('user-scope-fields').classList.toggle('hidden', isSuper);
         qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuper);
     });
-
     $('user-dept').addEventListener('change', () => populateSubsections('user-dept', 'user-subsection'));
 
     // ---- Add / Edit User Form ----
     $('add-user-form').addEventListener('submit', onSubmitUserForm);
     $('user-cancel-edit-btn').addEventListener('click', resetUserForm);
-
-    // ---- Users table row actions (event delegation) ----
     $('users-table-body').addEventListener('click', onUsersTableClick);
+    $('user-list-role-filter').addEventListener('change', (e) => { userListRoleFilter = e.target.value; renderUsersTable(); });
 
     // ---- Transaction modal ----
     const txModal = $('tx-modal');
     $('open-tx-modal-btn').addEventListener('click', () => openTxModal());
-    $('close-tx-modal').addEventListener('click', () => closeTxModal());
+    $('close-tx-modal').addEventListener('click', closeTxModal);
     txModal.addEventListener('click', (e) => { if (e.target === txModal) closeTxModal(); });
     $('tx-form').addEventListener('submit', onSubmitTxForm);
     $('tx-table-body').addEventListener('click', onTxTableClick);
@@ -326,7 +296,6 @@ function setupEventListeners() {
     $('print-btn').addEventListener('click', () => window.print());
     $('export-excel-btn').addEventListener('click', exportReportToExcel);
 
-    // Escape key closes modals / dropdowns
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeTxModal(); closeConfirmModal();
@@ -348,8 +317,7 @@ function onSidebarDeptFilter(e) {
     $('sa-department-select').value = dept;
     currentScope.department = dept;
     switchView('transactions');
-    highlightSidebarFilters();
-    refreshAllViews();
+    onScopeChanged();
     toggleSidebar(false);
 }
 
@@ -360,8 +328,7 @@ function onSidebarPresFilter(e) {
     $('sa-presbytery-select').value = pres;
     currentScope.presbytery = pres;
     switchView('transactions');
-    highlightSidebarFilters();
-    refreshAllViews();
+    onScopeChanged();
     toggleSidebar(false);
 }
 
@@ -370,8 +337,22 @@ function highlightSidebarFilters() {
     qsa('.filter-pres').forEach(b => b.classList.toggle('active-filter', b.dataset.pres === currentScope.presbytery));
 }
 
+function renderActiveScopeChips() {
+    const wrap = $('active-scope-chips');
+    wrap.innerHTML = '';
+    if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
+    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-presbytery-select').value = 'ALL'; onScopeChanged(); }));
+}
+function makeChip(label, onRemove) {
+    const chip = document.createElement('span');
+    chip.className = 'scope-chip';
+    chip.innerHTML = `${escapeHtml(label)} <button type="button" aria-label="Remove filter">&times;</button>`;
+    chip.querySelector('button').addEventListener('click', onRemove);
+    return chip;
+}
+
 // ---------------------------------------------------------------------
-// 7. VIEW SWITCHING
+// 8. VIEW SWITCHING
 // ---------------------------------------------------------------------
 function switchView(target) {
     qsa('.nav-item[data-view]').forEach(n => n.classList.toggle('active', n.getAttribute('data-view') === target));
@@ -381,12 +362,111 @@ function switchView(target) {
 }
 
 // ---------------------------------------------------------------------
-// 8. SESSION INITIALIZER
+// 9. FIRST-RUN SETUP (creates the one and only bootstrap Superadmin)
+// ---------------------------------------------------------------------
+async function onSubmitSetupForm(e) {
+    e.preventDefault();
+    $('setup-error').textContent = '';
+    const name = $('setup-name').value.trim();
+    const email = $('setup-email').value.trim().toLowerCase();
+    const password = $('setup-password').value;
+
+    if (!name || !email || password.length < 6) {
+        $('setup-error').textContent = 'Fill in your name, a valid email, and a password of at least 6 characters.';
+        return;
+    }
+
+    const btn = $('setup-submit-btn');
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    try {
+        const payload = { name, email, password, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', createdAt: serverTimestamp() };
+        const ref = await addDoc(collection(db, COLLECTIONS.USERS), payload);
+        currentUser = { id: ref.id, ...payload };
+        $('setup-container').classList.add('hidden');
+        initAppSession();
+        showToast('success', `Welcome, ${name}. Your Superadmin account is ready.`);
+    } catch (err) {
+        $('setup-error').textContent = "Couldn't create the account: " + err.message;
+    } finally {
+        btn.disabled = false; btn.textContent = 'Create Superadmin & Continue';
+    }
+}
+
+// ---------------------------------------------------------------------
+// 10. LOGIN / LOGOUT
+// ---------------------------------------------------------------------
+async function onSubmitLogin(e) {
+    e.preventDefault();
+    $('auth-error').textContent = '';
+    const email = $('login-email').value.trim().toLowerCase();
+    const password = $('login-password').value;
+    if (!email || !password) { $('auth-error').textContent = 'Enter both your email and password.'; return; }
+
+    const btn = $('login-submit-btn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+        const q = query(collection(db, COLLECTIONS.USERS), where('email', '==', email));
+        const snap = await getDocs(q);
+        const match = snap.docs.find(d => d.data().password === password);
+
+        if (match) {
+            currentUser = { id: match.id, ...match.data() };
+            $('login-form').reset();
+            $('auth-container').classList.add('hidden');
+            initAppSession();
+        } else {
+            $('auth-error').textContent = 'Invalid email or password.';
+        }
+    } catch (err) {
+        $('auth-error').textContent = "Couldn't reach the database: " + err.message;
+    } finally {
+        btn.disabled = false; btn.textContent = 'Sign In';
+    }
+}
+
+function doLogout() {
+    if (unsubTx) { unsubTx(); unsubTx = null; }
+    if (unsubUsers) { unsubUsers(); unsubUsers = null; }
+    if (unsubOwnProfile) { unsubOwnProfile(); unsubOwnProfile = null; }
+    currentUser = null;
+    usersDb = []; transactionsDb = [];
+    currentScope = { presbytery: 'ALL', department: 'ALL' };
+    searchQuery = ''; txFilters = { type: 'ALL', from: '', to: '' };
+    $('app-container').classList.add('hidden');
+    $('auth-container').classList.remove('hidden');
+    $('profile-dropdown').classList.add('hidden');
+}
+
+// ---------------------------------------------------------------------
+// 11. SESSION INITIALIZER
 // ---------------------------------------------------------------------
 function initAppSession() {
-    authContainer.classList.add('hidden');
-    appContainer.classList.remove('hidden');
+    $('app-container').classList.remove('hidden');
+    const isSuper = currentUser.role === 'superadmin';
 
+    $('admin-menu-item').classList.toggle('hidden', !isSuper);
+    $('superadmin-filter-bar').classList.toggle('hidden', !isSuper);
+    $('admin-filter-section').classList.toggle('hidden', !isSuper);
+    $('my-assignment-card').classList.toggle('hidden', isSuper);
+
+    if (isSuper) {
+        currentScope = { presbytery: 'ALL', department: 'ALL' };
+        $('sa-presbytery-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
+    } else {
+        currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
+        $('ab-department').textContent = shortDeptName(currentUser.department);
+        $('ab-presbytery').textContent = currentUser.presbytery;
+        $('ab-subsection').textContent = currentUser.subsection;
+    }
+
+    updateProfileUI();
+    switchView('overview');
+
+    subscribeTransactions();
+    if (isSuper) subscribeUsers(); else subscribeOwnProfile();
+}
+
+function updateProfileUI() {
     $('user-display-name').textContent = currentUser.name;
     $('avatar-initials').textContent = initials(currentUser.name);
     $('pd-name').textContent = currentUser.name;
@@ -396,38 +476,90 @@ function initAppSession() {
     $('pd-presbytery').textContent = currentUser.presbytery === 'ALL' ? 'All presbyteries' : currentUser.presbytery;
     $('pd-department').textContent = currentUser.department === 'ALL' ? 'All departments' : currentUser.department;
     $('pd-subsection').textContent = currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection;
-
-    const isSuper = currentUser.role === 'superadmin';
-    $('admin-menu-item').classList.toggle('hidden', !isSuper);
-    $('superadmin-filter-bar').classList.toggle('hidden', !isSuper);
-    $('dept-filter-title').parentElement && null;
-    $('dept-sidebar-menu').parentElement.style.display = isSuper ? '' : 'none';
-    $('dept-filter-title').style.display = isSuper ? '' : 'none';
-    $('pres-sidebar-menu').style.display = isSuper ? '' : 'none';
-    $('pres-filter-title').style.display = isSuper ? '' : 'none';
-
-    if (isSuper) {
-        currentScope = { presbytery: 'ALL', department: 'ALL' };
-        $('sa-presbytery-select').value = 'ALL';
-        $('sa-department-select').value = 'ALL';
-        $('user-scope-line').textContent = 'Full system access';
-    } else {
-        currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
-        $('user-scope-line').textContent = `${shortDeptName(currentUser.department)} · ${currentUser.presbytery.replace('EPR Presbytery ', '')}`;
-    }
-
-    switchView('overview');
-    renderUsersTable();
-    renderOrgChart();
-    refreshAllViews();
+    $('user-scope-line').textContent = currentUser.role === 'superadmin'
+        ? 'Full system access'
+        : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`;
 }
 
-function initials(name) {
-    return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
+function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
+
+// ---------------------------------------------------------------------
+// 12. FIRESTORE LIVE SUBSCRIPTIONS
+// ---------------------------------------------------------------------
+function setSyncStatus(state) {
+    const el = $('sync-indicator');
+    if (!el) return;
+    el.className = `sync-indicator sync-${state}`;
+    el.title = state === 'live' ? 'Live — synced with Firestore' : state === 'syncing' ? 'Syncing…' : 'Sync error';
+}
+
+function buildTransactionsQuery() {
+    const col = collection(db, COLLECTIONS.TRANSACTIONS);
+    const clauses = [];
+    if (currentUser.role !== 'superadmin') {
+        // Hard scoping — a staff account's query can never return another
+        // department or presbytery's records, regardless of UI state.
+        clauses.push(where('department', '==', currentUser.department));
+        clauses.push(where('presbytery', '==', currentUser.presbytery));
+    } else {
+        if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
+        if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
+    }
+    return clauses.length ? query(col, ...clauses) : query(col);
+}
+
+function subscribeTransactions() {
+    if (unsubTx) unsubTx();
+    setSyncStatus('syncing');
+    const q = buildTransactionsQuery();
+    unsubTx = onSnapshot(q, (snap) => {
+        transactionsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        transactionsDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        refreshAllViews();
+        setSyncStatus('live');
+    }, (err) => {
+        console.error(err);
+        showToast('error', 'Live transactions feed error: ' + err.message);
+        setSyncStatus('error');
+    });
+}
+
+function onScopeChanged() {
+    subscribeTransactions();
+    renderActiveScopeChips();
+}
+
+function subscribeUsers() {
+    if (unsubUsers) unsubUsers();
+    unsubUsers = onSnapshot(collection(db, COLLECTIONS.USERS), (snap) => {
+        usersDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderUsersTable();
+        renderOrgChart();
+        $('nav-users-count').textContent = usersDb.length;
+    }, (err) => showToast('error', 'Live users feed error: ' + err.message));
+}
+
+function subscribeOwnProfile() {
+    if (unsubOwnProfile) unsubOwnProfile();
+    unsubOwnProfile = onSnapshot(doc(db, COLLECTIONS.USERS, currentUser.id), (snap) => {
+        if (!snap.exists()) { showToast('error', 'Your account was removed by an administrator.'); doLogout(); return; }
+        const data = snap.data();
+        const scopeChanged = data.department !== currentUser.department || data.presbytery !== currentUser.presbytery;
+        currentUser = { id: snap.id, ...data };
+        updateProfileUI();
+        $('ab-department').textContent = shortDeptName(currentUser.department);
+        $('ab-presbytery').textContent = currentUser.presbytery;
+        $('ab-subsection').textContent = currentUser.subsection;
+        if (scopeChanged) {
+            currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
+            subscribeTransactions();
+            showToast('info', 'Your department/presbytery assignment was updated.');
+        }
+    }, (err) => showToast('error', 'Profile sync error: ' + err.message));
 }
 
 // ---------------------------------------------------------------------
-// 9. SUBSECTION POPULATION HELPERS
+// 13. SUBSECTION HELPERS
 // ---------------------------------------------------------------------
 function populateSubsections(deptSelectId, subSelectId) {
     const deptVal = $(deptSelectId).value;
@@ -441,7 +573,7 @@ function populateSubsections(deptSelectId, subSelectId) {
 }
 
 // ---------------------------------------------------------------------
-// 10. TRANSACTION MODAL
+// 14. TRANSACTION MODAL + CRUD
 // ---------------------------------------------------------------------
 function openTxModal(editTx) {
     const isSuper = currentUser.role === 'superadmin';
@@ -478,28 +610,24 @@ function openTxModal(editTx) {
         $('tx-date').value = new Date().toISOString().split('T')[0];
         if (isSuper) { $('tx-dept').selectedIndex = 0; populateSubsections('tx-dept', 'tx-subsection'); $('tx-pres').selectedIndex = 0; }
     }
-
     $('tx-modal').classList.remove('hidden');
 }
-
 function closeTxModal() { $('tx-modal').classList.add('hidden'); }
 
-function onSubmitTxForm(e) {
+async function onSubmitTxForm(e) {
     e.preventDefault();
     const editId = $('tx-edit-id').value;
     const isSuper = currentUser.role === 'superadmin';
 
-    let dept = currentUser.department, subsec = currentUser.subsection, pres = currentUser.presbytery;
-    if (isSuper) {
-        dept = $('tx-dept').value; subsec = $('tx-subsection').value; pres = $('tx-pres').value;
-    }
+    let deptField = currentUser.department, subsec = currentUser.subsection, pres = currentUser.presbytery;
+    if (isSuper) { deptField = $('tx-dept').value; subsec = $('tx-subsection').value; pres = $('tx-pres').value; }
 
     const payload = {
         date: $('tx-date').value || new Date().toISOString().split('T')[0],
         type: $('tx-type').value,
         desc: $('tx-desc').value.trim(),
         amount: parseFloat($('tx-amount').value),
-        department: dept,
+        department: deptField,
         subsection: subsec,
         presbytery: pres
     };
@@ -509,17 +637,22 @@ function onSubmitTxForm(e) {
         return;
     }
 
-    if (editId) {
-        const tx = transactionsDb.find(t => String(t.id) === String(editId));
-        if (tx) Object.assign(tx, payload);
-        showToast('success', 'Transaction updated.');
-    } else {
-        transactionsDb.unshift({ id: txIdSeq++, createdBy: currentUser.email, ...payload });
-        showToast('success', 'Transaction saved.');
+    const submitBtn = $('tx-submit-btn');
+    submitBtn.disabled = true;
+    try {
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.TRANSACTIONS, editId), payload);
+            showToast('success', 'Transaction updated.');
+        } else {
+            await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() });
+            showToast('success', 'Transaction saved.');
+        }
+        closeTxModal();
+    } catch (err) {
+        showToast('error', "Couldn't save the transaction: " + err.message);
+    } finally {
+        submitBtn.disabled = false;
     }
-
-    closeTxModal();
-    refreshAllViews();
 }
 
 function onTxTableClick(e) {
@@ -531,39 +664,39 @@ function onTxTableClick(e) {
     } else if (delBtn) {
         const tx = transactionsDb.find(t => String(t.id) === String(delBtn.dataset.id));
         if (!tx) return;
-        openConfirmModal(`Delete the transaction "${tx.desc}" (${formatRF(tx.amount)})? This cannot be undone.`, () => {
-            transactionsDb = transactionsDb.filter(t => String(t.id) !== String(tx.id));
-            showToast('success', 'Transaction deleted.');
-            refreshAllViews();
+        openConfirmModal(`Delete the transaction "${tx.desc}" (${formatRF(tx.amount)})? This cannot be undone.`, async () => {
+            try {
+                await deleteDoc(doc(db, COLLECTIONS.TRANSACTIONS, tx.id));
+                showToast('success', 'Transaction deleted.');
+            } catch (err) {
+                showToast('error', "Couldn't delete: " + err.message);
+            }
         });
     }
 }
 
 // ---------------------------------------------------------------------
-// 11. USER FORM (create / edit)
+// 15. USER FORM (create / edit) — superadmin only
 // ---------------------------------------------------------------------
-function onSubmitUserForm(e) {
+async function onSubmitUserForm(e) {
     e.preventDefault();
     const editId = $('user-edit-id').value;
     const role = $('user-role').value;
     const isSuper = role === 'superadmin';
 
     const email = $('user-email').value.trim().toLowerCase();
-    const dup = usersDb.find(u => u.email.toLowerCase() === email && String(u.id) !== String(editId));
-    if (dup) { showToast('error', 'A user with that email already exists.'); return; }
-
     const payload = {
         name: $('user-name').value.trim(),
-        email: email,
+        email,
         password: $('user-password').value,
-        role: role,
+        role,
         presbytery: isSuper ? 'ALL' : $('user-pres').value,
         department: isSuper ? 'ALL' : $('user-dept').value,
         subsection: isSuper ? 'ALL' : $('user-subsection').value
     };
 
-    if (!payload.name || !payload.email || payload.password.length < 3) {
-        showToast('error', 'Fill in name, a valid email, and a password of at least 3 characters.');
+    if (!payload.name || !payload.email || payload.password.length < 6) {
+        showToast('error', 'Fill in name, a valid email, and a password of at least 6 characters.');
         return;
     }
     if (!isSuper && (!payload.presbytery || !payload.department || !payload.subsection)) {
@@ -571,18 +704,26 @@ function onSubmitUserForm(e) {
         return;
     }
 
-    if (editId) {
-        const u = usersDb.find(x => String(x.id) === String(editId));
-        if (u) Object.assign(u, payload);
-        showToast('success', `${payload.name} updated.`);
-    } else {
-        usersDb.push({ id: 'u' + userIdSeq++, ...payload });
-        showToast('success', `${payload.name} created and assigned successfully.`);
-    }
+    const submitBtn = $('user-submit-btn');
+    submitBtn.disabled = true;
+    try {
+        const dupSnap = await getDocs(query(collection(db, COLLECTIONS.USERS), where('email', '==', email)));
+        const dup = dupSnap.docs.find(d => d.id !== editId);
+        if (dup) { showToast('error', 'A user with that email already exists.'); return; }
 
-    resetUserForm();
-    renderUsersTable();
-    refreshAllViews();
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.USERS, editId), payload);
+            showToast('success', `${payload.name} updated.`);
+        } else {
+            await addDoc(collection(db, COLLECTIONS.USERS), { ...payload, createdAt: serverTimestamp() });
+            showToast('success', `${payload.name} created and assigned successfully.`);
+        }
+        resetUserForm();
+    } catch (err) {
+        showToast('error', "Couldn't save the user: " + err.message);
+    } finally {
+        submitBtn.disabled = false;
+    }
 }
 
 function resetUserForm() {
@@ -623,17 +764,19 @@ function onUsersTableClick(e) {
         const u = usersDb.find(x => String(x.id) === String(delBtn.dataset.id));
         if (!u) return;
         if (u.email === currentUser.email) { showToast('error', "You can't delete the account you're signed in as."); return; }
-        openConfirmModal(`Remove user "${u.name}" (${u.email})? They will lose access immediately.`, () => {
-            usersDb = usersDb.filter(x => String(x.id) !== String(u.id));
-            showToast('success', 'User removed.');
-            renderUsersTable();
-            refreshAllViews();
+        openConfirmModal(`Remove user "${u.name}" (${u.email})? They will lose access immediately.`, async () => {
+            try {
+                await deleteDoc(doc(db, COLLECTIONS.USERS, u.id));
+                showToast('success', 'User removed.');
+            } catch (err) {
+                showToast('error', "Couldn't remove user: " + err.message);
+            }
         });
     }
 }
 
 // ---------------------------------------------------------------------
-// 12. CONFIRM MODAL + TOASTS
+// 16. CONFIRM MODAL + TOASTS
 // ---------------------------------------------------------------------
 function openConfirmModal(text, onConfirm) {
     $('confirm-text').textContent = text;
@@ -647,54 +790,43 @@ function showToast(type, message) {
     const el = document.createElement('div');
     el.className = `toast ${type === 'error' ? 'error' : type === 'success' ? 'success' : ''}`;
     const icon = type === 'error' ? 'fa-circle-exclamation' : type === 'success' ? 'fa-circle-check' : 'fa-circle-info';
-    el.innerHTML = `<i class="fa-solid ${icon}"></i><span>${message}</span>`;
+    el.innerHTML = `<i class="fa-solid ${icon}"></i><span>${escapeHtml(message)}</span>`;
     container.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); }, 3200);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); }, 3400);
 }
 
 // ---------------------------------------------------------------------
-// 13. CORE DATA FILTER ENGINE
+// 17. CLIENT-SIDE FILTER (search + type/date) ON TOP OF THE ALREADY
+//     FIRESTORE-SCOPED CACHE — nothing here widens what a user can see.
 // ---------------------------------------------------------------------
 function getFilteredTransactions() {
     return transactionsDb.filter(tx => {
-        // Non-superadmin: hard-locked to own department + presbytery, always —
-        // regardless of any other control on screen. They never see other scopes.
-        if (currentUser.role !== 'superadmin') {
-            if (tx.department !== currentUser.department || tx.presbytery !== currentUser.presbytery) return false;
-        } else {
-            if (currentScope.presbytery !== 'ALL' && tx.presbytery !== currentScope.presbytery) return false;
-            if (currentScope.department !== 'ALL' && tx.department !== currentScope.department) return false;
-        }
-
         if (txFilters.type !== 'ALL' && tx.type !== txFilters.type) return false;
         if (txFilters.from && tx.date < txFilters.from) return false;
         if (txFilters.to && tx.date > txFilters.to) return false;
-
         if (searchQuery) {
-            const q = searchQuery;
-            const hay = [tx.desc, tx.department, tx.subsection, tx.presbytery, tx.type, tx.amount.toString(), tx.date].join(' ').toLowerCase();
-            if (!hay.includes(q)) return false;
+            const hay = [tx.desc, tx.department, tx.subsection, tx.presbytery, tx.type, String(tx.amount), tx.date].join(' ').toLowerCase();
+            if (!hay.includes(searchQuery)) return false;
         }
         return true;
     });
 }
 
 // ---------------------------------------------------------------------
-// 14. MASTER RENDER
+// 18. MASTER RENDER (called whenever the Firestore snapshot updates)
 // ---------------------------------------------------------------------
 function refreshAllViews() {
     const list = getFilteredTransactions();
     const isSuper = currentUser.role === 'superadmin';
 
-    // ---- Scope indicator text ----
     const scopeDesc = isSuper
         ? `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`
         : `Presbytery: [${currentUser.presbytery}] | Department: [${currentUser.department}] (locked to your assignment)`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
+    $('tx-scope-note').textContent = isSuper ? 'Superadmin — full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
     $('statement-scope').textContent = scopeDesc;
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
 
-    // ---- Aggregates ----
     let income = 0, expense = 0, assets = 0, liabilities = 0;
     list.forEach(tx => {
         if (tx.type === 'Income') income += tx.amount;
@@ -705,7 +837,6 @@ function refreshAllViews() {
     const netProfit = income - expense;
     const netWorth = assets - liabilities;
 
-    // ---- Overview cards ----
     $('stat-count').textContent = `${list.length} Records`;
     $('stat-revenue').textContent = formatRF(income);
     $('stat-expenses').textContent = formatRF(expense);
@@ -724,7 +855,6 @@ function refreshAllViews() {
     $('cash-assets').textContent = formatRF(assets);
     $('cash-liabilities').textContent = formatRF(liabilities);
 
-    // ---- Reports / statement ----
     $('stmt-income').textContent = formatRF(income);
     $('stmt-expenses').textContent = formatRF(expense);
     $('stmt-net').textContent = formatRF(netProfit);
@@ -732,20 +862,17 @@ function refreshAllViews() {
     $('stmt-liabilities').textContent = formatRF(liabilities);
     $('stmt-equity').textContent = formatRF(netWorth);
 
-    // ---- Tables & breakdowns ----
     renderTransactionsTable(list);
     renderDeptBreakdown(list, isSuper);
+    renderActiveScopeChips();
 
-    // ---- Sidebar counts / active filters ----
     $('nav-tx-count').textContent = list.length;
-    $('nav-users-count').textContent = usersDb.length;
     highlightSidebarFilters();
 }
 
 function renderDeptBreakdown(list, isSuper) {
     const wrap = $('dept-breakdown-wrap');
     const grid = $('dept-breakdown-grid');
-    // Only meaningful when looking at more than one department (superadmin, ALL scope)
     if (!isSuper) { wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
     grid.innerHTML = '';
@@ -767,7 +894,7 @@ function renderDeptBreakdown(list, isSuper) {
             $('sa-department-select').value = dept;
             currentScope.department = dept;
             switchView('transactions');
-            refreshAllViews();
+            onScopeChanged();
         });
         grid.appendChild(card);
     });
@@ -777,6 +904,7 @@ function renderTransactionsTable(list) {
     const tbody = $('tx-table-body');
     tbody.innerHTML = '';
     const isSuper = currentUser.role === 'superadmin';
+    $('ft-result-count').textContent = `${list.length} result${list.length === 1 ? '' : 's'}`;
 
     if (list.length === 0) {
         tbody.innerHTML = `<tr class="table-empty-row"><td colspan="8"><i class="fa-solid fa-inbox empty-icon"></i>No records found in this scope. Try clearing filters or search.</td></tr>`;
@@ -794,7 +922,7 @@ function renderTransactionsTable(list) {
             <td class="wrap">${escapeHtml(tx.desc)}</td>
             <td>${shortDeptName(tx.department)}</td>
             <td><strong>${tx.subsection}</strong></td>
-            <td>${tx.presbytery.replace('EPR Presbytery ', '')}</td>
+            <td>${(tx.presbytery || '').replace('EPR Presbytery ', '')}</td>
             <td style="font-weight: bold; color: ${isInc ? 'var(--success)' : 'var(--danger)'};">${formatRF(tx.amount)}</td>
             <td>
                 <div class="row-actions">
@@ -812,11 +940,13 @@ function renderTransactionsTable(list) {
 function renderUsersTable() {
     const tbody = $('users-table-body');
     tbody.innerHTML = '';
-    if (usersDb.length === 0) {
-        tbody.innerHTML = `<tr class="table-empty-row"><td colspan="6">No users configured yet.</td></tr>`;
+    const list = userListRoleFilter === 'ALL' ? usersDb : usersDb.filter(u => u.role === userListRoleFilter);
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr class="table-empty-row"><td colspan="6">No users match this filter.</td></tr>`;
         return;
     }
-    usersDb.forEach(u => {
+    list.forEach(u => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(u.name)}</strong></td>
@@ -836,28 +966,29 @@ function renderUsersTable() {
 }
 
 // ---------------------------------------------------------------------
-// 15. DEPARTMENTS / PRESBYTERIES ORG CHART VIEW
+// 19. DEPARTMENTS / PRESBYTERIES ORG CHART VIEW
 // ---------------------------------------------------------------------
 function renderOrgChart() {
     const isSuper = currentUser.role === 'superadmin';
+
     const deptGrid = $('org-dept-grid');
     deptGrid.innerHTML = '';
     Object.entries(EPR_STRUCTURE).forEach(([dept, subs]) => {
         const isMine = !isSuper && dept === currentUser.department;
-        const managers = usersDb.filter(u => u.department === dept);
+        const managerCount = isSuper ? usersDb.filter(u => u.department === dept).length : null;
         const card = document.createElement('div');
         card.className = `org-dept-card${isMine ? ' mine' : ''}`;
         card.innerHTML = `
             <div class="odc-head"><i class="fa-solid ${DEPT_ICONS[dept] || 'fa-building'}"></i> ${shortDeptName(dept)}</div>
             <div class="odc-body">${subs.map(s => `<div class="odc-sub">${s}</div>`).join('')}</div>
-            <div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managers.length} user${managers.length === 1 ? '' : 's'} assigned</div>
+            ${isSuper ? `<div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managerCount} user${managerCount === 1 ? '' : 's'} assigned</div>` : (isMine ? `<div class="odc-count"><i class="fa-solid fa-circle-check"></i> This is your department</div>` : '')}
         `;
         if (isSuper) {
             card.addEventListener('click', () => {
                 $('sa-department-select').value = dept;
                 currentScope.department = dept;
                 switchView('transactions');
-                refreshAllViews();
+                onScopeChanged();
             });
         }
         deptGrid.appendChild(card);
@@ -867,20 +998,20 @@ function renderOrgChart() {
     presGrid.innerHTML = '';
     PRESBYTERIES.forEach(p => {
         const isMine = !isSuper && p === currentUser.presbytery;
-        const count = usersDb.filter(u => u.presbytery === p).length;
+        const count = isSuper ? usersDb.filter(u => u.presbytery === p).length : null;
         const card = document.createElement('div');
         card.className = `pres-card${isMine ? ' mine' : ''}`;
         card.innerHTML = `
             <i class="fa-solid fa-location-dot"></i>
             <div class="pc-name">${p.replace('EPR Presbytery ', '')}</div>
-            <div class="pc-count">${count} user${count === 1 ? '' : 's'}</div>
+            ${isSuper ? `<div class="pc-count">${count} user${count === 1 ? '' : 's'}</div>` : (isMine ? `<div class="pc-count">Your presbytery</div>` : '')}
         `;
         if (isSuper) {
             card.addEventListener('click', () => {
                 $('sa-presbytery-select').value = p;
                 currentScope.presbytery = p;
                 switchView('transactions');
-                refreshAllViews();
+                onScopeChanged();
             });
         }
         presGrid.appendChild(card);
@@ -888,7 +1019,7 @@ function renderOrgChart() {
 }
 
 // ---------------------------------------------------------------------
-// 16. GLOBAL LIVE SEARCH DROPDOWN
+// 20. GLOBAL LIVE SEARCH DROPDOWN
 // ---------------------------------------------------------------------
 function renderSearchDropdown() {
     const dropdown = $('search-results-dropdown');
@@ -904,13 +1035,10 @@ function renderSearchDropdown() {
             const row = document.createElement('div');
             row.className = 'sr-item';
             row.innerHTML = `
-                <span>${escapeHtml(tx.desc)}<br><span class="sr-meta">${shortDeptName(tx.department)} · ${tx.presbytery.replace('EPR Presbytery ', '')}</span></span>
+                <span>${escapeHtml(tx.desc)}<br><span class="sr-meta">${shortDeptName(tx.department)} · ${(tx.presbytery || '').replace('EPR Presbytery ', '')}</span></span>
                 <span style="font-weight:700;color:${tx.type === 'Expense' || tx.type === 'Liability' ? 'var(--danger)' : 'var(--success)'}">${formatRF(tx.amount)}</span>
             `;
-            row.addEventListener('click', () => {
-                switchView('transactions');
-                dropdown.classList.add('hidden');
-            });
+            row.addEventListener('click', () => { switchView('transactions'); dropdown.classList.add('hidden'); });
             dropdown.appendChild(row);
         });
         const footer = document.createElement('div');
@@ -923,22 +1051,15 @@ function renderSearchDropdown() {
 }
 
 // ---------------------------------------------------------------------
-// 17. EXPORT
+// 21. EXPORT
 // ---------------------------------------------------------------------
 function exportReportToExcel() {
     const list = getFilteredTransactions();
     if (list.length === 0) { showToast('error', 'Nothing to export in the current scope.'); return; }
     const data = list.map(item => ({
-        Date: item.date,
-        Type: item.type,
-        Description: item.desc,
-        Department: item.department,
-        Section: item.subsection,
-        Presbytery: item.presbytery,
-        Amount: item.amount,
-        RecordedBy: item.createdBy
+        Date: item.date, Type: item.type, Description: item.desc, Department: item.department,
+        Section: item.subsection, Presbytery: item.presbytery, Amount: item.amount, RecordedBy: item.createdBy || ''
     }));
-
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "EPR Report");
@@ -947,10 +1068,9 @@ function exportReportToExcel() {
 }
 
 // ---------------------------------------------------------------------
-// 18. HELPERS
+// 22. HELPERS
 // ---------------------------------------------------------------------
 const formatRF = (amount) => "RF " + Number(amount || 0).toLocaleString();
-
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
