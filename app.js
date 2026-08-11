@@ -6,33 +6,34 @@
    in-memory *caches* kept in sync with Firestore via onSnapshot()
    listeners, so every screen updates live the moment data changes.
 
+   AUTHENTICATION: this app uses real Firebase Authentication
+   (email/password). Firestore Security Rules key off request.auth.uid,
+   so signing in through Firebase Auth (not just matching a Firestore
+   field) is what makes request.auth non-null and the rules pass.
+
    Data scoping is enforced at the QUERY level, not just in the UI:
    a non-superadmin's transactions query always carries
    where('department','==', theirDept) + where('presbytery','==', theirPres),
    so they can only ever fetch documents inside their own assignment.
-
-   NOTE ON SECURITY: this app authenticates by matching an email/password
-   field stored on the Firestore user document (no Firebase Auth). That's
-   fine for an internal tool behind Firestore rules you control, but if
-   this is ever exposed publicly, swap this for Firebase Authentication
-   and keep the same role/department/presbytery fields on the profile
-   doc — everything else in this file stays the same.
 ====================================================================== */
 
 import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-    getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
+    getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc,
     onSnapshot, query, where, getDocs, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    signOut, sendPasswordResetEmail
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
 
 // ---------------------------------------------------------------------
 // 1. FIXED ORGANIZATION STRUCTURE
-//    Every EPR presbytery carries this exact same set of departments;
-//    each sub-section is what an individual staff account gets assigned to.
 // ---------------------------------------------------------------------
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
@@ -94,11 +95,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     await checkFirstRun();
 });
 
+// Uses the public meta/system flag instead of listing /users, so this
+// works even while signed out (avoids the permission error you hit).
 async function checkFirstRun() {
     try {
-        const snap = await getDocs(collection(db, COLLECTIONS.USERS));
+        const metaSnap = await getDoc(doc(db, COLLECTIONS.META, 'system'));
         $('boot-screen').classList.add('hidden');
-        if (snap.empty) {
+        const initialized = metaSnap.exists() && metaSnap.data().initialized === true;
+        if (!initialized) {
             $('setup-container').classList.remove('hidden');
         } else {
             $('auth-container').classList.remove('hidden');
@@ -108,7 +112,7 @@ async function checkFirstRun() {
             <div style="max-width:420px;text-align:center;color:#fecaca;">
                 <i class="fa-solid fa-triangle-exclamation" style="font-size:1.8rem;margin-bottom:10px;"></i>
                 <p><strong>Couldn't connect to Firestore.</strong></p>
-                <p style="font-size:.82rem;margin-top:6px;color:#94a3b8;">Check firebase-config.js has your real project keys, and that your Firestore security rules allow read access. (${err.message})</p>
+                <p style="font-size:.82rem;margin-top:6px;color:#94a3b8;">Check firebase-config.js has your real project keys, and that your Firestore security rules allow public read on meta/system. (${err.message})</p>
             </div>`;
     }
 }
@@ -183,6 +187,7 @@ function setupEventListeners() {
 
     // ---- Auth ----
     $('login-form').addEventListener('submit', onSubmitLogin);
+    $('forgot-password-btn').addEventListener('click', onForgotPassword);
 
     qsa('.pw-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -272,6 +277,7 @@ function setupEventListeners() {
     // ---- Add / Edit User Form ----
     $('add-user-form').addEventListener('submit', onSubmitUserForm);
     $('user-cancel-edit-btn').addEventListener('click', resetUserForm);
+    $('user-send-reset-btn').addEventListener('click', onSendResetForEditedUser);
     $('users-table-body').addEventListener('click', onUsersTableClick);
     $('user-list-role-filter').addEventListener('change', (e) => { userListRoleFilter = e.target.value; renderUsersTable(); });
 
@@ -363,6 +369,9 @@ function switchView(target) {
 
 // ---------------------------------------------------------------------
 // 9. FIRST-RUN SETUP (creates the one and only bootstrap Superadmin)
+//    Order matters here: create the Auth account, then the /users/{uid}
+//    profile doc (allowed by "self-create"), THEN the meta/system flag
+//    (allowed because by that point isSuperAdmin() resolves true).
 // ---------------------------------------------------------------------
 async function onSubmitSetupForm(e) {
     e.preventDefault();
@@ -379,21 +388,24 @@ async function onSubmitSetupForm(e) {
     const btn = $('setup-submit-btn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
-        const payload = { name, email, password, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', createdAt: serverTimestamp() };
-        const ref = await addDoc(collection(db, COLLECTIONS.USERS), payload);
-        currentUser = { id: ref.id, ...payload };
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const payload = { name, email, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', createdAt: serverTimestamp() };
+        await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), payload);
+        await setDoc(doc(db, COLLECTIONS.META, 'system'), { initialized: true, initializedAt: serverTimestamp() });
+
+        currentUser = { id: cred.user.uid, ...payload };
         $('setup-container').classList.add('hidden');
         initAppSession();
         showToast('success', `Welcome, ${name}. Your Superadmin account is ready.`);
     } catch (err) {
-        $('setup-error').textContent = "Couldn't create the account: " + err.message;
+        $('setup-error').textContent = "Couldn't create the account: " + describeAuthError(err);
     } finally {
         btn.disabled = false; btn.textContent = 'Create Superadmin & Continue';
     }
 }
 
 // ---------------------------------------------------------------------
-// 10. LOGIN / LOGOUT
+// 10. LOGIN / LOGOUT / PASSWORD RESET
 // ---------------------------------------------------------------------
 async function onSubmitLogin(e) {
     e.preventDefault();
@@ -405,22 +417,32 @@ async function onSubmitLogin(e) {
     const btn = $('login-submit-btn');
     btn.disabled = true; btn.textContent = 'Signing in…';
     try {
-        const q = query(collection(db, COLLECTIONS.USERS), where('email', '==', email));
-        const snap = await getDocs(q);
-        const match = snap.docs.find(d => d.data().password === password);
-
-        if (match) {
-            currentUser = { id: match.id, ...match.data() };
-            $('login-form').reset();
-            $('auth-container').classList.add('hidden');
-            initAppSession();
-        } else {
-            $('auth-error').textContent = 'Invalid email or password.';
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        const snap = await getDoc(doc(db, COLLECTIONS.USERS, cred.user.uid));
+        if (!snap.exists()) {
+            await signOut(auth);
+            $('auth-error').textContent = 'This account has no profile on record. Contact your Superadmin.';
+            return;
         }
+        currentUser = { id: snap.id, ...snap.data() };
+        $('login-form').reset();
+        $('auth-container').classList.add('hidden');
+        initAppSession();
     } catch (err) {
-        $('auth-error').textContent = "Couldn't reach the database: " + err.message;
+        $('auth-error').textContent = describeAuthError(err);
     } finally {
         btn.disabled = false; btn.textContent = 'Sign In';
+    }
+}
+
+async function onForgotPassword() {
+    const email = ($('login-email').value || '').trim().toLowerCase();
+    if (!email) { $('auth-error').textContent = 'Enter your email above first, then tap "Forgot your password?".'; return; }
+    try {
+        await sendPasswordResetEmail(auth, email);
+        showToast('success', `Password reset email sent to ${email}.`);
+    } catch (err) {
+        $('auth-error').textContent = describeAuthError(err);
     }
 }
 
@@ -428,6 +450,7 @@ function doLogout() {
     if (unsubTx) { unsubTx(); unsubTx = null; }
     if (unsubUsers) { unsubUsers(); unsubUsers = null; }
     if (unsubOwnProfile) { unsubOwnProfile(); unsubOwnProfile = null; }
+    signOut(auth).catch(() => {});
     currentUser = null;
     usersDb = []; transactionsDb = [];
     currentScope = { presbytery: 'ALL', department: 'ALL' };
@@ -435,6 +458,21 @@ function doLogout() {
     $('app-container').classList.add('hidden');
     $('auth-container').classList.remove('hidden');
     $('profile-dropdown').classList.add('hidden');
+}
+
+function describeAuthError(err) {
+    const code = err && err.code ? err.code : '';
+    const map = {
+        'auth/email-already-in-use': 'That email is already registered.',
+        'auth/invalid-email': 'That email address looks invalid.',
+        'auth/weak-password': 'Password must be at least 6 characters.',
+        'auth/user-not-found': 'Invalid email or password.',
+        'auth/wrong-password': 'Invalid email or password.',
+        'auth/invalid-credential': 'Invalid email or password.',
+        'auth/too-many-requests': 'Too many attempts — please wait a moment and try again.',
+        'auth/operation-not-allowed': 'Email/Password sign-in is disabled for this project — enable it in Firebase Console → Authentication → Sign-in method.'
+    };
+    return map[code] || (err && err.message) || 'Something went wrong.';
 }
 
 // ---------------------------------------------------------------------
@@ -677,6 +715,9 @@ function onTxTableClick(e) {
 
 // ---------------------------------------------------------------------
 // 15. USER FORM (create / edit) — superadmin only
+//    Creating a NEW user must not sign the acting superadmin out, so we
+//    spin up a throwaway secondary Firebase app instance just for the
+//    createUserWithEmailAndPassword call, then tear it down.
 // ---------------------------------------------------------------------
 async function onSubmitUserForm(e) {
     e.preventDefault();
@@ -684,22 +725,20 @@ async function onSubmitUserForm(e) {
     const role = $('user-role').value;
     const isSuper = role === 'superadmin';
 
+    const name = $('user-name').value.trim();
     const email = $('user-email').value.trim().toLowerCase();
-    const payload = {
-        name: $('user-name').value.trim(),
-        email,
-        password: $('user-password').value,
-        role,
+    const password = $('user-password').value;
+
+    const profileFields = {
+        name, email, role,
         presbytery: isSuper ? 'ALL' : $('user-pres').value,
         department: isSuper ? 'ALL' : $('user-dept').value,
         subsection: isSuper ? 'ALL' : $('user-subsection').value
     };
 
-    if (!payload.name || !payload.email || payload.password.length < 6) {
-        showToast('error', 'Fill in name, a valid email, and a password of at least 6 characters.');
-        return;
-    }
-    if (!isSuper && (!payload.presbytery || !payload.department || !payload.subsection)) {
+    if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
+    if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
+    if (!isSuper && (!profileFields.presbytery || !profileFields.department || !profileFields.subsection)) {
         showToast('error', 'Assign a presbytery, department and sub-section for this role.');
         return;
     }
@@ -707,20 +746,31 @@ async function onSubmitUserForm(e) {
     const submitBtn = $('user-submit-btn');
     submitBtn.disabled = true;
     try {
-        const dupSnap = await getDocs(query(collection(db, COLLECTIONS.USERS), where('email', '==', email)));
-        const dup = dupSnap.docs.find(d => d.id !== editId);
-        if (dup) { showToast('error', 'A user with that email already exists.'); return; }
-
         if (editId) {
-            await updateDoc(doc(db, COLLECTIONS.USERS, editId), payload);
-            showToast('success', `${payload.name} updated.`);
+            // Editing an existing profile: Firestore fields only.
+            // (Changing another user's password requires the "send reset
+            // email" button instead — client SDKs can't set it directly.)
+            await updateDoc(doc(db, COLLECTIONS.USERS, editId), profileFields);
+            showToast('success', `${name} updated.`);
         } else {
-            await addDoc(collection(db, COLLECTIONS.USERS), { ...payload, createdAt: serverTimestamp() });
-            showToast('success', `${payload.name} created and assigned successfully.`);
+            // New user: create the Auth account on a throwaway secondary
+            // app instance so the current superadmin's session is untouched.
+            const dupSnap = await getDocs(query(collection(db, COLLECTIONS.USERS), where('email', '==', email)));
+            if (dupSnap.docs.length) { showToast('error', 'A user with that email already exists.'); return; }
+
+            const tempApp = initializeApp(firebaseConfig, 'tempAdminCreate-' + Date.now());
+            const tempAuth = getAuth(tempApp);
+            try {
+                const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
+                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), { ...profileFields, createdAt: serverTimestamp() });
+                showToast('success', `${name} created and assigned successfully.`);
+            } finally {
+                await deleteApp(tempApp);
+            }
         }
         resetUserForm();
     } catch (err) {
-        showToast('error', "Couldn't save the user: " + err.message);
+        showToast('error', "Couldn't save the user: " + describeAuthError(err));
     } finally {
         submitBtn.disabled = false;
     }
@@ -732,6 +782,9 @@ function resetUserForm() {
     $('user-form-title').textContent = 'Add New System User';
     $('user-submit-btn').textContent = 'Create & Assign User';
     $('user-cancel-edit-btn').classList.add('hidden');
+    $('user-password-group').classList.remove('hidden');
+    $('user-reset-group').classList.add('hidden');
+    $('user-password').required = true;
     $('user-scope-fields').classList.remove('hidden');
     qsa('#user-scope-fields select').forEach(sel => sel.required = true);
     populateSubsections('user-dept', 'user-subsection');
@@ -746,8 +799,14 @@ function onUsersTableClick(e) {
         $('user-edit-id').value = u.id;
         $('user-name').value = u.name;
         $('user-email').value = u.email;
-        $('user-password').value = u.password;
+        $('user-email').disabled = true; // changing email would orphan the Auth account
         $('user-role').value = u.role;
+
+        // Editing: hide the "set password" field, show "send reset email" instead.
+        $('user-password-group').classList.add('hidden');
+        $('user-password').required = false;
+        $('user-reset-group').classList.remove('hidden');
+
         const isSuper = u.role === 'superadmin';
         $('user-scope-fields').classList.toggle('hidden', isSuper);
         if (!isSuper) {
@@ -764,16 +823,34 @@ function onUsersTableClick(e) {
         const u = usersDb.find(x => String(x.id) === String(delBtn.dataset.id));
         if (!u) return;
         if (u.email === currentUser.email) { showToast('error', "You can't delete the account you're signed in as."); return; }
-        openConfirmModal(`Remove user "${u.name}" (${u.email})? They will lose access immediately.`, async () => {
+        openConfirmModal(`Remove user "${u.name}" (${u.email})? This deletes their Firestore profile. Their sign-in account itself must also be removed from the Firebase Console → Authentication tab (client apps can't delete other users' Auth accounts).`, async () => {
             try {
                 await deleteDoc(doc(db, COLLECTIONS.USERS, u.id));
-                showToast('success', 'User removed.');
+                showToast('success', 'User profile removed. Also remove their sign-in from the Firebase Console → Authentication tab.');
             } catch (err) {
                 showToast('error', "Couldn't remove user: " + err.message);
             }
         });
     }
 }
+
+async function onSendResetForEditedUser() {
+    const email = $('user-email').value.trim().toLowerCase();
+    if (!email) return;
+    try {
+        await sendPasswordResetEmail(auth, email);
+        showToast('success', `Password reset email sent to ${email}.`);
+    } catch (err) {
+        showToast('error', describeAuthError(err));
+    }
+}
+
+// Re-enable the email field whenever the form goes back to "create" mode.
+const _origResetUserForm = resetUserForm;
+resetUserForm = function () {
+    $('user-email').disabled = false;
+    _origResetUserForm();
+};
 
 // ---------------------------------------------------------------------
 // 16. CONFIRM MODAL + TOASTS
