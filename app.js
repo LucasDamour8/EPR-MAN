@@ -1,20 +1,22 @@
 /* ======================================================================
    EPR FINANCIAL & OPERATIONS SYSTEM — Firestore-backed
    ----------------------------------------------------------------------
-   All users and transactions live in Cloud Firestore. Nothing in this
-   file is hardcoded demo data — usersDb / transactionsDb are just local
-   in-memory *caches* kept in sync with Firestore via onSnapshot()
-   listeners, so every screen updates live the moment data changes.
+   Core auth/transactions/users logic is unchanged from the previous
+   version. This file adds: Invoices, Bills, Cheques, Suppliers,
+   Customer Hub, Projects, Budget Management, Bank Management and
+   Chart of Accounts — each scoped to the signed-in user's department
+   + presbytery (Superadmin sees everything, filterable by the same
+   scope selector used elsewhere in the app).
 
-   AUTHENTICATION: this app uses real Firebase Authentication
-   (email/password). Firestore Security Rules key off request.auth.uid,
-   so signing in through Firebase Auth (not just matching a Firestore
-   field) is what makes request.auth non-null and the rules pass.
-
-   Data scoping is enforced at the QUERY level, not just in the UI:
-   a non-superadmin's transactions query always carries
-   where('department','==', theirDept) + where('presbytery','==', theirPres),
-   so they can only ever fetch documents inside their own assignment.
+   APPROVAL WORKFLOW:
+   - Invoices & Bills: any role can submit; only Superadmin can approve
+     or reject. Approved/rejected records are locked.
+   - Cheques: any role can submit; Finance users or Superadmin approve
+     or reject.
+   - Suppliers / Customers / Projects: no approval step, standard
+     scoped CRUD.
+   - Budget Management, Bank Management, Chart of Accounts: visible
+     and usable by Superadmin only.
 ====================================================================== */
 
 import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
@@ -57,27 +59,40 @@ const PRESBYTERIES = [
 ];
 
 const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User" };
+const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
 // ---------------------------------------------------------------------
 // 2. LOCAL CACHES (populated live from Firestore — never hand-edited)
 // ---------------------------------------------------------------------
 let usersDb = [];
 let transactionsDb = [];
+let invoicesDb = [];
+let billsDb = [];
+let chequesDb = [];
+let suppliersDb = [];
+let customersDb = [];
+let projectsDb = [];
+let budgetsDb = [];
+let banksDb = [];
 
 // ---------------------------------------------------------------------
 // 3. APPLICATION STATE
 // ---------------------------------------------------------------------
-let currentUser = null;               // { id, name, email, role, presbytery, department, subsection, ... }
+let currentUser = null;
 let currentScope = { presbytery: "ALL", department: "ALL" };
 let searchQuery = "";
 let txFilters = { type: "ALL", from: "", to: "" };
 let userListRoleFilter = "ALL";
 let pendingConfirm = null;
 let activeOrgTab = "departments";
+let coaSelectedBankId = null;
+let coaBankChart = null;
+let coaDeptChart = null;
 
-let unsubTx = null;
-let unsubUsers = null;
-let unsubOwnProfile = null;
+let unsubTx = null, unsubUsers = null, unsubOwnProfile = null;
+let unsubInvoices = null, unsubBills = null, unsubCheques = null;
+let unsubSuppliers = null, unsubCustomers = null, unsubProjects = null;
+let unsubBudgets = null, unsubBanks = null;
 
 // ---------------------------------------------------------------------
 // 4. DOM SHORTCUTS
@@ -95,18 +110,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     await checkFirstRun();
 });
 
-// Uses the public meta/system flag instead of listing /users, so this
-// works even while signed out (avoids the permission error you hit).
 async function checkFirstRun() {
     try {
         const metaSnap = await getDoc(doc(db, COLLECTIONS.META, 'system'));
         $('boot-screen').classList.add('hidden');
         const initialized = metaSnap.exists() && metaSnap.data().initialized === true;
-        if (!initialized) {
-            $('setup-container').classList.remove('hidden');
-        } else {
-            $('auth-container').classList.remove('hidden');
-        }
+        if (!initialized) { $('setup-container').classList.remove('hidden'); }
+        else { $('auth-container').classList.remove('hidden'); }
     } catch (err) {
         $('boot-screen').innerHTML = `
             <div style="max-width:420px;text-align:center;color:#fecaca;">
@@ -129,6 +139,7 @@ function buildStaticSelectOptions() {
 }
 
 function fillSelect(select, values, prependValue, prependLabel) {
+    if (!select) return;
     select.innerHTML = '';
     if (prependValue !== undefined) {
         const opt = document.createElement('option');
@@ -145,8 +156,7 @@ function fillSelect(select, values, prependValue, prependLabel) {
 function renderSidebarFilters() {
     const deptMenu = $('dept-sidebar-menu');
     const presMenu = $('pres-sidebar-menu');
-    deptMenu.innerHTML = '';
-    presMenu.innerHTML = '';
+    deptMenu.innerHTML = ''; presMenu.innerHTML = '';
 
     const allDept = document.createElement('button');
     allDept.type = 'button'; allDept.className = 'nav-item filter-dept'; allDept.dataset.dept = 'ALL';
@@ -182,10 +192,7 @@ function shortDeptName(d) { return (d || '').replace('Department of ', ''); }
 // 7. EVENT WIRING
 // ---------------------------------------------------------------------
 function setupEventListeners() {
-    // ---- First-run setup ----
     $('setup-form').addEventListener('submit', onSubmitSetupForm);
-
-    // ---- Auth ----
     $('login-form').addEventListener('submit', onSubmitLogin);
     $('forgot-password-btn').addEventListener('click', onForgotPassword);
 
@@ -199,13 +206,10 @@ function setupEventListeners() {
     });
 
     $('logout-btn').addEventListener('click', doLogout);
-
-    // ---- Sidebar mobile toggle ----
     $('hamburger-btn').addEventListener('click', () => toggleSidebar(true));
     $('sidebar-close-btn').addEventListener('click', () => toggleSidebar(false));
     $('sidebar-overlay').addEventListener('click', () => toggleSidebar(false));
 
-    // ---- Profile dropdown ----
     $('profile-toggle').addEventListener('click', (e) => { e.stopPropagation(); $('profile-dropdown').classList.toggle('hidden'); });
     document.addEventListener('click', () => {
         $('profile-dropdown').classList.add('hidden');
@@ -218,10 +222,8 @@ function setupEventListeners() {
         showToast('info', "You're all caught up — no new notifications.");
     });
 
-    // ---- Sidebar View Switcher ----
     qsa('.nav-item[data-view]').forEach(item => item.addEventListener('click', () => switchView(item.getAttribute('data-view'))));
 
-    // ---- Superadmin Dropdown Filters (re-queries Firestore live) ----
     $('sa-presbytery-select').addEventListener('change', (e) => { currentScope.presbytery = e.target.value; onScopeChanged(); });
     $('sa-department-select').addEventListener('change', (e) => { currentScope.department = e.target.value; onScopeChanged(); });
     $('scope-reset-btn').addEventListener('click', () => {
@@ -231,7 +233,6 @@ function setupEventListeners() {
         showToast('info', 'Scope reset to all presbyteries and departments.');
     });
 
-    // ---- Global Search (live, client-side over the already-scoped cache) ----
     $('global-search').addEventListener('input', (e) => {
         searchQuery = e.target.value.toLowerCase().trim();
         $('search-clear-btn').style.display = searchQuery ? 'inline-flex' : 'none';
@@ -246,7 +247,6 @@ function setupEventListeners() {
         renderTransactionsTable(getFilteredTransactions());
     });
 
-    // ---- Transactions view filters ----
     $('tx-filter-type').addEventListener('change', (e) => { txFilters.type = e.target.value; renderTransactionsTable(getFilteredTransactions()); });
     $('tx-filter-from').addEventListener('change', (e) => { txFilters.from = e.target.value; renderTransactionsTable(getFilteredTransactions()); });
     $('tx-filter-to').addEventListener('change', (e) => { txFilters.to = e.target.value; renderTransactionsTable(getFilteredTransactions()); });
@@ -256,7 +256,6 @@ function setupEventListeners() {
         renderTransactionsTable(getFilteredTransactions());
     });
 
-    // ---- Org chart tabs ----
     qsa('.org-tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             activeOrgTab = btn.dataset.orgTab;
@@ -266,7 +265,6 @@ function setupEventListeners() {
         });
     });
 
-    // ---- User creation: role toggles scope fields; dept toggles subsections ----
     $('user-role').addEventListener('change', () => {
         const isSuper = $('user-role').value === 'superadmin';
         $('user-scope-fields').classList.toggle('hidden', isSuper);
@@ -274,14 +272,12 @@ function setupEventListeners() {
     });
     $('user-dept').addEventListener('change', () => populateSubsections('user-dept', 'user-subsection'));
 
-    // ---- Add / Edit User Form ----
     $('add-user-form').addEventListener('submit', onSubmitUserForm);
     $('user-cancel-edit-btn').addEventListener('click', resetUserForm);
     $('user-send-reset-btn').addEventListener('click', onSendResetForEditedUser);
     $('users-table-body').addEventListener('click', onUsersTableClick);
     $('user-list-role-filter').addEventListener('change', (e) => { userListRoleFilter = e.target.value; renderUsersTable(); });
 
-    // ---- Transaction modal ----
     const txModal = $('tx-modal');
     $('open-tx-modal-btn').addEventListener('click', () => openTxModal());
     $('close-tx-modal').addEventListener('click', closeTxModal);
@@ -289,7 +285,6 @@ function setupEventListeners() {
     $('tx-form').addEventListener('submit', onSubmitTxForm);
     $('tx-table-body').addEventListener('click', onTxTableClick);
 
-    // ---- Confirm modal ----
     $('close-confirm-modal').addEventListener('click', closeConfirmModal);
     $('confirm-cancel-btn').addEventListener('click', closeConfirmModal);
     $('confirm-ok-btn').addEventListener('click', () => {
@@ -298,17 +293,19 @@ function setupEventListeners() {
     });
     $('confirm-modal').addEventListener('click', (e) => { if (e.target === $('confirm-modal')) closeConfirmModal(); });
 
-    // ---- Report Actions ----
     $('print-btn').addEventListener('click', () => window.print());
     $('export-excel-btn').addEventListener('click', exportReportToExcel);
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeTxModal(); closeConfirmModal();
+            closeAllExtModals();
             $('search-results-dropdown').classList.add('hidden');
             $('profile-dropdown').classList.add('hidden');
         }
     });
+
+    setupExtModulesEventListeners();
 }
 
 function toggleSidebar(open) {
@@ -363,15 +360,14 @@ function makeChip(label, onRemove) {
 function switchView(target) {
     qsa('.nav-item[data-view]').forEach(n => n.classList.toggle('active', n.getAttribute('data-view') === target));
     qsa('.view-panel').forEach(panel => panel.classList.remove('active'));
-    $(`view-${target}`).classList.add('active');
+    const panel = $(`view-${target}`);
+    if (panel) panel.classList.add('active');
     if (target === 'departments') renderOrgChart();
+    if (target === 'coa') { renderCoaBankGrid(); renderCoaCharts(); }
 }
 
 // ---------------------------------------------------------------------
-// 9. FIRST-RUN SETUP (creates the one and only bootstrap Superadmin)
-//    Order matters here: create the Auth account, then the /users/{uid}
-//    profile doc (allowed by "self-create"), THEN the meta/system flag
-//    (allowed because by that point isSuperAdmin() resolves true).
+// 9. FIRST-RUN SETUP
 // ---------------------------------------------------------------------
 async function onSubmitSetupForm(e) {
     e.preventDefault();
@@ -447,12 +443,20 @@ async function onForgotPassword() {
 }
 
 function doLogout() {
-    if (unsubTx) { unsubTx(); unsubTx = null; }
-    if (unsubUsers) { unsubUsers(); unsubUsers = null; }
-    if (unsubOwnProfile) { unsubOwnProfile(); unsubOwnProfile = null; }
+    [unsubTx, unsubUsers, unsubOwnProfile, unsubInvoices, unsubBills, unsubCheques,
+     unsubSuppliers, unsubCustomers, unsubProjects, unsubBudgets, unsubBanks]
+        .forEach(u => { if (u) u(); });
+    unsubTx = unsubUsers = unsubOwnProfile = null;
+    unsubInvoices = unsubBills = unsubCheques = null;
+    unsubSuppliers = unsubCustomers = unsubProjects = null;
+    unsubBudgets = unsubBanks = null;
+
     signOut(auth).catch(() => {});
     currentUser = null;
     usersDb = []; transactionsDb = [];
+    invoicesDb = []; billsDb = []; chequesDb = [];
+    suppliersDb = []; customersDb = []; projectsDb = [];
+    budgetsDb = []; banksDb = [];
     currentScope = { presbytery: 'ALL', department: 'ALL' };
     searchQuery = ''; txFilters = { type: 'ALL', from: '', to: '' };
     $('app-container').classList.add('hidden');
@@ -470,7 +474,7 @@ function describeAuthError(err) {
         'auth/wrong-password': 'Invalid email or password.',
         'auth/invalid-credential': 'Invalid email or password.',
         'auth/too-many-requests': 'Too many attempts — please wait a moment and try again.',
-        'auth/operation-not-allowed': 'Email/Password sign-in is disabled for this project — enable it in Firebase Console → Authentication → Sign-in method.'
+        'auth/operation-not-allowed': 'Email/Password sign-in is disabled — enable it in Firebase Console → Authentication → Sign-in method.'
     };
     return map[code] || (err && err.message) || 'Something went wrong.';
 }
@@ -486,6 +490,7 @@ function initAppSession() {
     $('superadmin-filter-bar').classList.toggle('hidden', !isSuper);
     $('admin-filter-section').classList.toggle('hidden', !isSuper);
     $('my-assignment-card').classList.toggle('hidden', isSuper);
+    $('ext-admin-menu').classList.toggle('hidden', !isSuper);
 
     if (isSuper) {
         currentScope = { presbytery: 'ALL', department: 'ALL' };
@@ -501,7 +506,15 @@ function initAppSession() {
     switchView('overview');
 
     subscribeTransactions();
-    if (isSuper) subscribeUsers(); else subscribeOwnProfile();
+    subscribeInvoices();
+    subscribeBills();
+    subscribeCheques();
+    subscribeSuppliers();
+    subscribeCustomers();
+    subscribeProjects();
+    subscribeBanks();
+    if (isSuper) { subscribeUsers(); subscribeBudgets(); }
+    else { subscribeOwnProfile(); }
 }
 
 function updateProfileUI() {
@@ -520,9 +533,11 @@ function updateProfileUI() {
 }
 
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
+function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
+function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance'); }
 
 // ---------------------------------------------------------------------
-// 12. FIRESTORE LIVE SUBSCRIPTIONS
+// 12. FIRESTORE LIVE SUBSCRIPTIONS — TRANSACTIONS
 // ---------------------------------------------------------------------
 function setSyncStatus(state) {
     const el = $('sync-indicator');
@@ -531,12 +546,11 @@ function setSyncStatus(state) {
     el.title = state === 'live' ? 'Live — synced with Firestore' : state === 'syncing' ? 'Syncing…' : 'Sync error';
 }
 
-function buildTransactionsQuery() {
-    const col = collection(db, COLLECTIONS.TRANSACTIONS);
+// Generic: builds a scoped query for any collection carrying department + presbytery
+function buildScopedQuery(collectionName) {
+    const col = collection(db, collectionName);
     const clauses = [];
-    if (currentUser.role !== 'superadmin') {
-        // Hard scoping — a staff account's query can never return another
-        // department or presbytery's records, regardless of UI state.
+    if (!isSuper()) {
         clauses.push(where('department', '==', currentUser.department));
         clauses.push(where('presbytery', '==', currentUser.presbytery));
     } else {
@@ -546,24 +560,27 @@ function buildTransactionsQuery() {
     return clauses.length ? query(col, ...clauses) : query(col);
 }
 
+function buildTransactionsQuery() { return buildScopedQuery(COLLECTIONS.TRANSACTIONS); }
+
 function subscribeTransactions() {
     if (unsubTx) unsubTx();
     setSyncStatus('syncing');
-    const q = buildTransactionsQuery();
-    unsubTx = onSnapshot(q, (snap) => {
+    unsubTx = onSnapshot(buildTransactionsQuery(), (snap) => {
         transactionsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         transactionsDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         refreshAllViews();
         setSyncStatus('live');
-    }, (err) => {
-        console.error(err);
-        showToast('error', 'Live transactions feed error: ' + err.message);
-        setSyncStatus('error');
-    });
+    }, (err) => { console.error(err); showToast('error', 'Live transactions feed error: ' + err.message); setSyncStatus('error'); });
 }
 
 function onScopeChanged() {
     subscribeTransactions();
+    subscribeInvoices();
+    subscribeBills();
+    subscribeCheques();
+    subscribeSuppliers();
+    subscribeCustomers();
+    subscribeProjects();
     renderActiveScopeChips();
 }
 
@@ -590,7 +607,7 @@ function subscribeOwnProfile() {
         $('ab-subsection').textContent = currentUser.subsection;
         if (scopeChanged) {
             currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
-            subscribeTransactions();
+            onScopeChanged();
             showToast('info', 'Your department/presbytery assignment was updated.');
         }
     }, (err) => showToast('error', 'Profile sync error: ' + err.message));
@@ -610,16 +627,63 @@ function populateSubsections(deptSelectId, subSelectId) {
     });
 }
 
+// Shared helper: prep dept/subsection/pres fields on an ext-module modal.
+// prefix e.g. 'invoice' -> looks for invoice-dept-group, invoice-dept, etc.
+function setupScopedModalFields(prefix, hasSubsection, editRecord) {
+    const deptGroup = $(`${prefix}-dept-group`);
+    const subGroup = $(`${prefix}-subsection-group`);
+    const presGroup = $(`${prefix}-pres-group`);
+    const superVisible = isSuper();
+
+    if (deptGroup) deptGroup.style.display = superVisible ? 'block' : 'none';
+    if (subGroup) subGroup.style.display = (superVisible && hasSubsection) ? 'block' : 'none';
+    if (presGroup) presGroup.style.display = superVisible ? 'block' : 'none';
+
+    if (superVisible) {
+        fillSelect($(`${prefix}-dept`), Object.keys(EPR_STRUCTURE));
+        fillSelect($(`${prefix}-pres`), PRESBYTERIES);
+        if (hasSubsection) {
+            populateSubsections(`${prefix}-dept`, `${prefix}-subsection`);
+            $(`${prefix}-dept`).onchange = () => populateSubsections(`${prefix}-dept`, `${prefix}-subsection`);
+        }
+        if (editRecord) {
+            $(`${prefix}-dept`).value = editRecord.department;
+            if (hasSubsection) { populateSubsections(`${prefix}-dept`, `${prefix}-subsection`); $(`${prefix}-subsection`).value = editRecord.subsection; }
+            $(`${prefix}-pres`).value = editRecord.presbytery;
+        } else {
+            $(`${prefix}-dept`).selectedIndex = 0;
+            if (hasSubsection) populateSubsections(`${prefix}-dept`, `${prefix}-subsection`);
+            $(`${prefix}-pres`).selectedIndex = 0;
+        }
+    }
+}
+
+function scopedFieldsFromForm(prefix, hasSubsection) {
+    if (isSuper()) {
+        return {
+            department: $(`${prefix}-dept`).value,
+            subsection: hasSubsection ? $(`${prefix}-subsection`).value : (currentUser.subsection || 'ALL'),
+            presbytery: $(`${prefix}-pres`).value
+        };
+    }
+    return { department: currentUser.department, subsection: currentUser.subsection, presbytery: currentUser.presbytery };
+}
+
+function closeAllExtModals() {
+    ['invoice-modal','bill-modal','cheque-modal','supplier-modal','customer-modal','project-modal','budget-modal','bank-modal']
+        .forEach(id => $(id) && $(id).classList.add('hidden'));
+}
+
 // ---------------------------------------------------------------------
 // 14. TRANSACTION MODAL + CRUD
 // ---------------------------------------------------------------------
 function openTxModal(editTx) {
-    const isSuper = currentUser.role === 'superadmin';
-    $('tx-dept-group').style.display = isSuper ? 'block' : 'none';
-    $('tx-subsection-group').style.display = isSuper ? 'block' : 'none';
-    $('tx-pres-group').style.display = isSuper ? 'block' : 'none';
+    const superVisible = isSuper();
+    $('tx-dept-group').style.display = superVisible ? 'block' : 'none';
+    $('tx-subsection-group').style.display = superVisible ? 'block' : 'none';
+    $('tx-pres-group').style.display = superVisible ? 'block' : 'none';
 
-    if (isSuper) {
+    if (superVisible) {
         fillSelect($('tx-dept'), Object.keys(EPR_STRUCTURE));
         fillSelect($('tx-pres'), PRESBYTERIES);
         populateSubsections('tx-dept', 'tx-subsection');
@@ -634,7 +698,7 @@ function openTxModal(editTx) {
         $('tx-desc').value = editTx.desc;
         $('tx-amount').value = editTx.amount;
         $('tx-date').value = editTx.date;
-        if (isSuper) {
+        if (superVisible) {
             $('tx-dept').value = editTx.department;
             populateSubsections('tx-dept', 'tx-subsection');
             $('tx-subsection').value = editTx.subsection;
@@ -646,7 +710,7 @@ function openTxModal(editTx) {
         $('tx-form').reset();
         $('tx-edit-id').value = '';
         $('tx-date').value = new Date().toISOString().split('T')[0];
-        if (isSuper) { $('tx-dept').selectedIndex = 0; populateSubsections('tx-dept', 'tx-subsection'); $('tx-pres').selectedIndex = 0; }
+        if (superVisible) { $('tx-dept').selectedIndex = 0; populateSubsections('tx-dept', 'tx-subsection'); $('tx-pres').selectedIndex = 0; }
     }
     $('tx-modal').classList.remove('hidden');
 }
@@ -655,19 +719,17 @@ function closeTxModal() { $('tx-modal').classList.add('hidden'); }
 async function onSubmitTxForm(e) {
     e.preventDefault();
     const editId = $('tx-edit-id').value;
-    const isSuper = currentUser.role === 'superadmin';
+    const superVisible = isSuper();
 
     let deptField = currentUser.department, subsec = currentUser.subsection, pres = currentUser.presbytery;
-    if (isSuper) { deptField = $('tx-dept').value; subsec = $('tx-subsection').value; pres = $('tx-pres').value; }
+    if (superVisible) { deptField = $('tx-dept').value; subsec = $('tx-subsection').value; pres = $('tx-pres').value; }
 
     const payload = {
         date: $('tx-date').value || new Date().toISOString().split('T')[0],
         type: $('tx-type').value,
         desc: $('tx-desc').value.trim(),
         amount: parseFloat($('tx-amount').value),
-        department: deptField,
-        subsection: subsec,
-        presbytery: pres
+        department: deptField, subsection: subsec, presbytery: pres
     };
 
     if (!payload.desc || isNaN(payload.amount) || payload.amount < 0) {
@@ -688,9 +750,7 @@ async function onSubmitTxForm(e) {
         closeTxModal();
     } catch (err) {
         showToast('error', "Couldn't save the transaction: " + err.message);
-    } finally {
-        submitBtn.disabled = false;
-    }
+    } finally { submitBtn.disabled = false; }
 }
 
 function onTxTableClick(e) {
@@ -703,27 +763,20 @@ function onTxTableClick(e) {
         const tx = transactionsDb.find(t => String(t.id) === String(delBtn.dataset.id));
         if (!tx) return;
         openConfirmModal(`Delete the transaction "${tx.desc}" (${formatRF(tx.amount)})? This cannot be undone.`, async () => {
-            try {
-                await deleteDoc(doc(db, COLLECTIONS.TRANSACTIONS, tx.id));
-                showToast('success', 'Transaction deleted.');
-            } catch (err) {
-                showToast('error', "Couldn't delete: " + err.message);
-            }
+            try { await deleteDoc(doc(db, COLLECTIONS.TRANSACTIONS, tx.id)); showToast('success', 'Transaction deleted.'); }
+            catch (err) { showToast('error', "Couldn't delete: " + err.message); }
         });
     }
 }
 
 // ---------------------------------------------------------------------
 // 15. USER FORM (create / edit) — superadmin only
-//    Creating a NEW user must not sign the acting superadmin out, so we
-//    spin up a throwaway secondary Firebase app instance just for the
-//    createUserWithEmailAndPassword call, then tear it down.
 // ---------------------------------------------------------------------
 async function onSubmitUserForm(e) {
     e.preventDefault();
     const editId = $('user-edit-id').value;
     const role = $('user-role').value;
-    const isSuper = role === 'superadmin';
+    const roleSuper = role === 'superadmin';
 
     const name = $('user-name').value.trim();
     const email = $('user-email').value.trim().toLowerCase();
@@ -731,14 +784,14 @@ async function onSubmitUserForm(e) {
 
     const profileFields = {
         name, email, role,
-        presbytery: isSuper ? 'ALL' : $('user-pres').value,
-        department: isSuper ? 'ALL' : $('user-dept').value,
-        subsection: isSuper ? 'ALL' : $('user-subsection').value
+        presbytery: roleSuper ? 'ALL' : $('user-pres').value,
+        department: roleSuper ? 'ALL' : $('user-dept').value,
+        subsection: roleSuper ? 'ALL' : $('user-subsection').value
     };
 
     if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
     if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
-    if (!isSuper && (!profileFields.presbytery || !profileFields.department || !profileFields.subsection)) {
+    if (!roleSuper && (!profileFields.presbytery || !profileFields.department || !profileFields.subsection)) {
         showToast('error', 'Assign a presbytery, department and sub-section for this role.');
         return;
     }
@@ -747,14 +800,9 @@ async function onSubmitUserForm(e) {
     submitBtn.disabled = true;
     try {
         if (editId) {
-            // Editing an existing profile: Firestore fields only.
-            // (Changing another user's password requires the "send reset
-            // email" button instead — client SDKs can't set it directly.)
             await updateDoc(doc(db, COLLECTIONS.USERS, editId), profileFields);
             showToast('success', `${name} updated.`);
         } else {
-            // New user: create the Auth account on a throwaway secondary
-            // app instance so the current superadmin's session is untouched.
             const dupSnap = await getDocs(query(collection(db, COLLECTIONS.USERS), where('email', '==', email)));
             if (dupSnap.docs.length) { showToast('error', 'A user with that email already exists.'); return; }
 
@@ -764,21 +812,18 @@ async function onSubmitUserForm(e) {
                 const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
                 await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), { ...profileFields, createdAt: serverTimestamp() });
                 showToast('success', `${name} created and assigned successfully.`);
-            } finally {
-                await deleteApp(tempApp);
-            }
+            } finally { await deleteApp(tempApp); }
         }
         resetUserForm();
     } catch (err) {
         showToast('error', "Couldn't save the user: " + describeAuthError(err));
-    } finally {
-        submitBtn.disabled = false;
-    }
+    } finally { submitBtn.disabled = false; }
 }
 
 function resetUserForm() {
     $('add-user-form').reset();
     $('user-edit-id').value = '';
+    $('user-email').disabled = false;
     $('user-form-title').textContent = 'Add New System User';
     $('user-submit-btn').textContent = 'Create & Assign User';
     $('user-cancel-edit-btn').classList.add('hidden');
@@ -799,17 +844,16 @@ function onUsersTableClick(e) {
         $('user-edit-id').value = u.id;
         $('user-name').value = u.name;
         $('user-email').value = u.email;
-        $('user-email').disabled = true; // changing email would orphan the Auth account
+        $('user-email').disabled = true;
         $('user-role').value = u.role;
 
-        // Editing: hide the "set password" field, show "send reset email" instead.
         $('user-password-group').classList.add('hidden');
         $('user-password').required = false;
         $('user-reset-group').classList.remove('hidden');
 
-        const isSuper = u.role === 'superadmin';
-        $('user-scope-fields').classList.toggle('hidden', isSuper);
-        if (!isSuper) {
+        const roleSuper = u.role === 'superadmin';
+        $('user-scope-fields').classList.toggle('hidden', roleSuper);
+        if (!roleSuper) {
             $('user-pres').value = u.presbytery;
             $('user-dept').value = u.department;
             populateSubsections('user-dept', 'user-subsection');
@@ -823,13 +867,9 @@ function onUsersTableClick(e) {
         const u = usersDb.find(x => String(x.id) === String(delBtn.dataset.id));
         if (!u) return;
         if (u.email === currentUser.email) { showToast('error', "You can't delete the account you're signed in as."); return; }
-        openConfirmModal(`Remove user "${u.name}" (${u.email})? This deletes their Firestore profile. Their sign-in account itself must also be removed from the Firebase Console → Authentication tab (client apps can't delete other users' Auth accounts).`, async () => {
-            try {
-                await deleteDoc(doc(db, COLLECTIONS.USERS, u.id));
-                showToast('success', 'User profile removed. Also remove their sign-in from the Firebase Console → Authentication tab.');
-            } catch (err) {
-                showToast('error', "Couldn't remove user: " + err.message);
-            }
+        openConfirmModal(`Remove user "${u.name}" (${u.email})? This deletes their Firestore profile. Their sign-in account itself must also be removed from Firebase Console → Authentication.`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.USERS, u.id)); showToast('success', 'User profile removed. Also remove their sign-in from the Firebase Console → Authentication tab.'); }
+            catch (err) { showToast('error', "Couldn't remove user: " + err.message); }
         });
     }
 }
@@ -837,20 +877,9 @@ function onUsersTableClick(e) {
 async function onSendResetForEditedUser() {
     const email = $('user-email').value.trim().toLowerCase();
     if (!email) return;
-    try {
-        await sendPasswordResetEmail(auth, email);
-        showToast('success', `Password reset email sent to ${email}.`);
-    } catch (err) {
-        showToast('error', describeAuthError(err));
-    }
+    try { await sendPasswordResetEmail(auth, email); showToast('success', `Password reset email sent to ${email}.`); }
+    catch (err) { showToast('error', describeAuthError(err)); }
 }
-
-// Re-enable the email field whenever the form goes back to "create" mode.
-const _origResetUserForm = resetUserForm;
-resetUserForm = function () {
-    $('user-email').disabled = false;
-    _origResetUserForm();
-};
 
 // ---------------------------------------------------------------------
 // 16. CONFIRM MODAL + TOASTS
@@ -873,8 +902,7 @@ function showToast(type, message) {
 }
 
 // ---------------------------------------------------------------------
-// 17. CLIENT-SIDE FILTER (search + type/date) ON TOP OF THE ALREADY
-//     FIRESTORE-SCOPED CACHE — nothing here widens what a user can see.
+// 17. CLIENT-SIDE FILTER FOR TRANSACTIONS
 // ---------------------------------------------------------------------
 function getFilteredTransactions() {
     return transactionsDb.filter(tx => {
@@ -890,17 +918,17 @@ function getFilteredTransactions() {
 }
 
 // ---------------------------------------------------------------------
-// 18. MASTER RENDER (called whenever the Firestore snapshot updates)
+// 18. MASTER RENDER
 // ---------------------------------------------------------------------
 function refreshAllViews() {
     const list = getFilteredTransactions();
-    const isSuper = currentUser.role === 'superadmin';
+    const superVisible = isSuper();
 
-    const scopeDesc = isSuper
+    const scopeDesc = superVisible
         ? `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`
         : `Presbytery: [${currentUser.presbytery}] | Department: [${currentUser.department}] (locked to your assignment)`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
-    $('tx-scope-note').textContent = isSuper ? 'Superadmin — full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
+    $('tx-scope-note').textContent = superVisible ? 'Superadmin — full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
     $('statement-scope').textContent = scopeDesc;
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
 
@@ -940,17 +968,20 @@ function refreshAllViews() {
     $('stmt-equity').textContent = formatRF(netWorth);
 
     renderTransactionsTable(list);
-    renderDeptBreakdown(list, isSuper);
+    renderDeptBreakdown(list, superVisible);
     renderActiveScopeChips();
+    renderPendingApprovals();
 
     $('nav-tx-count').textContent = list.length;
     highlightSidebarFilters();
+
+    if (document.getElementById('view-coa').classList.contains('active')) renderCoaCharts();
 }
 
-function renderDeptBreakdown(list, isSuper) {
+function renderDeptBreakdown(list, superVisible) {
     const wrap = $('dept-breakdown-wrap');
     const grid = $('dept-breakdown-grid');
-    if (!isSuper) { wrap.classList.add('hidden'); return; }
+    if (!superVisible) { wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
     grid.innerHTML = '';
 
@@ -980,7 +1011,7 @@ function renderDeptBreakdown(list, isSuper) {
 function renderTransactionsTable(list) {
     const tbody = $('tx-table-body');
     tbody.innerHTML = '';
-    const isSuper = currentUser.role === 'superadmin';
+    const superVisible = isSuper();
     $('ft-result-count').textContent = `${list.length} result${list.length === 1 ? '' : 's'}`;
 
     if (list.length === 0) {
@@ -992,7 +1023,7 @@ function renderTransactionsTable(list) {
     list.forEach(tx => {
         const tr = document.createElement('tr');
         const isInc = tx.type === 'Income' || tx.type === 'Asset';
-        const canEdit = isSuper || tx.createdBy === currentUser.email;
+        const canEdit = superVisible || tx.createdBy === currentUser.email;
         tr.innerHTML = `
             <td>${tx.date}</td>
             <td><span class="badge type-${tx.type.toLowerCase()}">${tx.type}</span></td>
@@ -1001,13 +1032,10 @@ function renderTransactionsTable(list) {
             <td><strong>${tx.subsection}</strong></td>
             <td>${(tx.presbytery || '').replace('EPR Presbytery ', '')}</td>
             <td style="font-weight: bold; color: ${isInc ? 'var(--success)' : 'var(--danger)'};">${formatRF(tx.amount)}</td>
-            <td>
-                <div class="row-actions">
-                    <button class="icon-action-btn tx-edit-btn" data-id="${tx.id}" title="Edit" ${canEdit ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
-                    <button class="icon-action-btn danger-hover tx-delete-btn" data-id="${tx.id}" title="Delete" ${canEdit ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
-                </div>
-            </td>
-        `;
+            <td><div class="row-actions">
+                <button class="icon-action-btn tx-edit-btn" data-id="${tx.id}" title="Edit" ${canEdit ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover tx-delete-btn" data-id="${tx.id}" title="Delete" ${canEdit ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
         tbody.appendChild(tr);
     });
 
@@ -1031,13 +1059,10 @@ function renderUsersTable() {
             <td><span class="badge role-${u.role}">${ROLE_LABELS[u.role] || u.role}</span></td>
             <td>${u.presbytery === 'ALL' ? 'All presbyteries' : u.presbytery}</td>
             <td>${u.department === 'ALL' ? 'All departments' : `${shortDeptName(u.department)} (${u.subsection})`}</td>
-            <td>
-                <div class="row-actions">
-                    <button class="icon-action-btn user-edit-btn" data-id="${u.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                    <button class="icon-action-btn danger-hover user-delete-btn" data-id="${u.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                </div>
-            </td>
-        `;
+            <td><div class="row-actions">
+                <button class="icon-action-btn user-edit-btn" data-id="${u.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover user-delete-btn" data-id="${u.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
         tbody.appendChild(tr);
     });
 }
@@ -1046,51 +1071,36 @@ function renderUsersTable() {
 // 19. DEPARTMENTS / PRESBYTERIES ORG CHART VIEW
 // ---------------------------------------------------------------------
 function renderOrgChart() {
-    const isSuper = currentUser.role === 'superadmin';
-
+    const superVisible = isSuper();
     const deptGrid = $('org-dept-grid');
     deptGrid.innerHTML = '';
     Object.entries(EPR_STRUCTURE).forEach(([dept, subs]) => {
-        const isMine = !isSuper && dept === currentUser.department;
-        const managerCount = isSuper ? usersDb.filter(u => u.department === dept).length : null;
+        const isMine = !superVisible && dept === currentUser.department;
+        const managerCount = superVisible ? usersDb.filter(u => u.department === dept).length : null;
         const card = document.createElement('div');
         card.className = `org-dept-card${isMine ? ' mine' : ''}`;
         card.innerHTML = `
             <div class="odc-head"><i class="fa-solid ${DEPT_ICONS[dept] || 'fa-building'}"></i> ${shortDeptName(dept)}</div>
             <div class="odc-body">${subs.map(s => `<div class="odc-sub">${s}</div>`).join('')}</div>
-            ${isSuper ? `<div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managerCount} user${managerCount === 1 ? '' : 's'} assigned</div>` : (isMine ? `<div class="odc-count"><i class="fa-solid fa-circle-check"></i> This is your department</div>` : '')}
+            ${superVisible ? `<div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managerCount} user${managerCount === 1 ? '' : 's'} assigned</div>` : (isMine ? `<div class="odc-count"><i class="fa-solid fa-circle-check"></i> This is your department</div>` : '')}
         `;
-        if (isSuper) {
-            card.addEventListener('click', () => {
-                $('sa-department-select').value = dept;
-                currentScope.department = dept;
-                switchView('transactions');
-                onScopeChanged();
-            });
-        }
+        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = dept; currentScope.department = dept; switchView('transactions'); onScopeChanged(); });
         deptGrid.appendChild(card);
     });
 
     const presGrid = $('org-pres-grid');
     presGrid.innerHTML = '';
     PRESBYTERIES.forEach(p => {
-        const isMine = !isSuper && p === currentUser.presbytery;
-        const count = isSuper ? usersDb.filter(u => u.presbytery === p).length : null;
+        const isMine = !superVisible && p === currentUser.presbytery;
+        const count = superVisible ? usersDb.filter(u => u.presbytery === p).length : null;
         const card = document.createElement('div');
         card.className = `pres-card${isMine ? ' mine' : ''}`;
         card.innerHTML = `
             <i class="fa-solid fa-location-dot"></i>
             <div class="pc-name">${p.replace('EPR Presbytery ', '')}</div>
-            ${isSuper ? `<div class="pc-count">${count} user${count === 1 ? '' : 's'}</div>` : (isMine ? `<div class="pc-count">Your presbytery</div>` : '')}
+            ${superVisible ? `<div class="pc-count">${count} user${count === 1 ? '' : 's'}</div>` : (isMine ? `<div class="pc-count">Your presbytery</div>` : '')}
         `;
-        if (isSuper) {
-            card.addEventListener('click', () => {
-                $('sa-presbytery-select').value = p;
-                currentScope.presbytery = p;
-                switchView('transactions');
-                onScopeChanged();
-            });
-        }
+        if (superVisible) card.addEventListener('click', () => { $('sa-presbytery-select').value = p; currentScope.presbytery = p; switchView('transactions'); onScopeChanged(); });
         presGrid.appendChild(card);
     });
 }
@@ -1113,8 +1123,7 @@ function renderSearchDropdown() {
             row.className = 'sr-item';
             row.innerHTML = `
                 <span>${escapeHtml(tx.desc)}<br><span class="sr-meta">${shortDeptName(tx.department)} · ${(tx.presbytery || '').replace('EPR Presbytery ', '')}</span></span>
-                <span style="font-weight:700;color:${tx.type === 'Expense' || tx.type === 'Liability' ? 'var(--danger)' : 'var(--success)'}">${formatRF(tx.amount)}</span>
-            `;
+                <span style="font-weight:700;color:${tx.type === 'Expense' || tx.type === 'Liability' ? 'var(--danger)' : 'var(--success)'}">${formatRF(tx.amount)}</span>`;
             row.addEventListener('click', () => { switchView('transactions'); dropdown.classList.add('hidden'); });
             dropdown.appendChild(row);
         });
@@ -1150,4 +1159,1023 @@ function exportReportToExcel() {
 const formatRF = (amount) => "RF " + Number(amount || 0).toLocaleString();
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function statusPill(status) {
+    return `<span class="status-pill status-${status}">${STATUS_LABELS[status] || status}</span>`;
+}
+
+/* =======================================================================
+   EXTENDED MODULES START HERE
+   ======================================================================= */
+
+// ---------------------------------------------------------------------
+// 23. EXT MODULE EVENT WIRING
+// ---------------------------------------------------------------------
+function setupExtModulesEventListeners() {
+    // Invoices
+    $('open-invoice-modal-btn').addEventListener('click', () => openInvoiceModal());
+    $('close-invoice-modal').addEventListener('click', () => $('invoice-modal').classList.add('hidden'));
+    $('invoice-modal').addEventListener('click', (e) => { if (e.target === $('invoice-modal')) $('invoice-modal').classList.add('hidden'); });
+    $('invoice-form').addEventListener('submit', onSubmitInvoiceForm);
+    $('invoices-table-body').addEventListener('click', onInvoicesTableClick);
+
+    // Bills
+    $('open-bill-modal-btn').addEventListener('click', () => openBillModal());
+    $('close-bill-modal').addEventListener('click', () => $('bill-modal').classList.add('hidden'));
+    $('bill-modal').addEventListener('click', (e) => { if (e.target === $('bill-modal')) $('bill-modal').classList.add('hidden'); });
+    $('bill-form').addEventListener('submit', onSubmitBillForm);
+    $('bills-table-body').addEventListener('click', onBillsTableClick);
+
+    // Cheques
+    $('open-cheque-modal-btn').addEventListener('click', () => openChequeModal());
+    $('close-cheque-modal').addEventListener('click', () => $('cheque-modal').classList.add('hidden'));
+    $('cheque-modal').addEventListener('click', (e) => { if (e.target === $('cheque-modal')) $('cheque-modal').classList.add('hidden'); });
+    $('cheque-form').addEventListener('submit', onSubmitChequeForm);
+    $('cheques-table-body').addEventListener('click', onChequesTableClick);
+
+    // Suppliers
+    $('open-supplier-modal-btn').addEventListener('click', () => openSupplierModal());
+    $('close-supplier-modal').addEventListener('click', () => $('supplier-modal').classList.add('hidden'));
+    $('supplier-modal').addEventListener('click', (e) => { if (e.target === $('supplier-modal')) $('supplier-modal').classList.add('hidden'); });
+    $('supplier-form').addEventListener('submit', onSubmitSupplierForm);
+    $('suppliers-table-body').addEventListener('click', onSuppliersTableClick);
+
+    // Customers
+    $('open-customer-modal-btn').addEventListener('click', () => openCustomerModal());
+    $('close-customer-modal').addEventListener('click', () => $('customer-modal').classList.add('hidden'));
+    $('customer-modal').addEventListener('click', (e) => { if (e.target === $('customer-modal')) $('customer-modal').classList.add('hidden'); });
+    $('customer-form').addEventListener('submit', onSubmitCustomerForm);
+    $('customers-table-body').addEventListener('click', onCustomersTableClick);
+
+    // Projects
+    $('open-project-modal-btn').addEventListener('click', () => openProjectModal());
+    $('close-project-modal').addEventListener('click', () => $('project-modal').classList.add('hidden'));
+    $('project-modal').addEventListener('click', (e) => { if (e.target === $('project-modal')) $('project-modal').classList.add('hidden'); });
+    $('project-form').addEventListener('submit', onSubmitProjectForm);
+    $('projects-table-body').addEventListener('click', onProjectsTableClick);
+    $('project-progress').addEventListener('input', (e) => { $('project-progress-val').textContent = `${e.target.value}%`; });
+
+    // Budget (superadmin only)
+    $('open-budget-modal-btn').addEventListener('click', () => openBudgetModal());
+    $('close-budget-modal').addEventListener('click', () => $('budget-modal').classList.add('hidden'));
+    $('budget-modal').addEventListener('click', (e) => { if (e.target === $('budget-modal')) $('budget-modal').classList.add('hidden'); });
+    $('budget-form').addEventListener('submit', onSubmitBudgetForm);
+    $('budget-table-body').addEventListener('click', onBudgetTableClick);
+
+    // Banks (superadmin only)
+    $('open-bank-modal-btn').addEventListener('click', () => openBankModal());
+    $('close-bank-modal').addEventListener('click', () => $('bank-modal').classList.add('hidden'));
+    $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) $('bank-modal').classList.add('hidden'); });
+    $('bank-form').addEventListener('submit', onSubmitBankForm);
+    $('banks-table-body').addEventListener('click', onBanksTableClick);
+}
+
+function guardSuperadminView(viewId, sectionLabel) {
+    if (!isSuper()) {
+        $(viewId).innerHTML = `<div class="module-empty"><i class="fa-solid fa-lock"></i>${sectionLabel} is available to Superadmins only.</div>`;
+        return false;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------
+// 24. INVOICES
+// ---------------------------------------------------------------------
+function subscribeInvoices() {
+    if (unsubInvoices) unsubInvoices();
+    unsubInvoices = onSnapshot(buildScopedQuery(COLLECTIONS.INVOICES), (snap) => {
+        invoicesDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        invoicesDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        renderInvoicesTable();
+        $('nav-invoices-count').textContent = invoicesDb.length;
+        renderPendingApprovals();
+    }, (err) => showToast('error', 'Invoices feed error: ' + err.message));
+}
+
+function openInvoiceModal(edit) {
+    setupScopedModalFields('invoice', true, edit);
+    fillSelect($('invoice-customer'), [], '', '-- Select customer --');
+    customersDb.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; $('invoice-customer').appendChild(o); });
+
+    if (edit) {
+        $('invoice-modal-title').textContent = 'Edit Invoice';
+        $('invoice-submit-btn').textContent = 'Update Invoice';
+        $('invoice-edit-id').value = edit.id;
+        $('invoice-number').value = edit.number;
+        $('invoice-customer').value = edit.customerId || '';
+        $('invoice-desc').value = edit.desc;
+        $('invoice-amount').value = edit.amount;
+        $('invoice-date').value = edit.date;
+        $('invoice-due').value = edit.due || '';
+    } else {
+        $('invoice-modal-title').textContent = 'Record Invoice';
+        $('invoice-submit-btn').textContent = 'Submit Invoice';
+        $('invoice-form').reset();
+        $('invoice-edit-id').value = '';
+        $('invoice-date').value = new Date().toISOString().split('T')[0];
+        setupScopedModalFields('invoice', true, null);
+    }
+    $('invoice-modal').classList.remove('hidden');
+}
+
+async function onSubmitInvoiceForm(e) {
+    e.preventDefault();
+    const editId = $('invoice-edit-id').value;
+    const customerId = $('invoice-customer').value;
+    const customer = customersDb.find(c => c.id === customerId);
+    const scope = scopedFieldsFromForm('invoice', true);
+
+    const payload = {
+        number: $('invoice-number').value.trim(),
+        customerId, customerName: customer ? customer.name : '',
+        desc: $('invoice-desc').value.trim(),
+        amount: parseFloat($('invoice-amount').value),
+        date: $('invoice-date').value || new Date().toISOString().split('T')[0],
+        due: $('invoice-due').value || '',
+        ...scope
+    };
+    if (!payload.number || !customerId || !payload.desc || isNaN(payload.amount) || payload.amount < 0) {
+        showToast('error', 'Fill in invoice number, customer, description and a valid amount.'); return;
+    }
+
+    const btn = $('invoice-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.INVOICES, editId), payload);
+            showToast('success', 'Invoice updated.');
+        } else {
+            await addDoc(collection(db, COLLECTIONS.INVOICES), { ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() });
+            showToast('success', 'Invoice submitted for Superadmin approval.');
+        }
+        $('invoice-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save invoice: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderInvoicesTable() {
+    const tbody = $('invoices-table-body');
+    if (invoicesDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="9">No invoices in this scope yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    invoicesDb.forEach(inv => {
+        const canEditRaw = (isSuper() || inv.createdBy === currentUser.email) && inv.status === 'pending_approval';
+        const canApprove = isSuper() && inv.status === 'pending_approval';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${inv.date}</td><td><strong>${escapeHtml(inv.number)}</strong></td><td>${escapeHtml(inv.customerName || '—')}</td>
+            <td class="wrap">${escapeHtml(inv.desc)}</td><td style="font-weight:bold;color:var(--success)">${formatRF(inv.amount)}</td>
+            <td>${shortDeptName(inv.department)}</td><td>${(inv.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td>${statusPill(inv.status)}</td>
+            <td><div class="row-actions-wrap">
+                ${canApprove ? `<button class="btn btn-approve" style="padding:6px 10px;font-size:.75rem;" data-approve="${inv.id}"><i class="fa-solid fa-check"></i> Approve</button>
+                <button class="btn btn-reject" style="padding:6px 10px;font-size:.75rem;" data-reject="${inv.id}"><i class="fa-solid fa-xmark"></i> Reject</button>` : ''}
+                <button class="icon-action-btn" data-edit="${inv.id}" title="Edit" ${canEditRaw ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${inv.id}" title="Delete" ${canEditRaw || isSuper() ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onInvoicesTableClick(e) {
+    const approveBtn = e.target.closest('[data-approve]');
+    const rejectBtn = e.target.closest('[data-reject]');
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (approveBtn) {
+        const id = approveBtn.dataset.approve;
+        updateDoc(doc(db, COLLECTIONS.INVOICES, id), { status: 'approved', approvedBy: currentUser.email, approvedAt: serverTimestamp() })
+            .then(() => showToast('success', 'Invoice approved and issued.')).catch(err => showToast('error', err.message));
+    } else if (rejectBtn) {
+        const id = rejectBtn.dataset.reject;
+        openConfirmModal('Reject this invoice? The submitter will need to resubmit if needed.', async () => {
+            try { await updateDoc(doc(db, COLLECTIONS.INVOICES, id), { status: 'rejected', approvedBy: currentUser.email, approvedAt: serverTimestamp() }); showToast('success', 'Invoice rejected.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    } else if (editBtn) {
+        const inv = invoicesDb.find(i => i.id === editBtn.dataset.edit);
+        if (inv) openInvoiceModal(inv);
+    } else if (delBtn) {
+        const inv = invoicesDb.find(i => i.id === delBtn.dataset.delete);
+        if (!inv) return;
+        openConfirmModal(`Delete invoice "${inv.number}"? This cannot be undone.`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.INVOICES, inv.id)); showToast('success', 'Invoice deleted.'); }
+            catch (err) { showToast('error', "Couldn't delete: " + err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 25. BILLS
+// ---------------------------------------------------------------------
+function subscribeBills() {
+    if (unsubBills) unsubBills();
+    unsubBills = onSnapshot(buildScopedQuery(COLLECTIONS.BILLS), (snap) => {
+        billsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        billsDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        renderBillsTable();
+        $('nav-bills-count').textContent = billsDb.length;
+        renderPendingApprovals();
+    }, (err) => showToast('error', 'Bills feed error: ' + err.message));
+}
+
+function openBillModal(edit) {
+    setupScopedModalFields('bill', true, edit);
+    fillSelect($('bill-supplier'), [], '', '-- Select supplier --');
+    suppliersDb.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; $('bill-supplier').appendChild(o); });
+
+    if (edit) {
+        $('bill-modal-title').textContent = 'Edit Bill';
+        $('bill-submit-btn').textContent = 'Update Bill';
+        $('bill-edit-id').value = edit.id;
+        $('bill-number').value = edit.number;
+        $('bill-supplier').value = edit.supplierId || '';
+        $('bill-desc').value = edit.desc;
+        $('bill-amount').value = edit.amount;
+        $('bill-date').value = edit.date;
+        $('bill-due').value = edit.due || '';
+    } else {
+        $('bill-modal-title').textContent = 'Record Bill';
+        $('bill-submit-btn').textContent = 'Submit Bill';
+        $('bill-form').reset();
+        $('bill-edit-id').value = '';
+        $('bill-date').value = new Date().toISOString().split('T')[0];
+        setupScopedModalFields('bill', true, null);
+    }
+    $('bill-modal').classList.remove('hidden');
+}
+
+async function onSubmitBillForm(e) {
+    e.preventDefault();
+    const editId = $('bill-edit-id').value;
+    const supplierId = $('bill-supplier').value;
+    const supplier = suppliersDb.find(s => s.id === supplierId);
+    const scope = scopedFieldsFromForm('bill', true);
+
+    const payload = {
+        number: $('bill-number').value.trim(),
+        supplierId, supplierName: supplier ? supplier.name : '',
+        desc: $('bill-desc').value.trim(),
+        amount: parseFloat($('bill-amount').value),
+        date: $('bill-date').value || new Date().toISOString().split('T')[0],
+        due: $('bill-due').value || '',
+        ...scope
+    };
+    if (!payload.number || !supplierId || !payload.desc || isNaN(payload.amount) || payload.amount < 0) {
+        showToast('error', 'Fill in bill number, supplier, description and a valid amount.'); return;
+    }
+
+    const btn = $('bill-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.BILLS, editId), payload);
+            showToast('success', 'Bill updated.');
+        } else {
+            await addDoc(collection(db, COLLECTIONS.BILLS), { ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() });
+            showToast('success', 'Bill submitted for Superadmin approval.');
+        }
+        $('bill-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save bill: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderBillsTable() {
+    const tbody = $('bills-table-body');
+    if (billsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="9">No bills in this scope yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    billsDb.forEach(bill => {
+        const canEditRaw = (isSuper() || bill.createdBy === currentUser.email) && bill.status === 'pending_approval';
+        const canApprove = isSuper() && bill.status === 'pending_approval';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${bill.date}</td><td><strong>${escapeHtml(bill.number)}</strong></td><td>${escapeHtml(bill.supplierName || '—')}</td>
+            <td class="wrap">${escapeHtml(bill.desc)}</td><td style="font-weight:bold;color:var(--danger)">${formatRF(bill.amount)}</td>
+            <td>${shortDeptName(bill.department)}</td><td>${(bill.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td>${statusPill(bill.status)}</td>
+            <td><div class="row-actions-wrap">
+                ${canApprove ? `<button class="btn btn-approve" style="padding:6px 10px;font-size:.75rem;" data-approve="${bill.id}"><i class="fa-solid fa-check"></i> Approve & Pay</button>
+                <button class="btn btn-reject" style="padding:6px 10px;font-size:.75rem;" data-reject="${bill.id}"><i class="fa-solid fa-xmark"></i> Reject</button>` : ''}
+                <button class="icon-action-btn" data-edit="${bill.id}" title="Edit" ${canEditRaw ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${bill.id}" title="Delete" ${canEditRaw || isSuper() ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onBillsTableClick(e) {
+    const approveBtn = e.target.closest('[data-approve]');
+    const rejectBtn = e.target.closest('[data-reject]');
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (approveBtn) {
+        updateDoc(doc(db, COLLECTIONS.BILLS, approveBtn.dataset.approve), { status: 'approved', approvedBy: currentUser.email, approvedAt: serverTimestamp() })
+            .then(() => showToast('success', 'Bill approved and marked paid.')).catch(err => showToast('error', err.message));
+    } else if (rejectBtn) {
+        const id = rejectBtn.dataset.reject;
+        openConfirmModal('Reject this bill?', async () => {
+            try { await updateDoc(doc(db, COLLECTIONS.BILLS, id), { status: 'rejected', approvedBy: currentUser.email, approvedAt: serverTimestamp() }); showToast('success', 'Bill rejected.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    } else if (editBtn) {
+        const bill = billsDb.find(b => b.id === editBtn.dataset.edit);
+        if (bill) openBillModal(bill);
+    } else if (delBtn) {
+        const bill = billsDb.find(b => b.id === delBtn.dataset.delete);
+        if (!bill) return;
+        openConfirmModal(`Delete bill "${bill.number}"? This cannot be undone.`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.BILLS, bill.id)); showToast('success', 'Bill deleted.'); }
+            catch (err) { showToast('error', "Couldn't delete: " + err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 26. CHEQUES
+// ---------------------------------------------------------------------
+function subscribeCheques() {
+    if (unsubCheques) unsubCheques();
+    unsubCheques = onSnapshot(buildScopedQuery(COLLECTIONS.CHEQUES), (snap) => {
+        chequesDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        chequesDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        renderChequesTable();
+        $('nav-cheques-count').textContent = chequesDb.length;
+        renderPendingApprovals();
+        if (document.getElementById('view-coa').classList.contains('active')) renderCoaCharts();
+    }, (err) => showToast('error', 'Cheques feed error: ' + err.message));
+}
+
+function openChequeModal(edit) {
+    setupScopedModalFields('cheque', true, edit);
+    fillSelect($('cheque-bank'), [], '', '-- Select bank --');
+    banksDb.forEach(b => { const o = document.createElement('option'); o.value = b.id; o.textContent = `${b.name} (${b.account})`; $('cheque-bank').appendChild(o); });
+
+    if (edit) {
+        $('cheque-modal-title').textContent = 'Edit Cheque';
+        $('cheque-submit-btn').textContent = 'Update Cheque';
+        $('cheque-edit-id').value = edit.id;
+        $('cheque-number').value = edit.number;
+        $('cheque-payee').value = edit.payee;
+        $('cheque-bank').value = edit.bankId || '';
+        $('cheque-amount').value = edit.amount;
+        $('cheque-date').value = edit.date;
+        $('cheque-memo').value = edit.memo || '';
+    } else {
+        $('cheque-modal-title').textContent = 'Prepare Cheque';
+        $('cheque-submit-btn').textContent = 'Submit Cheque';
+        $('cheque-form').reset();
+        $('cheque-edit-id').value = '';
+        $('cheque-date').value = new Date().toISOString().split('T')[0];
+        setupScopedModalFields('cheque', true, null);
+    }
+    $('cheque-modal').classList.remove('hidden');
+}
+
+async function onSubmitChequeForm(e) {
+    e.preventDefault();
+    const editId = $('cheque-edit-id').value;
+    const bankId = $('cheque-bank').value;
+    const bank = banksDb.find(b => b.id === bankId);
+    const scope = scopedFieldsFromForm('cheque', true);
+
+    const payload = {
+        number: $('cheque-number').value.trim(),
+        payee: $('cheque-payee').value.trim(),
+        bankId, bankName: bank ? bank.name : '',
+        amount: parseFloat($('cheque-amount').value),
+        date: $('cheque-date').value || new Date().toISOString().split('T')[0],
+        memo: $('cheque-memo').value.trim(),
+        ...scope
+    };
+    if (!payload.number || !payload.payee || !bankId || isNaN(payload.amount) || payload.amount < 0) {
+        showToast('error', 'Fill in cheque number, payee, bank and a valid amount.'); return;
+    }
+
+    const btn = $('cheque-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.CHEQUES, editId), payload);
+            showToast('success', 'Cheque updated.');
+        } else {
+            await addDoc(collection(db, COLLECTIONS.CHEQUES), { ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() });
+            showToast('success', 'Cheque submitted for approval.');
+        }
+        $('cheque-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save cheque: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderChequesTable() {
+    const tbody = $('cheques-table-body');
+    if (chequesDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="9">No cheques in this scope yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    chequesDb.forEach(chq => {
+        const canEditRaw = (isSuper() || chq.createdBy === currentUser.email) && chq.status === 'pending_approval';
+        const canApprove = isFinanceOrSuper() && chq.status === 'pending_approval';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${chq.date}</td><td><strong>${escapeHtml(chq.number)}</strong></td><td>${escapeHtml(chq.payee)}</td>
+            <td>${escapeHtml(chq.bankName || '—')}</td><td style="font-weight:bold;color:var(--danger)">${formatRF(chq.amount)}</td>
+            <td>${shortDeptName(chq.department)}</td><td>${(chq.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td>${statusPill(chq.status)}</td>
+            <td><div class="row-actions-wrap">
+                ${canApprove ? `<button class="btn btn-approve" style="padding:6px 10px;font-size:.75rem;" data-approve="${chq.id}"><i class="fa-solid fa-check"></i> Approve</button>
+                <button class="btn btn-reject" style="padding:6px 10px;font-size:.75rem;" data-reject="${chq.id}"><i class="fa-solid fa-xmark"></i> Reject</button>` : ''}
+                <button class="icon-action-btn" data-edit="${chq.id}" title="Edit" ${canEditRaw ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${chq.id}" title="Delete" ${canEditRaw || isSuper() ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onChequesTableClick(e) {
+    const approveBtn = e.target.closest('[data-approve]');
+    const rejectBtn = e.target.closest('[data-reject]');
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (approveBtn) {
+        updateDoc(doc(db, COLLECTIONS.CHEQUES, approveBtn.dataset.approve), { status: 'approved', approvedBy: currentUser.email, approvedAt: serverTimestamp() })
+            .then(() => showToast('success', 'Cheque approved.')).catch(err => showToast('error', err.message));
+    } else if (rejectBtn) {
+        const id = rejectBtn.dataset.reject;
+        openConfirmModal('Reject this cheque?', async () => {
+            try { await updateDoc(doc(db, COLLECTIONS.CHEQUES, id), { status: 'rejected', approvedBy: currentUser.email, approvedAt: serverTimestamp() }); showToast('success', 'Cheque rejected.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    } else if (editBtn) {
+        const chq = chequesDb.find(c => c.id === editBtn.dataset.edit);
+        if (chq) openChequeModal(chq);
+    } else if (delBtn) {
+        const chq = chequesDb.find(c => c.id === delBtn.dataset.delete);
+        if (!chq) return;
+        openConfirmModal(`Delete cheque "${chq.number}"? This cannot be undone.`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.CHEQUES, chq.id)); showToast('success', 'Cheque deleted.'); }
+            catch (err) { showToast('error', "Couldn't delete: " + err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 27. SUPPLIERS
+// ---------------------------------------------------------------------
+function subscribeSuppliers() {
+    if (unsubSuppliers) unsubSuppliers();
+    unsubSuppliers = onSnapshot(buildScopedQuery(COLLECTIONS.SUPPLIERS), (snap) => {
+        suppliersDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        suppliersDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        renderSuppliersTable();
+        $('nav-suppliers-count').textContent = suppliersDb.length;
+    }, (err) => showToast('error', 'Suppliers feed error: ' + err.message));
+}
+
+function openSupplierModal(edit) {
+    setupScopedModalFields('supplier', false, edit);
+    if (edit) {
+        $('supplier-modal-title').textContent = 'Edit Supplier';
+        $('supplier-submit-btn').textContent = 'Update Supplier';
+        $('supplier-edit-id').value = edit.id;
+        $('supplier-name').value = edit.name;
+        $('supplier-contact').value = edit.contact || '';
+        $('supplier-phone').value = edit.phone || '';
+        $('supplier-email').value = edit.email || '';
+        $('supplier-address').value = edit.address || '';
+    } else {
+        $('supplier-modal-title').textContent = 'Add Supplier';
+        $('supplier-submit-btn').textContent = 'Save Supplier';
+        $('supplier-form').reset();
+        $('supplier-edit-id').value = '';
+        setupScopedModalFields('supplier', false, null);
+    }
+    $('supplier-modal').classList.remove('hidden');
+}
+
+async function onSubmitSupplierForm(e) {
+    e.preventDefault();
+    const editId = $('supplier-edit-id').value;
+    const scope = scopedFieldsFromForm('supplier', false);
+    const payload = {
+        name: $('supplier-name').value.trim(), contact: $('supplier-contact').value.trim(),
+        phone: $('supplier-phone').value.trim(), email: $('supplier-email').value.trim(),
+        address: $('supplier-address').value.trim(),
+        department: scope.department, presbytery: scope.presbytery
+    };
+    if (!payload.name) { showToast('error', 'Supplier name is required.'); return; }
+    const btn = $('supplier-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) { await updateDoc(doc(db, COLLECTIONS.SUPPLIERS, editId), payload); showToast('success', 'Supplier updated.'); }
+        else { await addDoc(collection(db, COLLECTIONS.SUPPLIERS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Supplier added.'); }
+        $('supplier-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save supplier: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderSuppliersTable() {
+    const tbody = $('suppliers-table-body');
+    if (suppliersDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No suppliers in this scope yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    suppliersDb.forEach(s => {
+        const canEdit = isSuper() || currentUser.role === 'manager' || currentUser.role === 'finance';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${escapeHtml(s.name)}</strong></td><td>${escapeHtml(s.contact||'—')}</td><td>${escapeHtml(s.phone||'—')}</td>
+            <td>${escapeHtml(s.email||'—')}</td><td>${shortDeptName(s.department)}</td><td>${(s.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td><div class="row-actions">
+                <button class="icon-action-btn" data-edit="${s.id}" title="Edit" ${canEdit?'':'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${s.id}" title="Delete" ${canEdit?'':'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onSuppliersTableClick(e) {
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (editBtn) { const s = suppliersDb.find(x => x.id === editBtn.dataset.edit); if (s) openSupplierModal(s); }
+    else if (delBtn) {
+        const s = suppliersDb.find(x => x.id === delBtn.dataset.delete);
+        if (!s) return;
+        openConfirmModal(`Delete supplier "${s.name}"?`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.SUPPLIERS, s.id)); showToast('success', 'Supplier deleted.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 28. CUSTOMER HUB
+// ---------------------------------------------------------------------
+function subscribeCustomers() {
+    if (unsubCustomers) unsubCustomers();
+    unsubCustomers = onSnapshot(buildScopedQuery(COLLECTIONS.CUSTOMERS), (snap) => {
+        customersDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        customersDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        renderCustomersTable();
+        $('nav-customers-count').textContent = customersDb.length;
+    }, (err) => showToast('error', 'Customers feed error: ' + err.message));
+}
+
+function openCustomerModal(edit) {
+    setupScopedModalFields('customer', false, edit);
+    if (edit) {
+        $('customer-modal-title').textContent = 'Edit Customer';
+        $('customer-submit-btn').textContent = 'Update Customer';
+        $('customer-edit-id').value = edit.id;
+        $('customer-name').value = edit.name;
+        $('customer-contact').value = edit.contact || '';
+        $('customer-phone').value = edit.phone || '';
+        $('customer-email').value = edit.email || '';
+        $('customer-address').value = edit.address || '';
+    } else {
+        $('customer-modal-title').textContent = 'Add Customer';
+        $('customer-submit-btn').textContent = 'Save Customer';
+        $('customer-form').reset();
+        $('customer-edit-id').value = '';
+        setupScopedModalFields('customer', false, null);
+    }
+    $('customer-modal').classList.remove('hidden');
+}
+
+async function onSubmitCustomerForm(e) {
+    e.preventDefault();
+    const editId = $('customer-edit-id').value;
+    const scope = scopedFieldsFromForm('customer', false);
+    const payload = {
+        name: $('customer-name').value.trim(), contact: $('customer-contact').value.trim(),
+        phone: $('customer-phone').value.trim(), email: $('customer-email').value.trim(),
+        address: $('customer-address').value.trim(),
+        department: scope.department, presbytery: scope.presbytery
+    };
+    if (!payload.name) { showToast('error', 'Customer name is required.'); return; }
+    const btn = $('customer-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) { await updateDoc(doc(db, COLLECTIONS.CUSTOMERS, editId), payload); showToast('success', 'Customer updated.'); }
+        else { await addDoc(collection(db, COLLECTIONS.CUSTOMERS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Customer added.'); }
+        $('customer-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save customer: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderCustomersTable() {
+    const tbody = $('customers-table-body');
+    if (customersDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No customers in this scope yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    customersDb.forEach(c => {
+        const canEdit = isSuper() || currentUser.role === 'manager' || currentUser.role === 'finance';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${escapeHtml(c.name)}</strong></td><td>${escapeHtml(c.contact||'—')}</td><td>${escapeHtml(c.phone||'—')}</td>
+            <td>${escapeHtml(c.email||'—')}</td><td>${shortDeptName(c.department)}</td><td>${(c.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td><div class="row-actions">
+                <button class="icon-action-btn" data-edit="${c.id}" title="Edit" ${canEdit?'':'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${c.id}" title="Delete" ${canEdit?'':'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onCustomersTableClick(e) {
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (editBtn) { const c = customersDb.find(x => x.id === editBtn.dataset.edit); if (c) openCustomerModal(c); }
+    else if (delBtn) {
+        const c = customersDb.find(x => x.id === delBtn.dataset.delete);
+        if (!c) return;
+        openConfirmModal(`Delete customer "${c.name}"?`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.CUSTOMERS, c.id)); showToast('success', 'Customer deleted.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 29. PROJECTS
+// ---------------------------------------------------------------------
+function subscribeProjects() {
+    if (unsubProjects) unsubProjects();
+    unsubProjects = onSnapshot(buildScopedQuery(COLLECTIONS.PROJECTS), (snap) => {
+        projectsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        projectsDb.sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+        renderProjectsTable();
+        $('nav-projects-count').textContent = projectsDb.length;
+    }, (err) => showToast('error', 'Projects feed error: ' + err.message));
+}
+
+function openProjectModal(edit) {
+    setupScopedModalFields('project', true, edit);
+    if (edit) {
+        $('project-modal-title').textContent = 'Edit Project';
+        $('project-submit-btn').textContent = 'Update Project';
+        $('project-edit-id').value = edit.id;
+        $('project-name').value = edit.name;
+        $('project-desc').value = edit.desc || '';
+        $('project-start').value = edit.start || '';
+        $('project-end').value = edit.end || '';
+        $('project-budget').value = edit.budget || 0;
+        $('project-progress').value = edit.progress || 0;
+        $('project-progress-val').textContent = `${edit.progress || 0}%`;
+        $('project-status').value = edit.status || 'Not Started';
+    } else {
+        $('project-modal-title').textContent = 'Add Project';
+        $('project-submit-btn').textContent = 'Save Project';
+        $('project-form').reset();
+        $('project-edit-id').value = '';
+        $('project-progress-val').textContent = '0%';
+        setupScopedModalFields('project', true, null);
+    }
+    $('project-modal').classList.remove('hidden');
+}
+
+async function onSubmitProjectForm(e) {
+    e.preventDefault();
+    const editId = $('project-edit-id').value;
+    const scope = scopedFieldsFromForm('project', true);
+    const payload = {
+        name: $('project-name').value.trim(), desc: $('project-desc').value.trim(),
+        start: $('project-start').value || '', end: $('project-end').value || '',
+        budget: parseFloat($('project-budget').value) || 0,
+        progress: parseInt($('project-progress').value, 10) || 0,
+        status: $('project-status').value,
+        ...scope
+    };
+    if (!payload.name) { showToast('error', 'Project name is required.'); return; }
+    const btn = $('project-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) { await updateDoc(doc(db, COLLECTIONS.PROJECTS, editId), payload); showToast('success', 'Project updated.'); }
+        else { await addDoc(collection(db, COLLECTIONS.PROJECTS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Project created.'); }
+        $('project-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save project: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderProjectsTable() {
+    const tbody = $('projects-table-body');
+    if (projectsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="8">No projects in this scope yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    projectsDb.forEach(p => {
+        const canEdit = isSuper() || currentUser.role === 'manager' || currentUser.role === 'finance';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${escapeHtml(p.name)}</strong>${p.desc ? `<div class="ext-sub">${escapeHtml(p.desc)}</div>` : ''}</td>
+            <td>${shortDeptName(p.department)}<div class="ext-sub">${p.subsection||''}</div></td>
+            <td>${(p.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td>${p.start||'—'} → ${p.end||'—'}</td>
+            <td>${formatRF(p.budget)}</td>
+            <td style="min-width:120px;"><div class="progress-track"><div class="progress-fill" style="width:${p.progress||0}%"></div></div><span class="ext-sub">${p.progress||0}%</span></td>
+            <td><span class="badge">${escapeHtml(p.status||'Not Started')}</span></td>
+            <td><div class="row-actions">
+                <button class="icon-action-btn" data-edit="${p.id}" title="Edit" ${canEdit?'':'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${p.id}" title="Delete" ${canEdit?'':'disabled'}><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onProjectsTableClick(e) {
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (editBtn) { const p = projectsDb.find(x => x.id === editBtn.dataset.edit); if (p) openProjectModal(p); }
+    else if (delBtn) {
+        const p = projectsDb.find(x => x.id === delBtn.dataset.delete);
+        if (!p) return;
+        openConfirmModal(`Delete project "${p.name}"?`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.PROJECTS, p.id)); showToast('success', 'Project deleted.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 30. BUDGET MANAGEMENT (superadmin only)
+// ---------------------------------------------------------------------
+function subscribeBudgets() {
+    if (unsubBudgets) unsubBudgets();
+    unsubBudgets = onSnapshot(collection(db, COLLECTIONS.BUDGETS), (snap) => {
+        budgetsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        budgetsDb.sort((a, b) => (b.period || '').localeCompare(a.period || ''));
+        renderBudgetTable();
+    }, (err) => showToast('error', 'Budget feed error: ' + err.message));
+}
+
+function openBudgetModal(edit) {
+    if (!guardSuperadminAction()) return;
+    fillSelect($('budget-dept'), Object.keys(EPR_STRUCTURE));
+    fillSelect($('budget-pres'), PRESBYTERIES);
+    if (edit) {
+        $('budget-modal-title').textContent = 'Edit Budget Line';
+        $('budget-submit-btn').textContent = 'Update Budget Line';
+        $('budget-edit-id').value = edit.id;
+        $('budget-dept').value = edit.department;
+        $('budget-pres').value = edit.presbytery;
+        $('budget-category').value = edit.category;
+        $('budget-period').value = edit.period;
+        $('budget-amount').value = edit.amount;
+        $('budget-notes').value = edit.notes || '';
+    } else {
+        $('budget-modal-title').textContent = 'Add Budget Line';
+        $('budget-submit-btn').textContent = 'Save Budget Line';
+        $('budget-form').reset();
+        $('budget-edit-id').value = '';
+    }
+    $('budget-modal').classList.remove('hidden');
+}
+
+function guardSuperadminAction() {
+    if (!isSuper()) { showToast('error', 'Only a Superadmin can manage this.'); return false; }
+    return true;
+}
+
+async function onSubmitBudgetForm(e) {
+    e.preventDefault();
+    if (!guardSuperadminAction()) return;
+    const editId = $('budget-edit-id').value;
+    const payload = {
+        department: $('budget-dept').value, presbytery: $('budget-pres').value,
+        category: $('budget-category').value.trim(), period: $('budget-period').value.trim(),
+        amount: parseFloat($('budget-amount').value), notes: $('budget-notes').value.trim()
+    };
+    if (!payload.category || !payload.period || isNaN(payload.amount) || payload.amount < 0) {
+        showToast('error', 'Fill in category, period and a valid amount.'); return;
+    }
+    const btn = $('budget-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) { await updateDoc(doc(db, COLLECTIONS.BUDGETS, editId), payload); showToast('success', 'Budget line updated.'); }
+        else { await addDoc(collection(db, COLLECTIONS.BUDGETS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Budget line added.'); }
+        $('budget-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save budget line: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderBudgetTable() {
+    if (!guardSuperadminView('view-budget', 'Budget Management')) return;
+    const tbody = $('budget-table-body');
+    if (!tbody) return;
+    if (budgetsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No budget lines yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    budgetsDb.forEach(b => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${shortDeptName(b.department)}</td><td>${(b.presbytery||'').replace('EPR Presbytery ','')}</td>
+            <td>${escapeHtml(b.category)}</td><td>${escapeHtml(b.period)}</td><td>${formatRF(b.amount)}</td>
+            <td class="wrap">${escapeHtml(b.notes||'—')}</td>
+            <td><div class="row-actions">
+                <button class="icon-action-btn" data-edit="${b.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${b.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onBudgetTableClick(e) {
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (editBtn) { const b = budgetsDb.find(x => x.id === editBtn.dataset.edit); if (b) openBudgetModal(b); }
+    else if (delBtn) {
+        const b = budgetsDb.find(x => x.id === delBtn.dataset.delete);
+        if (!b) return;
+        openConfirmModal(`Delete budget line "${b.category} — ${b.period}"?`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.BUDGETS, b.id)); showToast('success', 'Budget line deleted.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 31. BANK MANAGEMENT (superadmin only to manage; all can read for cheques)
+// ---------------------------------------------------------------------
+function subscribeBanks() {
+    if (unsubBanks) unsubBanks();
+    unsubBanks = onSnapshot(collection(db, COLLECTIONS.BANKS), (snap) => {
+        banksDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        banksDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        renderBanksTable();
+        $('nav-banks-count').textContent = banksDb.length;
+        if (document.getElementById('view-coa').classList.contains('active')) { renderCoaBankGrid(); renderCoaCharts(); }
+    }, (err) => showToast('error', 'Banks feed error: ' + err.message));
+}
+
+function openBankModal(edit) {
+    if (!guardSuperadminAction()) return;
+    if (edit) {
+        $('bank-modal-title').textContent = 'Edit Bank';
+        $('bank-submit-btn').textContent = 'Update Bank';
+        $('bank-edit-id').value = edit.id;
+        $('bank-name').value = edit.name;
+        $('bank-branch').value = edit.branch || '';
+        $('bank-account').value = edit.account;
+        $('bank-currency').value = edit.currency || 'RWF';
+        $('bank-balance').value = edit.balance || 0;
+        $('bank-notes').value = edit.notes || '';
+    } else {
+        $('bank-modal-title').textContent = 'Add Bank';
+        $('bank-submit-btn').textContent = 'Save Bank';
+        $('bank-form').reset();
+        $('bank-edit-id').value = '';
+        $('bank-currency').value = 'RWF';
+    }
+    $('bank-modal').classList.remove('hidden');
+}
+
+async function onSubmitBankForm(e) {
+    e.preventDefault();
+    if (!guardSuperadminAction()) return;
+    const editId = $('bank-edit-id').value;
+    const payload = {
+        name: $('bank-name').value.trim(), branch: $('bank-branch').value.trim(),
+        account: $('bank-account').value.trim(), currency: $('bank-currency').value.trim() || 'RWF',
+        balance: parseFloat($('bank-balance').value) || 0, notes: $('bank-notes').value.trim()
+    };
+    if (!payload.name || !payload.account) { showToast('error', 'Bank name and account number are required.'); return; }
+    const btn = $('bank-submit-btn'); btn.disabled = true;
+    try {
+        if (editId) { await updateDoc(doc(db, COLLECTIONS.BANKS, editId), payload); showToast('success', 'Bank updated.'); }
+        else { await addDoc(collection(db, COLLECTIONS.BANKS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Bank added.'); }
+        $('bank-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save bank: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderBanksTable() {
+    if (!guardSuperadminView('view-banks', 'Bank Management')) return;
+    const tbody = $('banks-table-body');
+    if (!tbody) return;
+    if (banksDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="6">No banks added yet.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    banksDb.forEach(b => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${escapeHtml(b.name)}</strong></td><td>${escapeHtml(b.branch||'—')}</td>
+            <td>${escapeHtml(b.account)}</td><td>${escapeHtml(b.currency||'RWF')}</td><td>${formatRF(b.balance)}</td>
+            <td><div class="row-actions">
+                <button class="icon-action-btn" data-edit="${b.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${b.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onBanksTableClick(e) {
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (editBtn) { const b = banksDb.find(x => x.id === editBtn.dataset.edit); if (b) openBankModal(b); }
+    else if (delBtn) {
+        const b = banksDb.find(x => x.id === delBtn.dataset.delete);
+        if (!b) return;
+        openConfirmModal(`Delete bank "${b.name}"? Cheques already linked to it will keep the old bank name on record.`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.BANKS, b.id)); showToast('success', 'Bank deleted.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 32. CHART OF ACCOUNTS (superadmin only)
+// ---------------------------------------------------------------------
+function renderCoaBankGrid() {
+    if (!guardSuperadminView('view-coa', 'Chart of Accounts')) return;
+    const grid = $('coa-bank-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    if (banksDb.length === 0) {
+        $('coa-empty').classList.remove('hidden');
+        $('coa-charts').classList.add('hidden');
+        return;
+    }
+    $('coa-empty').classList.add('hidden');
+
+    banksDb.forEach(b => {
+        const chequeCount = chequesDb.filter(c => c.bankId === b.id).length;
+        const card = document.createElement('div');
+        card.className = `ext-card bank-card${coaSelectedBankId === b.id ? ' selected' : ''}`;
+        card.innerHTML = `
+            <h4><i class="fa-solid fa-building-columns"></i> ${escapeHtml(b.name)}</h4>
+            <div class="ext-sub">${escapeHtml(b.branch||'')} · ${escapeHtml(b.account)}</div>
+            <div class="ext-row"><span>Opening balance</span><strong>${formatRF(b.balance)}</strong></div>
+            <div class="ext-row"><span>Cheques recorded</span><strong>${chequeCount}</strong></div>
+        `;
+        card.addEventListener('click', () => { coaSelectedBankId = b.id; renderCoaBankGrid(); renderCoaCharts(); });
+        grid.appendChild(card);
+    });
+
+    if (!coaSelectedBankId && banksDb.length) coaSelectedBankId = banksDb[0].id;
+}
+
+function renderCoaCharts() {
+    if (!isSuper()) return;
+    if (!banksDb.length) { $('coa-charts').classList.add('hidden'); return; }
+    $('coa-charts').classList.remove('hidden');
+
+    const bank = banksDb.find(b => b.id === coaSelectedBankId) || banksDb[0];
+    $('coa-selected-bank-label').textContent = bank ? `Cheque activity — ${bank.name}` : 'Cheque activity';
+
+    // Build last 6 months labels
+    const months = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleString('default', { month: 'short', year: '2-digit' }) });
+    }
+    const bankCheques = bank ? chequesDb.filter(c => c.bankId === bank.id) : [];
+    const monthlyTotals = months.map(m => bankCheques.filter(c => (c.date || '').startsWith(m.key)).reduce((sum, c) => sum + (c.amount || 0), 0));
+
+    const bankCtx = $('coa-bank-chart');
+    if (bankCtx) {
+        if (coaBankChart) coaBankChart.destroy();
+        coaBankChart = new Chart(bankCtx, {
+            type: 'bar',
+            data: { labels: months.map(m => m.label), datasets: [{ label: 'Cheque amount (RF)', data: monthlyTotals, backgroundColor: '#1c3a5e', borderRadius: 6 }] },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
+    const incomeByDept = depts.map(d => transactionsDb.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
+    const expenseByDept = depts.map(d => transactionsDb.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
+
+    const deptCtx = $('coa-dept-chart');
+    if (deptCtx) {
+        if (coaDeptChart) coaDeptChart.destroy();
+        coaDeptChart = new Chart(deptCtx, {
+            type: 'bar',
+            data: {
+                labels: depts.map(shortDeptName),
+                datasets: [
+                    { label: 'Income', data: incomeByDept, backgroundColor: '#1a7f4b', borderRadius: 6 },
+                    { label: 'Expense', data: expenseByDept, backgroundColor: '#c0392b', borderRadius: 6 }
+                ]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// 33. PENDING APPROVALS WIDGET (Overview)
+// ---------------------------------------------------------------------
+function renderPendingApprovals() {
+    if (!currentUser) return;
+    const wrap = $('pending-approvals-wrap');
+    const grid = $('pending-approvals-grid');
+    const items = [];
+
+    if (isSuper()) {
+        invoicesDb.filter(i => i.status === 'pending_approval').forEach(i => items.push({ type: 'Invoice', label: i.number, sub: i.customerName, amount: i.amount, id: i.id, kind: 'invoice' }));
+        billsDb.filter(b => b.status === 'pending_approval').forEach(b => items.push({ type: 'Bill', label: b.number, sub: b.supplierName, amount: b.amount, id: b.id, kind: 'bill' }));
+    }
+    if (isFinanceOrSuper()) {
+        chequesDb.filter(c => c.status === 'pending_approval').forEach(c => items.push({ type: 'Cheque', label: c.number, sub: c.payee, amount: c.amount, id: c.id, kind: 'cheque' }));
+    }
+
+    if (items.length === 0) { wrap.classList.add('hidden'); grid.innerHTML = ''; return; }
+    wrap.classList.remove('hidden');
+    grid.innerHTML = '';
+    items.slice(0, 8).forEach(it => {
+        const card = document.createElement('div');
+        card.className = 'ext-card';
+        card.innerHTML = `
+            <h4><i class="fa-solid fa-clock"></i> ${it.type} ${escapeHtml(it.label)}</h4>
+            <div class="ext-sub">${escapeHtml(it.sub || '')}</div>
+            <div class="ext-row"><span>Amount</span><strong>${formatRF(it.amount)}</strong></div>
+        `;
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => switchView(it.kind === 'invoice' ? 'invoices' : it.kind === 'bill' ? 'bills' : 'cheques'));
+        grid.appendChild(card);
+    });
 }
