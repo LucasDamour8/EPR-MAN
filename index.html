@@ -10,8 +10,44 @@
 </head>
 <body>
 
+    <!-- ============ Boot / connection status ============ -->
+    <div id="boot-screen" class="boot-screen">
+        <div class="boot-spinner"></div>
+        <p>Connecting to EPR database…</p>
+    </div>
+
+    <!-- ============ First-run Setup Screen (shown only when Firestore has no users yet) ============ -->
+    <div id="setup-container" class="auth-screen hidden">
+        <div class="auth-card">
+            <div class="brand-header">
+                <div class="logo">EPR</div>
+                <h2>Welcome — first-time setup</h2>
+                <p>No accounts exist yet. Create the central Superadmin account to get started. This account will manage every presbytery and department.</p>
+            </div>
+            <form id="setup-form" novalidate>
+                <div class="form-group">
+                    <label>Full Name <span class="req">*</span></label>
+                    <input type="text" id="setup-name" required placeholder="e.g. Central Superadmin">
+                </div>
+                <div class="form-group">
+                    <label>Email Address <span class="req">*</span></label>
+                    <input type="email" id="setup-email" required placeholder="admin@epr.org" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Password <span class="req">*</span></label>
+                    <div class="pw-input-wrap">
+                        <input type="password" id="setup-password" required minlength="6" placeholder="At least 6 characters" autocomplete="new-password">
+                        <button type="button" class="pw-toggle-btn" data-toggle-for="setup-password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block" id="setup-submit-btn">Create Superadmin &amp; Continue</button>
+            </form>
+            <p id="setup-error" class="error-msg"></p>
+        </div>
+    </div>
+
     <!-- ============ Authentication Screen ============ -->
-    <div id="auth-container" class="auth-screen">
+    <div id="auth-container" class="auth-screen hidden">
         <div class="auth-card">
             <div class="brand-header">
                 <div class="logo">EPR</div>
@@ -21,7 +57,7 @@
             <form id="login-form" novalidate>
                 <div class="form-group">
                     <label>Email Address</label>
-                    <input type="email" id="login-email" required placeholder="admin@epr.org" autocomplete="username">
+                    <input type="email" id="login-email" required placeholder="you@epr.org" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label>Password</label>
@@ -30,16 +66,10 @@
                         <button type="button" class="pw-toggle-btn" data-toggle-for="login-password"><i class="fa-solid fa-eye"></i></button>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                <button type="submit" class="btn btn-primary btn-block" id="login-submit-btn">Sign In</button>
             </form>
             <p id="auth-error" class="error-msg"></p>
-
-            <div class="demo-creds">
-                <strong>Demo accounts</strong> (click to autofill):<br>
-                <button type="button" class="demo-fill" data-email="admin@epr.org" data-pass="admin">Superadmin — admin@epr.org / admin</button><br>
-                <button type="button" class="demo-fill" data-email="growth@epr.org" data-pass="123">Finance (Church Growth · Kigali) — growth@epr.org / 123</button><br>
-                <button type="button" class="demo-fill" data-email="health@epr.org" data-pass="123">Manager (Health · Gisenyi) — health@epr.org / 123</button>
-            </div>
+            <p class="auth-footnote">Don't have an account? Contact your EPR Superadmin to be added.</p>
         </div>
     </div>
 
@@ -69,13 +99,27 @@
                 </div>
             </nav>
 
-            <div class="sidebar-section-title" id="dept-filter-title"><i class="fa-solid fa-building"></i> Departments</div>
-            <div class="sidebar-menu sub-menu" id="dept-sidebar-menu"></div>
+            <!-- Superadmin only: live quick filters -->
+            <div id="admin-filter-section">
+                <div class="sidebar-section-title"><i class="fa-solid fa-building"></i> Departments</div>
+                <div class="sidebar-menu sub-menu" id="dept-sidebar-menu"></div>
 
-            <div class="sidebar-section-title" id="pres-filter-title"><i class="fa-solid fa-map-location-dot"></i> Presbyteries</div>
-            <div class="sidebar-menu sub-menu" id="pres-sidebar-menu"></div>
+                <div class="sidebar-section-title"><i class="fa-solid fa-map-location-dot"></i> Presbyteries</div>
+                <div class="sidebar-menu sub-menu" id="pres-sidebar-menu"></div>
+            </div>
 
-            <div class="sidebar-footer">EPR System &copy; 2026 &middot; v2.0</div>
+            <!-- Non-superadmin: read-only reminder of their own scope -->
+            <div id="my-assignment-card" class="my-assignment-card hidden">
+                <div class="sidebar-section-title"><i class="fa-solid fa-lock"></i> Your Access</div>
+                <div class="assignment-box">
+                    <div class="ab-row"><i class="fa-solid fa-building"></i><span id="ab-department">—</span></div>
+                    <div class="ab-row"><i class="fa-solid fa-location-dot"></i><span id="ab-presbytery">—</span></div>
+                    <div class="ab-row"><i class="fa-solid fa-diagram-project"></i><span id="ab-subsection">—</span></div>
+                    <p class="ab-note">You only see data recorded under this department and presbytery. Contact your Superadmin to change this assignment.</p>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">EPR System &copy; 2026 &middot; Live data via Firestore</div>
         </aside>
 
         <!-- Main Content Area -->
@@ -95,6 +139,8 @@
                 </div>
 
                 <div class="topbar-actions">
+                    <span id="sync-indicator" class="sync-indicator" title="Live sync status"><i class="fa-solid fa-satellite-dish"></i></span>
+
                     <button class="icon-btn" id="notif-btn" title="Notifications">
                         <i class="fa-solid fa-bell"></i>
                         <span class="notif-dot hidden" id="notif-dot"></span>
@@ -134,20 +180,25 @@
                     <div class="scope-fields">
                         <div class="scope-field">
                             <label>Filter Presbytery / Location</label>
-                            <select id="sa-presbytery-select">
-                                <option value="ALL">-- All Presbyteries --</option>
-                            </select>
+                            <div class="select-wrap">
+                                <select id="sa-presbytery-select">
+                                    <option value="ALL">-- All Presbyteries --</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="scope-field">
                             <label>Filter Main Department</label>
-                            <select id="sa-department-select">
-                                <option value="ALL">-- All Departments --</option>
-                            </select>
+                            <div class="select-wrap">
+                                <select id="sa-department-select">
+                                    <option value="ALL">-- All Departments --</option>
+                                </select>
+                            </div>
                         </div>
                         <div style="display:flex; align-items:flex-end;">
                             <button type="button" class="btn btn-outline scope-reset-btn" id="scope-reset-btn"><i class="fa-solid fa-rotate-left"></i> Reset scope</button>
                         </div>
                     </div>
+                    <div class="active-scope-chips" id="active-scope-chips"></div>
                 </div>
 
                 <!-- ============ View: Overview ============ -->
@@ -205,8 +256,8 @@
                         </div>
                     </div>
 
-                    <div class="dept-breakdown" id="dept-breakdown-wrap">
-                        <h3><i class="fa-solid fa-layer-group"></i> Breakdown by Department <span style="font-weight:400;color:var(--text-muted);font-size:.78rem;">(click a card to jump into Transactions filtered to it)</span></h3>
+                    <div class="dept-breakdown hidden" id="dept-breakdown-wrap">
+                        <h3><i class="fa-solid fa-layer-group"></i> Breakdown by Department <span class="muted-sm">(click a card to jump into Transactions filtered to it)</span></h3>
                         <div class="dept-grid" id="dept-breakdown-grid"></div>
                     </div>
                 </section>
@@ -216,24 +267,28 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Transactions Log</h2>
-                            <p>Isolated by role permissions and scope.</p>
+                            <p id="tx-scope-note">Isolated by role permissions and scope.</p>
                         </div>
                         <button class="btn btn-primary" id="open-tx-modal-btn"><i class="fa-solid fa-plus"></i> New Transaction</button>
                     </div>
 
                     <div class="filter-toolbar">
-                        <span class="ft-label"><i class="fa-solid fa-filter"></i> Filters:</span>
-                        <select id="tx-filter-type">
-                            <option value="ALL">All Types</option>
-                            <option value="Income">Income</option>
-                            <option value="Expense">Expense</option>
-                            <option value="Asset">Asset</option>
-                            <option value="Liability">Liability</option>
-                        </select>
+                        <span class="ft-label"><i class="fa-solid fa-filter"></i> Filters</span>
+                        <div class="select-wrap">
+                            <select id="tx-filter-type">
+                                <option value="ALL">All Types</option>
+                                <option value="Income">Income</option>
+                                <option value="Expense">Expense</option>
+                                <option value="Asset">Asset</option>
+                                <option value="Liability">Liability</option>
+                            </select>
+                        </div>
                         <input type="date" id="tx-filter-from" title="From date">
+                        <span class="ft-dash">–</span>
                         <input type="date" id="tx-filter-to" title="To date">
                         <div class="ft-spacer"></div>
-                        <button class="ft-reset" id="tx-filter-reset">Clear filters</button>
+                        <span class="ft-count" id="ft-result-count"></span>
+                        <button class="ft-reset" id="tx-filter-reset"><i class="fa-solid fa-xmark"></i> Clear filters</button>
                     </div>
 
                     <div class="table-wrap">
@@ -250,7 +305,9 @@
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody id="tx-table-body"></tbody>
+                            <tbody id="tx-table-body">
+                                <tr class="table-empty-row"><td colspan="8">Loading transactions…</td></tr>
+                            </tbody>
                         </table>
                     </div>
                     <div class="table-footer" id="tx-table-footer"></div>
@@ -314,12 +371,12 @@
                     </div>
                 </section>
 
-                <!-- ============ View: User Management ============ -->
+                <!-- ============ View: User Management (superadmin only) ============ -->
                 <section id="view-users" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
                             <h2>User &amp; Privilege Management</h2>
-                            <p>Create accounts and restrict them to a presbytery location and department scope.</p>
+                            <p>Create staff accounts and assign each one to exactly one presbytery location and one department.</p>
                         </div>
                     </div>
 
@@ -339,32 +396,34 @@
                                 <div class="form-group">
                                     <label>Set Password <span class="req">*</span></label>
                                     <div class="pw-input-wrap">
-                                        <input type="password" id="user-password" required placeholder="Minimum 3 characters">
+                                        <input type="password" id="user-password" required placeholder="Minimum 6 characters">
                                         <button type="button" class="pw-toggle-btn" data-toggle-for="user-password"><i class="fa-solid fa-eye"></i></button>
                                     </div>
-                                    <div class="field-hint">The user will sign in with this email &amp; password.</div>
+                                    <div class="field-hint">The user signs in with this email &amp; password.</div>
                                 </div>
                                 <div class="form-group">
                                     <label>Assign Role <span class="req">*</span></label>
-                                    <select id="user-role" required>
-                                        <option value="finance">Finance User</option>
-                                        <option value="manager">Department Manager</option>
-                                        <option value="superadmin">Superadmin (EPR Central)</option>
-                                    </select>
-                                    <div class="field-hint">Superadmins can view and manage every presbytery and department.</div>
+                                    <div class="select-wrap">
+                                        <select id="user-role" required>
+                                            <option value="finance">Finance User (Staff)</option>
+                                            <option value="manager">Department Manager (Staff)</option>
+                                            <option value="superadmin">Superadmin (EPR Central)</option>
+                                        </select>
+                                    </div>
+                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Staff are locked to one assignment below.</div>
                                 </div>
                                 <div id="user-scope-fields">
                                     <div class="form-group">
                                         <label>Assign Presbytery Location <span class="req">*</span></label>
-                                        <select id="user-pres" required></select>
+                                        <div class="select-wrap"><select id="user-pres" required></select></div>
                                     </div>
                                     <div class="form-group">
                                         <label>Assign Main Department <span class="req">*</span></label>
-                                        <select id="user-dept" required></select>
+                                        <div class="select-wrap"><select id="user-dept" required></select></div>
                                     </div>
                                     <div class="form-group">
                                         <label>Assign Sub-Section / Project <span class="req">*</span></label>
-                                        <select id="user-subsection" required></select>
+                                        <div class="select-wrap"><select id="user-subsection" required></select></div>
                                     </div>
                                 </div>
                                 <button type="submit" class="btn btn-primary btn-block" id="user-submit-btn">Create &amp; Assign User</button>
@@ -373,7 +432,17 @@
                         </div>
 
                         <div class="table-card">
-                            <h3>Configured System Users</h3>
+                            <div class="flex-between" style="margin-bottom:1rem;">
+                                <h3 style="margin-bottom:0;">Configured System Users</h3>
+                                <div class="select-wrap">
+                                    <select id="user-list-role-filter">
+                                        <option value="ALL">All roles</option>
+                                        <option value="superadmin">Superadmin</option>
+                                        <option value="manager">Manager</option>
+                                        <option value="finance">Finance</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="table-wrap">
                                 <table class="data-table">
                                     <thead>
@@ -386,7 +455,9 @@
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="users-table-body"></tbody>
+                                    <tbody id="users-table-body">
+                                        <tr class="table-empty-row"><td colspan="6">Loading users…</td></tr>
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
@@ -409,12 +480,14 @@
                     <input type="hidden" id="tx-edit-id" value="">
                     <div class="form-group">
                         <label>Transaction Type <span class="req">*</span></label>
-                        <select id="tx-type" required>
-                            <option value="Income">Income / Sales</option>
-                            <option value="Expense">Expense / Payment</option>
-                            <option value="Asset">Asset Entry</option>
-                            <option value="Liability">Liability Entry</option>
-                        </select>
+                        <div class="select-wrap">
+                            <select id="tx-type" required>
+                                <option value="Income">Income / Sales</option>
+                                <option value="Expense">Expense / Payment</option>
+                                <option value="Asset">Asset Entry</option>
+                                <option value="Liability">Liability Entry</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Description <span class="req">*</span></label>
@@ -430,15 +503,15 @@
                     </div>
                     <div class="form-group" id="tx-dept-group">
                         <label>Department</label>
-                        <select id="tx-dept"></select>
+                        <div class="select-wrap"><select id="tx-dept"></select></div>
                     </div>
                     <div class="form-group" id="tx-subsection-group">
                         <label>Sub-Section / Project</label>
-                        <select id="tx-subsection"></select>
+                        <div class="select-wrap"><select id="tx-subsection"></select></div>
                     </div>
                     <div class="form-group" id="tx-pres-group">
                         <label>Presbytery Location</label>
-                        <select id="tx-pres"></select>
+                        <div class="select-wrap"><select id="tx-pres"></select></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -467,6 +540,6 @@
 
     <div id="toast-container"></div>
 
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
