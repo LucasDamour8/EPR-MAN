@@ -28,6 +28,13 @@ body {
     display: none !important;
 }
 
+.error-msg {
+    color: var(--danger);
+    font-size: 0.85rem;
+    margin-top: 10px;
+    text-align: center;
+}
+
 /* Auth Page */
 .auth-screen {
     display: flex;
