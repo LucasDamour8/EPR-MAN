@@ -1,30 +1,20 @@
 /* ======================================================================
-   EPR FINANCIAL & OPERATIONS SYSTEM — Firestore-backed
+   SAS — STANDARD ACCOUNTING SOFTWARE SYSTEM (Firestore-backed)
    ----------------------------------------------------------------------
-   Core auth/transactions/users logic is unchanged from the previous
-   version. This file adds: Invoices, Bills, Cheques, Suppliers,
-   Customer Hub, Projects, Budget Management, Bank Management and
-   Chart of Accounts — each scoped to the signed-in user's department
-   + presbytery (Superadmin sees everything, filterable by the same
-   scope selector used elsewhere in the app).
+   Same functional core as before (auth gate, transactions, invoices,
+   bills, cheques, suppliers, customers, projects, budgets, banks,
+   user admin, approval workflow) — rebranded to SAS and re-wired for
+   the QuickBooks-style dashboard shell (icon rail + all-apps panel +
+   greeting header + pill quick-nav + "Business at a glance" cards).
 
-   APPROVAL WORKFLOW:
-   - Invoices & Bills: any role can submit; only Superadmin can approve
-     or reject. Approved/rejected records are locked.
+   APPROVAL WORKFLOW (unchanged):
+   - Invoices & Bills: any role can submit; only Superadmin approves
+     or rejects. Approved/rejected records are locked.
    - Cheques: any role can submit; Finance users or Superadmin approve
      or reject.
-   - Suppliers / Customers / Projects: no approval step, standard
-     scoped CRUD.
-   - Budget Management, Bank Management, Chart of Accounts: visible
-     and usable by Superadmin only.
-
-   FIX (this version): scopedFieldsFromForm() previously passed
-   currentUser.subsection straight through with no fallback, which
-   crashed addDoc()/updateDoc() with "Unsupported field value: undefined"
-   whenever a user profile was missing that field. It now guarantees a
-   string on every field, and every ext-module write additionally runs
-   through sanitizePayload() as a safety net so this class of bug can't
-   crash a save again.
+   - Suppliers / Customers / Projects: standard scoped CRUD.
+   - Budget Management, Bank Management, Chart of Accounts: Superadmin
+     only.
 ====================================================================== */
 
 import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
@@ -43,7 +33,8 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 // ---------------------------------------------------------------------
-// 1. FIXED ORGANIZATION STRUCTURE
+// 1. ORGANIZATION STRUCTURE (edit these to match your own business —
+//    the rest of the app is fully data-driven off these two lists)
 // ---------------------------------------------------------------------
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
@@ -60,6 +51,8 @@ const DEPT_ICONS = {
     "Department of Education": "fa-graduation-cap",
     "Department of Health": "fa-notes-medical"
 };
+
+const DEPT_CHART_COLORS = ["#2ca01c", "#ff8a3d", "#00a99d", "#6c4bd6", "#3b82f6", "#d0021b"];
 
 const PRESBYTERIES = [
     "EPR Presbytery Zinga", "EPR Presbytery Kigali", "EPR Presbytery Remera",
@@ -96,6 +89,7 @@ let activeOrgTab = "departments";
 let coaSelectedBankId = null;
 let coaBankChart = null;
 let coaDeptChart = null;
+let glanceExpenseChart = null;
 
 let unsubTx = null, unsubUsers = null, unsubOwnProfile = null;
 let unsubInvoices = null, unsubBills = null, unsubCheques = null;
@@ -229,8 +223,33 @@ function setupEventListeners() {
         $('notif-dot').classList.add('hidden');
         showToast('info', "You're all caught up — no new notifications.");
     });
+    $('feedback-btn').addEventListener('click', () => showToast('info', 'Feedback noted — thanks for helping improve SAS.'));
+    $('help-btn').addEventListener('click', () => showToast('info', 'Need a hand? Contact your Superadmin or SAS support.'));
+    $('settings-btn').addEventListener('click', () => { switchView(isSuper() ? 'users' : 'overview'); });
 
-    qsa('.nav-item[data-view]').forEach(item => item.addEventListener('click', () => switchView(item.getAttribute('data-view'))));
+    // Every element that switches a view: rail nav items, pill quick-nav, all-apps grid
+    qsa('.nav-item[data-view], .pill-nav-btn[data-view], .apps-grid-item[data-view]').forEach(item => {
+        item.addEventListener('click', () => { switchView(item.getAttribute('data-view')); closeAppsPanel(); toggleSidebar(false); });
+    });
+
+    // Icon rail extra actions
+    $('rail-apps-btn').addEventListener('click', openAppsPanel);
+    $('apps-panel-close').addEventListener('click', closeAppsPanel);
+    $('rail-bookmarks-btn').addEventListener('click', () => showToast('info', 'Bookmarks are coming soon — pin your favourite reports here.'));
+    $('rail-customise-btn').addEventListener('click', () => { e_toggleProfile(); });
+    $('rail-create-btn').addEventListener('click', () => switchView('transactions'));
+    $('customise-link-btn').addEventListener('click', () => { e_toggleProfile(); });
+    $('privacy-link-btn').addEventListener('click', () => showToast('info', 'Only people with matching department/presbytery access can see this scope\'s records.'));
+
+    // Quick create-actions row on the dashboard
+    $('qa-create-invoice').addEventListener('click', () => { switchView('invoices'); openInvoiceModal(); });
+    $('qa-record-expense').addEventListener('click', () => { switchView('transactions'); openTxModal(); $('tx-type').value = 'Expense'; });
+    $('qa-bank-deposit').addEventListener('click', () => { switchView('transactions'); openTxModal(); $('tx-type').value = 'Income'; });
+    $('qa-create-cheque').addEventListener('click', () => { switchView('cheques'); openChequeModal(); });
+    $('qa-show-all').addEventListener('click', openAppsPanel);
+    $('glance-banks-goto').addEventListener('click', () => { if (isSuper()) switchView('banks'); else showToast('info', 'Bank Management is available to Superadmins only.'); });
+
+    function e_toggleProfile() { $('profile-dropdown').classList.toggle('hidden'); }
 
     $('sa-presbytery-select').addEventListener('change', (e) => { currentScope.presbytery = e.target.value; onScopeChanged(); });
     $('sa-department-select').addEventListener('change', (e) => { currentScope.department = e.target.value; onScopeChanged(); });
@@ -274,9 +293,9 @@ function setupEventListeners() {
     });
 
     $('user-role').addEventListener('change', () => {
-        const isSuper = $('user-role').value === 'superadmin';
-        $('user-scope-fields').classList.toggle('hidden', isSuper);
-        qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuper);
+        const isSuperRole = $('user-role').value === 'superadmin';
+        $('user-scope-fields').classList.toggle('hidden', isSuperRole);
+        qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole);
     });
     $('user-dept').addEventListener('change', () => populateSubsections('user-dept', 'user-subsection'));
 
@@ -308,6 +327,7 @@ function setupEventListeners() {
         if (e.key === 'Escape') {
             closeTxModal(); closeConfirmModal();
             closeAllExtModals();
+            closeAppsPanel();
             $('search-results-dropdown').classList.add('hidden');
             $('profile-dropdown').classList.add('hidden');
         }
@@ -321,6 +341,9 @@ function toggleSidebar(open) {
     $('sidebar-overlay').classList.toggle('show', open);
 }
 
+function openAppsPanel() { $('apps-panel').classList.add('open'); $('sidebar-overlay').classList.add('show'); }
+function closeAppsPanel() { $('apps-panel').classList.remove('open'); if (!$('sidebar').classList.contains('open')) $('sidebar-overlay').classList.remove('show'); }
+
 function onSidebarDeptFilter(e) {
     e.preventDefault();
     if (currentUser.role !== 'superadmin') return;
@@ -329,7 +352,7 @@ function onSidebarDeptFilter(e) {
     currentScope.department = dept;
     switchView('transactions');
     onScopeChanged();
-    toggleSidebar(false);
+    closeAppsPanel();
 }
 
 function onSidebarPresFilter(e) {
@@ -340,7 +363,7 @@ function onSidebarPresFilter(e) {
     currentScope.presbytery = pres;
     switchView('transactions');
     onScopeChanged();
-    toggleSidebar(false);
+    closeAppsPanel();
 }
 
 function highlightSidebarFilters() {
@@ -367,6 +390,7 @@ function makeChip(label, onRemove) {
 // ---------------------------------------------------------------------
 function switchView(target) {
     qsa('.nav-item[data-view]').forEach(n => n.classList.toggle('active', n.getAttribute('data-view') === target));
+    qsa('.pill-nav-btn[data-view]').forEach(n => n.classList.toggle('active', n.getAttribute('data-view') === target));
     qsa('.view-panel').forEach(panel => panel.classList.remove('active'));
     const panel = $(`view-${target}`);
     if (panel) panel.classList.add('active');
@@ -470,6 +494,7 @@ function doLogout() {
     $('app-container').classList.add('hidden');
     $('auth-container').classList.remove('hidden');
     $('profile-dropdown').classList.add('hidden');
+    closeAppsPanel();
 }
 
 function describeAuthError(err) {
@@ -494,11 +519,10 @@ function initAppSession() {
     $('app-container').classList.remove('hidden');
     const isSuperUser = currentUser.role === 'superadmin';
 
-    $('admin-menu-item').classList.toggle('hidden', !isSuperUser);
     $('superadmin-filter-bar').classList.toggle('hidden', !isSuperUser);
     $('admin-filter-section').classList.toggle('hidden', !isSuperUser);
     $('my-assignment-card').classList.toggle('hidden', isSuperUser);
-    $('ext-admin-menu').classList.toggle('hidden', !isSuperUser);
+    $('apps-admin-only').classList.toggle('hidden', !isSuperUser);
 
     if (isSuperUser) {
         currentScope = { presbytery: 'ALL', department: 'ALL' };
@@ -511,6 +535,7 @@ function initAppSession() {
     }
 
     updateProfileUI();
+    updateGreeting();
     switchView('overview');
 
     subscribeTransactions();
@@ -523,6 +548,13 @@ function initAppSession() {
     subscribeBanks();
     if (isSuperUser) { subscribeUsers(); subscribeBudgets(); }
     else { subscribeOwnProfile(); }
+}
+
+function updateGreeting() {
+    const hour = new Date().getHours();
+    const part = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    const firstName = (currentUser.name || '').split(' ')[0] || 'there';
+    $('greeting-text').textContent = `Good ${part}, ${firstName}!`;
 }
 
 function updateProfileUI() {
@@ -554,7 +586,6 @@ function setSyncStatus(state) {
     el.title = state === 'live' ? 'Live — synced with Firestore' : state === 'syncing' ? 'Syncing…' : 'Sync error';
 }
 
-// Generic: builds a scoped query for any collection carrying department + presbytery
 function buildScopedQuery(collectionName) {
     const col = collection(db, collectionName);
     const clauses = [];
@@ -635,8 +666,6 @@ function populateSubsections(deptSelectId, subSelectId) {
     });
 }
 
-// Shared helper: prep dept/subsection/pres fields on an ext-module modal.
-// prefix e.g. 'invoice' -> looks for invoice-dept-group, invoice-dept, etc.
 function setupScopedModalFields(prefix, hasSubsection, editRecord) {
     const deptGroup = $(`${prefix}-dept-group`);
     const subGroup = $(`${prefix}-subsection-group`);
@@ -666,10 +695,6 @@ function setupScopedModalFields(prefix, hasSubsection, editRecord) {
     }
 }
 
-// FIXED: previously returned currentUser.subsection with no fallback for
-// non-superadmins, which crashed addDoc()/updateDoc() with "Unsupported
-// field value: undefined" whenever that field was missing on a profile.
-// Every branch now guarantees a real string value.
 function scopedFieldsFromForm(prefix, hasSubsection) {
     if (isSuper()) {
         const deptVal = $(`${prefix}-dept`).value || '';
@@ -684,9 +709,6 @@ function scopedFieldsFromForm(prefix, hasSubsection) {
     };
 }
 
-// Safety net: Firestore's addDoc/updateDoc reject any field whose value is
-// literally undefined. This strips that risk from every ext-module write,
-// regardless of where an undefined might have crept in.
 function sanitizePayload(obj) {
     const clean = {};
     Object.keys(obj).forEach(k => { clean[k] = obj[k] === undefined ? '' : obj[k]; });
@@ -715,7 +737,7 @@ function openTxModal(editTx) {
     }
 
     if (editTx) {
-        $('tx-modal-title').textContent = 'Edit Transaction';
+        $('tx-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Transaction';
         $('tx-submit-btn').textContent = 'Update Transaction';
         $('tx-edit-id').value = editTx.id;
         $('tx-type').value = editTx.type;
@@ -729,7 +751,7 @@ function openTxModal(editTx) {
             $('tx-pres').value = editTx.presbytery;
         }
     } else {
-        $('tx-modal-title').textContent = 'Record Transaction';
+        $('tx-modal-title').innerHTML = '<i class="fa-solid fa-receipt"></i> Record Transaction';
         $('tx-submit-btn').textContent = 'Save Transaction';
         $('tx-form').reset();
         $('tx-edit-id').value = '';
@@ -979,6 +1001,14 @@ function refreshAllViews() {
     $('income-bar').style.width = `${(income / totalPL) * 100}%`;
     $('expense-bar').style.width = `${(expense / totalPL) * 100}%`;
 
+    // Dashboard "Business at a glance" — Profit & Loss card
+    $('gl-net-profit').textContent = formatRF(netProfit);
+    $('gl-income').textContent = formatRF(income);
+    $('gl-expense').textContent = formatRF(expense);
+    $('gl-income-bar').style.width = `${(income / totalPL) * 100}%`;
+    $('gl-expense-bar').style.width = `${(expense / totalPL) * 100}%`;
+    $('gl-total-expense').textContent = formatRF(expense);
+
     $('cash-in').textContent = formatRF(income);
     $('cash-out').textContent = formatRF(expense);
     $('cash-assets').textContent = formatRF(assets);
@@ -995,6 +1025,8 @@ function refreshAllViews() {
     renderDeptBreakdown(list, superVisible);
     renderActiveScopeChips();
     renderPendingApprovals();
+    renderGlanceExpenseDonut(list);
+    renderGlanceBanks();
 
     $('nav-tx-count').textContent = list.length;
     highlightSidebarFilters();
@@ -1018,9 +1050,9 @@ function renderDeptBreakdown(list, superVisible) {
         card.className = 'dept-card';
         card.innerHTML = `
             <div class="dc-name"><i class="fa-solid ${DEPT_ICONS[dept] || 'fa-building'}"></i> ${shortDeptName(dept)}</div>
-            <div class="dc-row"><span>Income</span><strong style="color:var(--success)">${formatRF(inc)}</strong></div>
+            <div class="dc-row"><span>Income</span><strong style="color:var(--primary-dark)">${formatRF(inc)}</strong></div>
             <div class="dc-row"><span>Expenses</span><strong style="color:var(--danger)">${formatRF(exp)}</strong></div>
-            <div class="dc-net"><span>Net</span><span style="color:${inc - exp >= 0 ? 'var(--success)' : 'var(--danger)'}">${formatRF(inc - exp)}</span></div>
+            <div class="dc-net"><span>Net</span><span style="color:${inc - exp >= 0 ? 'var(--primary-dark)' : 'var(--danger)'}">${formatRF(inc - exp)}</span></div>
         `;
         card.addEventListener('click', () => {
             $('sa-department-select').value = dept;
@@ -1029,6 +1061,53 @@ function renderDeptBreakdown(list, superVisible) {
             onScopeChanged();
         });
         grid.appendChild(card);
+    });
+}
+
+// Expenses-by-department donut for the "Business at a glance" panel
+function renderGlanceExpenseDonut(list) {
+    const canvas = $('glance-expense-chart');
+    const legendWrap = $('glance-expense-legend');
+    if (!canvas || !legendWrap) return;
+
+    const depts = Object.keys(EPR_STRUCTURE);
+    const totals = depts.map(d => list.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0));
+    const hasData = totals.some(v => v > 0);
+    const labels = depts.map(shortDeptName);
+    const colors = depts.map((_, i) => DEPT_CHART_COLORS[i % DEPT_CHART_COLORS.length]);
+
+    if (glanceExpenseChart) glanceExpenseChart.destroy();
+    glanceExpenseChart = new Chart(canvas, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data: hasData ? totals : [1], backgroundColor: hasData ? colors : ['#e3e5e8'], borderWidth: 0 }] },
+        options: { responsive: false, cutout: '68%', plugins: { legend: { display: false }, tooltip: { enabled: hasData } } }
+    });
+
+    legendWrap.innerHTML = '';
+    if (!hasData) { legendWrap.innerHTML = `<span class="glance-sub">No expenses recorded yet in this scope.</span>`; return; }
+    depts.forEach((d, i) => {
+        if (!totals[i]) return;
+        const row = document.createElement('div');
+        row.className = 'glance-legend-row';
+        row.innerHTML = `<span class="glance-legend-dot" style="background:${colors[i]}"></span><span>${shortDeptName(d)}: <strong>${formatRF(totals[i])}</strong></span>`;
+        legendWrap.appendChild(row);
+    });
+}
+
+// Bank accounts glance list
+function renderGlanceBanks() {
+    const wrap = $('glance-banks-list');
+    if (!wrap) return;
+    if (!banksDb.length) { wrap.innerHTML = `<p class="glance-sub">No banks added yet.</p>`; return; }
+    wrap.innerHTML = '';
+    banksDb.slice(0, 5).forEach(b => {
+        const row = document.createElement('div');
+        row.className = 'glance-bank-row';
+        row.innerHTML = `
+            <div class="glance-bank-icon"><i class="fa-solid fa-building-columns"></i></div>
+            <div class="glance-bank-name">${escapeHtml(b.name)}<br><span class="glance-sub" style="margin:0;">${escapeHtml(b.account || '')}</span></div>
+            <div class="glance-bank-bal">${formatRF(b.balance)}</div>`;
+        wrap.appendChild(row);
     });
 }
 
@@ -1055,7 +1134,7 @@ function renderTransactionsTable(list) {
             <td>${shortDeptName(tx.department)}</td>
             <td><strong>${tx.subsection}</strong></td>
             <td>${(tx.presbytery || '').replace('EPR Presbytery ', '')}</td>
-            <td style="font-weight: bold; color: ${isInc ? 'var(--success)' : 'var(--danger)'};">${formatRF(tx.amount)}</td>
+            <td style="font-weight: bold; color: ${isInc ? 'var(--primary-dark)' : 'var(--danger)'};">${formatRF(tx.amount)}</td>
             <td><div class="row-actions">
                 <button class="icon-action-btn tx-edit-btn" data-id="${tx.id}" title="Edit" ${canEdit ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover tx-delete-btn" data-id="${tx.id}" title="Delete" ${canEdit ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
@@ -1147,7 +1226,7 @@ function renderSearchDropdown() {
             row.className = 'sr-item';
             row.innerHTML = `
                 <span>${escapeHtml(tx.desc)}<br><span class="sr-meta">${shortDeptName(tx.department)} · ${(tx.presbytery || '').replace('EPR Presbytery ', '')}</span></span>
-                <span style="font-weight:700;color:${tx.type === 'Expense' || tx.type === 'Liability' ? 'var(--danger)' : 'var(--success)'}">${formatRF(tx.amount)}</span>`;
+                <span style="font-weight:700;color:${tx.type === 'Expense' || tx.type === 'Liability' ? 'var(--danger)' : 'var(--primary-dark)'}">${formatRF(tx.amount)}</span>`;
             row.addEventListener('click', () => { switchView('transactions'); dropdown.classList.add('hidden'); });
             dropdown.appendChild(row);
         });
@@ -1172,8 +1251,8 @@ function exportReportToExcel() {
     }));
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "EPR Report");
-    XLSX.writeFile(workbook, "EPR_Financial_Report.xlsx");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "SAS Report");
+    XLSX.writeFile(workbook, "SAS_Financial_Report.xlsx");
     showToast('success', `Exported ${list.length} records to Excel.`);
 }
 
@@ -1189,49 +1268,43 @@ function statusPill(status) {
 }
 
 /* =======================================================================
-   EXTENDED MODULES START HERE
+   EXTENDED MODULES
    ======================================================================= */
 
 // ---------------------------------------------------------------------
 // 23. EXT MODULE EVENT WIRING
 // ---------------------------------------------------------------------
 function setupExtModulesEventListeners() {
-    // Invoices
     $('open-invoice-modal-btn').addEventListener('click', () => openInvoiceModal());
     $('close-invoice-modal').addEventListener('click', () => $('invoice-modal').classList.add('hidden'));
     $('invoice-modal').addEventListener('click', (e) => { if (e.target === $('invoice-modal')) $('invoice-modal').classList.add('hidden'); });
     $('invoice-form').addEventListener('submit', onSubmitInvoiceForm);
     $('invoices-table-body').addEventListener('click', onInvoicesTableClick);
 
-    // Bills
     $('open-bill-modal-btn').addEventListener('click', () => openBillModal());
     $('close-bill-modal').addEventListener('click', () => $('bill-modal').classList.add('hidden'));
     $('bill-modal').addEventListener('click', (e) => { if (e.target === $('bill-modal')) $('bill-modal').classList.add('hidden'); });
     $('bill-form').addEventListener('submit', onSubmitBillForm);
     $('bills-table-body').addEventListener('click', onBillsTableClick);
 
-    // Cheques
     $('open-cheque-modal-btn').addEventListener('click', () => openChequeModal());
     $('close-cheque-modal').addEventListener('click', () => $('cheque-modal').classList.add('hidden'));
     $('cheque-modal').addEventListener('click', (e) => { if (e.target === $('cheque-modal')) $('cheque-modal').classList.add('hidden'); });
     $('cheque-form').addEventListener('submit', onSubmitChequeForm);
     $('cheques-table-body').addEventListener('click', onChequesTableClick);
 
-    // Suppliers
     $('open-supplier-modal-btn').addEventListener('click', () => openSupplierModal());
     $('close-supplier-modal').addEventListener('click', () => $('supplier-modal').classList.add('hidden'));
     $('supplier-modal').addEventListener('click', (e) => { if (e.target === $('supplier-modal')) $('supplier-modal').classList.add('hidden'); });
     $('supplier-form').addEventListener('submit', onSubmitSupplierForm);
     $('suppliers-table-body').addEventListener('click', onSuppliersTableClick);
 
-    // Customers
     $('open-customer-modal-btn').addEventListener('click', () => openCustomerModal());
     $('close-customer-modal').addEventListener('click', () => $('customer-modal').classList.add('hidden'));
     $('customer-modal').addEventListener('click', (e) => { if (e.target === $('customer-modal')) $('customer-modal').classList.add('hidden'); });
     $('customer-form').addEventListener('submit', onSubmitCustomerForm);
     $('customers-table-body').addEventListener('click', onCustomersTableClick);
 
-    // Projects
     $('open-project-modal-btn').addEventListener('click', () => openProjectModal());
     $('close-project-modal').addEventListener('click', () => $('project-modal').classList.add('hidden'));
     $('project-modal').addEventListener('click', (e) => { if (e.target === $('project-modal')) $('project-modal').classList.add('hidden'); });
@@ -1239,14 +1312,12 @@ function setupExtModulesEventListeners() {
     $('projects-table-body').addEventListener('click', onProjectsTableClick);
     $('project-progress').addEventListener('input', (e) => { $('project-progress-val').textContent = `${e.target.value}%`; });
 
-    // Budget (superadmin only)
     $('open-budget-modal-btn').addEventListener('click', () => openBudgetModal());
     $('close-budget-modal').addEventListener('click', () => $('budget-modal').classList.add('hidden'));
     $('budget-modal').addEventListener('click', (e) => { if (e.target === $('budget-modal')) $('budget-modal').classList.add('hidden'); });
     $('budget-form').addEventListener('submit', onSubmitBudgetForm);
     $('budget-table-body').addEventListener('click', onBudgetTableClick);
 
-    // Banks (superadmin only)
     $('open-bank-modal-btn').addEventListener('click', () => openBankModal());
     $('close-bank-modal').addEventListener('click', () => $('bank-modal').classList.add('hidden'));
     $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) $('bank-modal').classList.add('hidden'); });
@@ -1282,7 +1353,7 @@ function openInvoiceModal(edit) {
     customersDb.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; $('invoice-customer').appendChild(o); });
 
     if (edit) {
-        $('invoice-modal-title').textContent = 'Edit Invoice';
+        $('invoice-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Invoice';
         $('invoice-submit-btn').textContent = 'Update Invoice';
         $('invoice-edit-id').value = edit.id;
         $('invoice-number').value = edit.number;
@@ -1292,7 +1363,7 @@ function openInvoiceModal(edit) {
         $('invoice-date').value = edit.date;
         $('invoice-due').value = edit.due || '';
     } else {
-        $('invoice-modal-title').textContent = 'Record Invoice';
+        $('invoice-modal-title').innerHTML = '<i class="fa-solid fa-file-invoice"></i> Record Invoice';
         $('invoice-submit-btn').textContent = 'Submit Invoice';
         $('invoice-form').reset();
         $('invoice-edit-id').value = '';
@@ -1346,7 +1417,7 @@ function renderInvoicesTable() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${inv.date}</td><td><strong>${escapeHtml(inv.number)}</strong></td><td>${escapeHtml(inv.customerName || '—')}</td>
-            <td class="wrap">${escapeHtml(inv.desc)}</td><td style="font-weight:bold;color:var(--success)">${formatRF(inv.amount)}</td>
+            <td class="wrap">${escapeHtml(inv.desc)}</td><td style="font-weight:bold;color:var(--primary-dark)">${formatRF(inv.amount)}</td>
             <td>${shortDeptName(inv.department)}</td><td>${(inv.presbytery||'').replace('EPR Presbytery ','')}</td>
             <td>${statusPill(inv.status)}</td>
             <td><div class="row-actions-wrap">
@@ -1407,7 +1478,7 @@ function openBillModal(edit) {
     suppliersDb.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; $('bill-supplier').appendChild(o); });
 
     if (edit) {
-        $('bill-modal-title').textContent = 'Edit Bill';
+        $('bill-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Bill';
         $('bill-submit-btn').textContent = 'Update Bill';
         $('bill-edit-id').value = edit.id;
         $('bill-number').value = edit.number;
@@ -1417,7 +1488,7 @@ function openBillModal(edit) {
         $('bill-date').value = edit.date;
         $('bill-due').value = edit.due || '';
     } else {
-        $('bill-modal-title').textContent = 'Record Bill';
+        $('bill-modal-title').innerHTML = '<i class="fa-solid fa-receipt"></i> Record Bill';
         $('bill-submit-btn').textContent = 'Submit Bill';
         $('bill-form').reset();
         $('bill-edit-id').value = '';
@@ -1475,7 +1546,7 @@ function renderBillsTable() {
             <td>${shortDeptName(bill.department)}</td><td>${(bill.presbytery||'').replace('EPR Presbytery ','')}</td>
             <td>${statusPill(bill.status)}</td>
             <td><div class="row-actions-wrap">
-                ${canApprove ? `<button class="btn btn-approve" style="padding:6px 10px;font-size:.75rem;" data-approve="${bill.id}"><i class="fa-solid fa-check"></i> Approve & Pay</button>
+                ${canApprove ? `<button class="btn btn-approve" style="padding:6px 10px;font-size:.75rem;" data-approve="${bill.id}"><i class="fa-solid fa-check"></i> Approve &amp; Pay</button>
                 <button class="btn btn-reject" style="padding:6px 10px;font-size:.75rem;" data-reject="${bill.id}"><i class="fa-solid fa-xmark"></i> Reject</button>` : ''}
                 <button class="icon-action-btn" data-edit="${bill.id}" title="Edit" ${canEditRaw ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover" data-delete="${bill.id}" title="Delete" ${canEditRaw || isSuper() ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
@@ -1532,7 +1603,7 @@ function openChequeModal(edit) {
     banksDb.forEach(b => { const o = document.createElement('option'); o.value = b.id; o.textContent = `${b.name} (${b.account})`; $('cheque-bank').appendChild(o); });
 
     if (edit) {
-        $('cheque-modal-title').textContent = 'Edit Cheque';
+        $('cheque-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Cheque';
         $('cheque-submit-btn').textContent = 'Update Cheque';
         $('cheque-edit-id').value = edit.id;
         $('cheque-number').value = edit.number;
@@ -1542,7 +1613,7 @@ function openChequeModal(edit) {
         $('cheque-date').value = edit.date;
         $('cheque-memo').value = edit.memo || '';
     } else {
-        $('cheque-modal-title').textContent = 'Prepare Cheque';
+        $('cheque-modal-title').innerHTML = '<i class="fa-solid fa-money-check"></i> Prepare Cheque';
         $('cheque-submit-btn').textContent = 'Submit Cheque';
         $('cheque-form').reset();
         $('cheque-edit-id').value = '';
@@ -1652,7 +1723,7 @@ function subscribeSuppliers() {
 function openSupplierModal(edit) {
     setupScopedModalFields('supplier', false, edit);
     if (edit) {
-        $('supplier-modal-title').textContent = 'Edit Supplier';
+        $('supplier-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Supplier';
         $('supplier-submit-btn').textContent = 'Update Supplier';
         $('supplier-edit-id').value = edit.id;
         $('supplier-name').value = edit.name;
@@ -1661,7 +1732,7 @@ function openSupplierModal(edit) {
         $('supplier-email').value = edit.email || '';
         $('supplier-address').value = edit.address || '';
     } else {
-        $('supplier-modal-title').textContent = 'Add Supplier';
+        $('supplier-modal-title').innerHTML = '<i class="fa-solid fa-truck-field"></i> Add Supplier';
         $('supplier-submit-btn').textContent = 'Save Supplier';
         $('supplier-form').reset();
         $('supplier-edit-id').value = '';
@@ -1738,7 +1809,7 @@ function subscribeCustomers() {
 function openCustomerModal(edit) {
     setupScopedModalFields('customer', false, edit);
     if (edit) {
-        $('customer-modal-title').textContent = 'Edit Customer';
+        $('customer-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Customer';
         $('customer-submit-btn').textContent = 'Update Customer';
         $('customer-edit-id').value = edit.id;
         $('customer-name').value = edit.name;
@@ -1747,7 +1818,7 @@ function openCustomerModal(edit) {
         $('customer-email').value = edit.email || '';
         $('customer-address').value = edit.address || '';
     } else {
-        $('customer-modal-title').textContent = 'Add Customer';
+        $('customer-modal-title').innerHTML = '<i class="fa-solid fa-address-book"></i> Add Customer';
         $('customer-submit-btn').textContent = 'Save Customer';
         $('customer-form').reset();
         $('customer-edit-id').value = '';
@@ -1824,7 +1895,7 @@ function subscribeProjects() {
 function openProjectModal(edit) {
     setupScopedModalFields('project', true, edit);
     if (edit) {
-        $('project-modal-title').textContent = 'Edit Project';
+        $('project-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Project';
         $('project-submit-btn').textContent = 'Update Project';
         $('project-edit-id').value = edit.id;
         $('project-name').value = edit.name;
@@ -1836,7 +1907,7 @@ function openProjectModal(edit) {
         $('project-progress-val').textContent = `${edit.progress || 0}%`;
         $('project-status').value = edit.status || 'Not Started';
     } else {
-        $('project-modal-title').textContent = 'Add Project';
+        $('project-modal-title').innerHTML = '<i class="fa-solid fa-diagram-project"></i> Add Project';
         $('project-submit-btn').textContent = 'Save Project';
         $('project-form').reset();
         $('project-edit-id').value = '';
@@ -1922,7 +1993,7 @@ function openBudgetModal(edit) {
     fillSelect($('budget-dept'), Object.keys(EPR_STRUCTURE));
     fillSelect($('budget-pres'), PRESBYTERIES);
     if (edit) {
-        $('budget-modal-title').textContent = 'Edit Budget Line';
+        $('budget-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Budget Line';
         $('budget-submit-btn').textContent = 'Update Budget Line';
         $('budget-edit-id').value = edit.id;
         $('budget-dept').value = edit.department;
@@ -1932,7 +2003,7 @@ function openBudgetModal(edit) {
         $('budget-amount').value = edit.amount;
         $('budget-notes').value = edit.notes || '';
     } else {
-        $('budget-modal-title').textContent = 'Add Budget Line';
+        $('budget-modal-title').innerHTML = '<i class="fa-solid fa-scale-balanced"></i> Add Budget Line';
         $('budget-submit-btn').textContent = 'Save Budget Line';
         $('budget-form').reset();
         $('budget-edit-id').value = '';
@@ -2010,6 +2081,7 @@ function subscribeBanks() {
         banksDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         renderBanksTable();
         $('nav-banks-count').textContent = banksDb.length;
+        renderGlanceBanks();
         if (document.getElementById('view-coa').classList.contains('active')) { renderCoaBankGrid(); renderCoaCharts(); }
     }, (err) => showToast('error', 'Banks feed error: ' + err.message));
 }
@@ -2017,7 +2089,7 @@ function subscribeBanks() {
 function openBankModal(edit) {
     if (!guardSuperadminAction()) return;
     if (edit) {
-        $('bank-modal-title').textContent = 'Edit Bank';
+        $('bank-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Bank';
         $('bank-submit-btn').textContent = 'Update Bank';
         $('bank-edit-id').value = edit.id;
         $('bank-name').value = edit.name;
@@ -2027,7 +2099,7 @@ function openBankModal(edit) {
         $('bank-balance').value = edit.balance || 0;
         $('bank-notes').value = edit.notes || '';
     } else {
-        $('bank-modal-title').textContent = 'Add Bank';
+        $('bank-modal-title').innerHTML = '<i class="fa-solid fa-building-columns"></i> Add Bank';
         $('bank-submit-btn').textContent = 'Save Bank';
         $('bank-form').reset();
         $('bank-edit-id').value = '';
@@ -2129,7 +2201,6 @@ function renderCoaCharts() {
     const bank = banksDb.find(b => b.id === coaSelectedBankId) || banksDb[0];
     $('coa-selected-bank-label').textContent = bank ? `Cheque activity — ${bank.name}` : 'Cheque activity';
 
-    // Build last 6 months labels
     const months = [];
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
@@ -2144,7 +2215,7 @@ function renderCoaCharts() {
         if (coaBankChart) coaBankChart.destroy();
         coaBankChart = new Chart(bankCtx, {
             type: 'bar',
-            data: { labels: months.map(m => m.label), datasets: [{ label: 'Cheque amount (RF)', data: monthlyTotals, backgroundColor: '#1c3a5e', borderRadius: 6 }] },
+            data: { labels: months.map(m => m.label), datasets: [{ label: 'Cheque amount (RF)', data: monthlyTotals, backgroundColor: '#2ca01c', borderRadius: 6 }] },
             options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
         });
     }
@@ -2161,8 +2232,8 @@ function renderCoaCharts() {
             data: {
                 labels: depts.map(shortDeptName),
                 datasets: [
-                    { label: 'Income', data: incomeByDept, backgroundColor: '#1a7f4b', borderRadius: 6 },
-                    { label: 'Expense', data: expenseByDept, backgroundColor: '#c0392b', borderRadius: 6 }
+                    { label: 'Income', data: incomeByDept, backgroundColor: '#2ca01c', borderRadius: 6 },
+                    { label: 'Expense', data: expenseByDept, backgroundColor: '#d0021b', borderRadius: 6 }
                 ]
             },
             options: { responsive: true, scales: { y: { beginAtZero: true } } }
