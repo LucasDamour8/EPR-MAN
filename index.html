@@ -3,86 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPR Financial & Operations System</title>
+    <title>SAS — Standard Accounting Software system</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-    <style>
-        /* ==================================================================
-           EXTENDED MODULES — supplemental styles (additive, namespaced so
-           nothing here overrides the base styles.css). Uses the same CSS
-           custom properties as the rest of the app, with safe fallbacks.
-        ================================================================== */
-        .ext-scroll-x { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .ext-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; width: 100%; }
-        .ext-grid-wide { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; width: 100%; }
-
-        .status-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:999px; font-size:.74rem; font-weight:700; letter-spacing:.02em; white-space:nowrap; }
-        .status-pending_approval { background: color-mix(in srgb, var(--warning, #d97706) 16%, transparent); color: var(--warning, #b45309); }
-        .status-approved { background: color-mix(in srgb, var(--success, #16a34a) 16%, transparent); color: var(--success, #15803d); }
-        .status-rejected { background: color-mix(in srgb, var(--danger, #dc2626) 16%, transparent); color: var(--danger, #b91c1c); }
-
-        .progress-track { width:100%; height:8px; border-radius:999px; background: var(--border, #e2e8f0); overflow:hidden; }
-        .progress-fill { height:100%; border-radius:999px; background: var(--primary, #2563eb); transition: width .3s ease; }
-
-        .ext-card { background: var(--surface, #fff); border:1px solid var(--border, #e2e8f0); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:8px; min-width:0; }
-        .ext-card h4 { margin:0; font-size:.95rem; display:flex; align-items:center; gap:8px; }
-        .ext-card .ext-sub { font-size:.78rem; color: var(--text-muted, #64748b); }
-        .ext-card .ext-row { display:flex; justify-content:space-between; font-size:.85rem; gap:8px; }
-
-        .bank-card { cursor:pointer; border:2px solid transparent; transition: border-color .15s ease, transform .1s ease; }
-        .bank-card:hover { transform: translateY(-2px); }
-        .bank-card.selected { border-color: var(--primary, #2563eb); }
-
-        .approval-note { font-size:.78rem; color: var(--text-muted,#64748b); background: var(--bg, #f8fafc); border:1px dashed var(--border,#e2e8f0); border-radius:10px; padding:8px 12px; margin-top:6px; }
-
-        .chart-box { background: var(--surface,#fff); border:1px solid var(--border,#e2e8f0); border-radius:14px; padding:16px; min-width:0; }
-        .chart-box canvas { max-width:100%; }
-        .chart-box-title { font-size:.9rem; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
-
-        .locked-note { font-size:.75rem; color: var(--text-muted,#64748b); font-style:italic; }
-
-        .module-empty { text-align:center; padding:34px 12px; color: var(--text-muted,#64748b); }
-        .module-empty i { font-size:1.6rem; margin-bottom:8px; display:block; }
-
-        .btn-approve { background: var(--success,#16a34a); color:#fff; border:none; }
-        .btn-approve:hover { filter:brightness(1.05); }
-        .btn-reject { background:#fff; color: var(--danger,#dc2626); border:1px solid var(--danger,#dc2626); }
-        .btn-reject:hover { background: var(--danger,#dc2626); color:#fff; }
-
-        .row-actions-wrap { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-        .row-actions-wrap .icon-action-btn, .row-actions-wrap button { flex-shrink:0; }
-
-        .sidebar-section-title.ext { margin-top:10px; }
-
-        /* Wide-fit responsiveness: tables always scroll instead of breaking layout */
-        .data-table { min-width: 640px; }
-        @media (max-width: 720px) {
-            .ext-grid, .ext-grid-wide { grid-template-columns: 1fr; }
-            .modal-content { width: 95vw !important; max-width: 95vw !important; }
-            .financial-statement-card, .form-card, .table-card { padding: 14px !important; }
-        }
-        @media (max-width: 1024px) {
-            .metrics-row, .admin-grid { grid-template-columns: 1fr !important; }
-        }
-    </style>
 </head>
 <body>
 
     <!-- ============ Boot / connection status ============ -->
     <div id="boot-screen" class="boot-screen">
         <div class="boot-spinner"></div>
-        <p>Connecting to EPR database…</p>
+        <p>Connecting to SAS database…</p>
     </div>
 
-    <!-- ============ First-run Setup Screen (shown only when the system has never been initialized) ============ -->
+    <!-- ============ First-run Setup Screen ============ -->
     <div id="setup-container" class="auth-screen hidden">
         <div class="auth-card">
             <div class="brand-header">
-                <div class="logo">EPR</div>
+                <div class="logo">SAS</div>
                 <h2>Welcome — first-time setup</h2>
-                <p>No accounts exist yet. Create the central Superadmin account to get started. This account will manage every presbytery and department.</p>
+                <p>No accounts exist yet. Create the central Superadmin account to get started. This account will manage every presbytery and department in SAS.</p>
             </div>
             <form id="setup-form" novalidate>
                 <div class="form-group">
@@ -91,7 +32,7 @@
                 </div>
                 <div class="form-group">
                     <label>Email Address <span class="req">*</span></label>
-                    <input type="email" id="setup-email" required placeholder="admin@epr.org" autocomplete="username">
+                    <input type="email" id="setup-email" required placeholder="admin@yourcompany.com" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label>Password <span class="req">*</span></label>
@@ -110,14 +51,14 @@
     <div id="auth-container" class="auth-screen hidden">
         <div class="auth-card">
             <div class="brand-header">
-                <div class="logo">EPR</div>
-                <h2>EPR System Sign In</h2>
-                <p>Financial &amp; Operations Management</p>
+                <div class="logo">SAS</div>
+                <h2>SAS Sign In</h2>
+                <p>Standard Accounting Software system</p>
             </div>
             <form id="login-form" novalidate>
                 <div class="form-group">
                     <label>Email Address</label>
-                    <input type="email" id="login-email" required placeholder="you@epr.org" autocomplete="username">
+                    <input type="email" id="login-email" required placeholder="you@yourcompany.com" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label>Password</label>
@@ -130,7 +71,7 @@
             </form>
             <p id="auth-error" class="error-msg"></p>
             <p class="auth-footnote"><button type="button" id="forgot-password-btn" class="link-btn">Forgot your password?</button></p>
-            <p class="auth-footnote">Don't have an account? Contact your EPR Superadmin to be added.</p>
+            <p class="auth-footnote">Don't have an account? Contact your SAS Superadmin to be added.</p>
         </div>
     </div>
 
@@ -139,70 +80,70 @@
 
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-        <!-- Sidebar Navigation -->
+        <!-- Slim icon-rail sidebar (QuickBooks style) -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="logo-box">EPR</div>
-                <div>
-                    <h3>EPR System</h3>
-                    <span class="sub">Financial &amp; Operations</span>
-                </div>
+                <div class="logo-box">SAS</div>
                 <button class="sidebar-close-btn" id="sidebar-close-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
             <nav class="sidebar-menu">
-                <button type="button" class="nav-item active" data-view="overview"><i class="fa-solid fa-chart-pie"></i> Overview</button>
-                <button type="button" class="nav-item" data-view="transactions"><i class="fa-solid fa-list-check"></i> Transactions <span class="count-chip" id="nav-tx-count">0</span></button>
-                <button type="button" class="nav-item" data-view="reports"><i class="fa-solid fa-file-invoice-dollar"></i> Reports</button>
-                <button type="button" class="nav-item" data-view="departments"><i class="fa-solid fa-sitemap"></i> Departments &amp; Presbyteries</button>
-                <div id="admin-menu-item" class="hidden">
-                    <button type="button" class="nav-item" data-view="users"><i class="fa-solid fa-users-gear"></i> User Admin <span class="count-chip" id="nav-users-count">0</span></button>
-                </div>
+                <button type="button" class="nav-item" id="rail-create-btn"><i class="fa-solid fa-circle-plus"></i>Create</button>
+                <button type="button" class="nav-item" id="rail-bookmarks-btn"><i class="fa-solid fa-bookmark"></i>Bookmarks</button>
+                <button type="button" class="nav-item active" data-view="overview"><i class="fa-solid fa-house"></i>Home</button>
+                <button type="button" class="nav-item" data-view="transactions"><i class="fa-solid fa-list-check"></i>Feed <span class="count-chip" id="nav-tx-count">0</span></button>
+                <button type="button" class="nav-item" data-view="reports"><i class="fa-solid fa-chart-simple"></i>Reports</button>
+                <button type="button" class="nav-item" id="rail-apps-btn"><i class="fa-solid fa-grip"></i>All apps</button>
             </nav>
 
-            <!-- Extended modules — available to every signed-in role, scoped to their own department/presbytery -->
-            <div class="sidebar-section-title ext"><i class="fa-solid fa-briefcase"></i> Finance Tools</div>
+            <div class="sidebar-section-title">Pinned</div>
             <nav class="sidebar-menu">
-                <button type="button" class="nav-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i> Invoices <span class="count-chip" id="nav-invoices-count">0</span></button>
-                <button type="button" class="nav-item" data-view="bills"><i class="fa-solid fa-receipt"></i> Pay Bills <span class="count-chip" id="nav-bills-count">0</span></button>
-                <button type="button" class="nav-item" data-view="cheques"><i class="fa-solid fa-money-check"></i> Cheques <span class="count-chip" id="nav-cheques-count">0</span></button>
-                <button type="button" class="nav-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i> Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
-                <button type="button" class="nav-item" data-view="customers"><i class="fa-solid fa-address-book"></i> Customer Hub <span class="count-chip" id="nav-customers-count">0</span></button>
-                <button type="button" class="nav-item" data-view="projects"><i class="fa-solid fa-diagram-project"></i> Projects <span class="count-chip" id="nav-projects-count">0</span></button>
+                <button type="button" class="nav-item" data-view="transactions"><i class="fa-solid fa-coins"></i>Accounting</button>
+                <button type="button" class="nav-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expenses <span class="count-chip" id="nav-bills-count">0</span></button>
+                <button type="button" class="nav-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales <span class="count-chip" id="nav-invoices-count">0</span></button>
+                <button type="button" class="nav-item" id="rail-customise-btn"><i class="fa-solid fa-sliders"></i>Customise</button>
             </nav>
 
-            <!-- Superadmin-only strategic tools -->
-            <div id="ext-admin-menu" class="hidden">
-                <div class="sidebar-section-title ext"><i class="fa-solid fa-user-shield"></i> Admin Tools</div>
-                <nav class="sidebar-menu">
-                    <button type="button" class="nav-item" data-view="budget"><i class="fa-solid fa-scale-balanced"></i> Budget Management</button>
-                    <button type="button" class="nav-item" data-view="banks"><i class="fa-solid fa-building-columns"></i> Bank Management <span class="count-chip" id="nav-banks-count">0</span></button>
-                    <button type="button" class="nav-item" data-view="coa"><i class="fa-solid fa-chart-line"></i> Chart of Accounts</button>
-                </nav>
+            <div class="sidebar-footer">SAS &copy; 2026 &middot; Live via Firestore</div>
+        </aside>
+
+        <!-- All-modules launcher panel -->
+        <div id="apps-panel" class="apps-panel">
+            <div class="apps-panel-head">
+                <h3><i class="fa-solid fa-grip"></i> All SAS modules</h3>
+                <button class="close-btn" id="apps-panel-close">&times;</button>
             </div>
-
-            <!-- Superadmin only: live quick filters -->
-            <div id="admin-filter-section">
-                <div class="sidebar-section-title"><i class="fa-solid fa-building"></i> Departments</div>
-                <div class="sidebar-menu sub-menu" id="dept-sidebar-menu"></div>
-
-                <div class="sidebar-section-title"><i class="fa-solid fa-map-location-dot"></i> Presbyteries</div>
-                <div class="sidebar-menu sub-menu" id="pres-sidebar-menu"></div>
-            </div>
-
-            <!-- Non-superadmin: read-only reminder of their own scope -->
-            <div id="my-assignment-card" class="my-assignment-card hidden">
-                <div class="sidebar-section-title"><i class="fa-solid fa-lock"></i> Your Access</div>
-                <div class="assignment-box">
-                    <div class="ab-row"><i class="fa-solid fa-building"></i><span id="ab-department">—</span></div>
-                    <div class="ab-row"><i class="fa-solid fa-location-dot"></i><span id="ab-presbytery">—</span></div>
-                    <div class="ab-row"><i class="fa-solid fa-diagram-project"></i><span id="ab-subsection">—</span></div>
-                    <p class="ab-note">You only see data recorded under this department and presbytery. Contact your Superadmin to change this assignment.</p>
+            <div class="apps-grid">
+                <button type="button" class="apps-grid-item" data-view="overview"><i class="fa-solid fa-chart-pie"></i>Overview</button>
+                <button type="button" class="apps-grid-item" data-view="transactions"><i class="fa-solid fa-list-check"></i>Transactions</button>
+                <button type="button" class="apps-grid-item" data-view="reports"><i class="fa-solid fa-file-invoice-dollar"></i>Reports</button>
+                <button type="button" class="apps-grid-item" data-view="departments"><i class="fa-solid fa-sitemap"></i>Departments &amp; Presbyteries</button>
+                <button type="button" class="apps-grid-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales &amp; Get Paid</button>
+                <button type="button" class="apps-grid-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expenses &amp; Pay Bills</button>
+                <button type="button" class="apps-grid-item" data-view="cheques"><i class="fa-solid fa-money-check"></i>Cheques <span class="count-chip" id="nav-cheques-count">0</span></button>
+                <button type="button" class="apps-grid-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i>Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
+                <button type="button" class="apps-grid-item" data-view="customers"><i class="fa-solid fa-address-book"></i>Customer Hub <span class="count-chip" id="nav-customers-count">0</span></button>
+                <button type="button" class="apps-grid-item" data-view="projects"><i class="fa-solid fa-diagram-project"></i>Projects <span class="count-chip" id="nav-projects-count">0</span></button>
+                <div id="apps-admin-only" class="hidden" style="display:contents;">
+                    <button type="button" class="apps-grid-item" data-view="budget"><i class="fa-solid fa-scale-balanced"></i>Budget Management</button>
+                    <button type="button" class="apps-grid-item" data-view="banks"><i class="fa-solid fa-building-columns"></i>Bank Management <span class="count-chip" id="nav-banks-count">0</span></button>
+                    <button type="button" class="apps-grid-item" data-view="coa"><i class="fa-solid fa-chart-line"></i>Chart of Accounts</button>
+                    <button type="button" class="apps-grid-item" data-view="users"><i class="fa-solid fa-users-gear"></i>User Admin <span class="count-chip" id="nav-users-count">0</span></button>
                 </div>
             </div>
-
-            <div class="sidebar-footer">EPR System &copy; 2026 &middot; Live data via Firestore</div>
-        </aside>
+            <div id="my-assignment-card" class="apps-panel-assignment hidden">
+                <div class="ab-row"><i class="fa-solid fa-building"></i><span id="ab-department">—</span></div>
+                <div class="ab-row"><i class="fa-solid fa-location-dot"></i><span id="ab-presbytery">—</span></div>
+                <div class="ab-row"><i class="fa-solid fa-diagram-project"></i><span id="ab-subsection">—</span></div>
+                <p class="ab-note">You only see data recorded under this department and presbytery. Contact your Superadmin to change this assignment.</p>
+            </div>
+            <div id="admin-filter-section" class="hidden" style="padding: 0 18px 18px;">
+                <div class="sidebar-section-title" style="text-align:left;padding-left:0;">Departments</div>
+                <div class="sidebar-menu sub-menu" id="dept-sidebar-menu" style="display:flex;"></div>
+                <div class="sidebar-section-title" style="text-align:left;padding-left:0;">Presbyteries</div>
+                <div class="sidebar-menu sub-menu" id="pres-sidebar-menu" style="display:flex;"></div>
+            </div>
+        </div>
 
         <!-- Main Content Area -->
         <main class="main-wrapper">
@@ -210,11 +151,12 @@
             <!-- Topbar -->
             <header class="topbar">
                 <button class="hamburger-btn" id="hamburger-btn"><i class="fa-solid fa-bars"></i></button>
+                <div class="topbar-brand"><div class="logo-box">SAS</div><span class="full">SAS ACCOUNTING</span></div>
 
                 <div class="search-wrap">
                     <div class="search-bar">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" id="global-search" placeholder="Search transactions, amounts, sections, presbyteries...">
+                        <input type="text" id="global-search" placeholder="Navigate. Find transactions, amounts, sections, presbyteries…">
                         <button class="search-clear-btn" id="search-clear-btn"><i class="fa-solid fa-circle-xmark"></i></button>
                     </div>
                     <div id="search-results-dropdown" class="search-results-dropdown hidden"></div>
@@ -222,11 +164,13 @@
 
                 <div class="topbar-actions">
                     <span id="sync-indicator" class="sync-indicator" title="Live sync status"><i class="fa-solid fa-satellite-dish"></i></span>
-
+                    <button class="icon-btn" id="feedback-btn" title="Feedback"><i class="fa-solid fa-comment-dots"></i></button>
+                    <button class="icon-btn" id="help-btn" title="Help"><i class="fa-regular fa-circle-question"></i></button>
                     <button class="icon-btn" id="notif-btn" title="Notifications">
                         <i class="fa-solid fa-bell"></i>
                         <span class="notif-dot hidden" id="notif-dot"></span>
                     </button>
+                    <button class="icon-btn" id="settings-btn" title="Settings"><i class="fa-solid fa-gear"></i></button>
 
                     <div class="user-profile-wrap">
                         <div class="user-profile" id="profile-toggle">
@@ -235,7 +179,6 @@
                                 <div class="u-name" id="user-display-name">Loading...</div>
                                 <div class="u-scope" id="user-scope-line"></div>
                             </div>
-                            <i class="fa-solid fa-chevron-down" style="font-size:.7rem;color:var(--text-muted)"></i>
                         </div>
                         <div id="profile-dropdown" class="profile-dropdown hidden">
                             <div class="pd-head">
@@ -258,7 +201,7 @@
 
                 <!-- Superadmin Dynamic Global Controls -->
                 <div id="superadmin-filter-bar" class="scope-bar hidden">
-                    <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies to Overview, Transactions, Reports, Invoices, Bills, Cheques, Suppliers, Customers &amp; Projects</h4>
+                    <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies across every module</h4>
                     <div class="scope-fields">
                         <div class="scope-field">
                             <label>Filter Presbytery / Location</label>
@@ -283,13 +226,74 @@
                     <div class="active-scope-chips" id="active-scope-chips"></div>
                 </div>
 
-                <!-- ============ View: Overview ============ -->
+                <!-- ============ View: Overview (QuickBooks-style dashboard) ============ -->
                 <section id="view-overview" class="view-panel active">
-                    <div class="view-header">
-                        <h2>Overview Dashboard</h2>
-                        <p id="scope-indicator">Current Scope: All EPR Records</p>
+
+                    <div class="greeting-header">
+                        <div>
+                            <h1 id="greeting-text">Good day!</h1>
+                            <p id="scope-indicator" style="color:var(--text-muted); font-size:.85rem; margin-top:4px;">Current Scope: All SAS Records</p>
+                        </div>
+                        <div class="greeting-links">
+                            <button type="button" id="customise-link-btn"><i class="fa-solid fa-sliders"></i> Customise</button>
+                            <button type="button" id="privacy-link-btn"><i class="fa-regular fa-eye-slash"></i> Privacy</button>
+                        </div>
                     </div>
 
+                    <div class="pill-nav" id="pill-nav">
+                        <button type="button" class="pill-nav-btn" data-view="transactions"><span class="pill-icon" style="background:var(--primary-dark)"><i class="fa-solid fa-coins"></i></span>Accounting</button>
+                        <button type="button" class="pill-nav-btn" data-view="bills"><span class="pill-icon" style="background:var(--accent-dark)"><i class="fa-solid fa-receipt"></i></span>Expenses &amp; Pay Bills</button>
+                        <button type="button" class="pill-nav-btn" data-view="invoices"><span class="pill-icon" style="background:var(--primary)"><i class="fa-solid fa-file-invoice"></i></span>Sales &amp; Get Paid</button>
+                        <button type="button" class="pill-nav-btn" data-view="customers"><span class="pill-icon" style="background:var(--teal)"><i class="fa-solid fa-address-book"></i></span>Customer Hub</button>
+                        <button type="button" class="pill-nav-btn" data-view="suppliers"><span class="pill-icon" style="background:var(--purple)"><i class="fa-solid fa-truck-field"></i></span>Suppliers</button>
+                        <button type="button" class="pill-nav-btn" data-view="projects"><span class="pill-icon" style="background:var(--blue)"><i class="fa-solid fa-diagram-project"></i></span>Projects</button>
+                        <button type="button" class="pill-nav-btn" data-view="cheques"><span class="pill-icon" style="background:var(--warning-dark)"><i class="fa-solid fa-money-check"></i></span>Cheques</button>
+                        <button type="button" class="pill-nav-btn" data-view="reports"><span class="pill-icon" style="background:var(--primary-darker)"><i class="fa-solid fa-file-invoice-dollar"></i></span>Reports</button>
+                    </div>
+
+                    <div class="create-actions-row">
+                        <span class="ca-label">Create actions</span>
+                        <button type="button" class="ca-btn" id="qa-create-invoice">Create invoice</button>
+                        <button type="button" class="ca-btn" id="qa-record-expense">Record expense</button>
+                        <button type="button" class="ca-btn" id="qa-bank-deposit">Add bank deposit</button>
+                        <button type="button" class="ca-btn" id="qa-create-cheque">Create cheque</button>
+                        <button type="button" class="ca-btn show-all" id="qa-show-all">Show all</button>
+                    </div>
+
+                    <div class="glance-title">Business at a glance</div>
+                    <div class="glance-grid">
+                        <div class="glance-card">
+                            <div class="glance-card-head"><h4>Profit &amp; Loss</h4><span>Current scope</span></div>
+                            <div class="glance-sub">Net profit</div>
+                            <div class="glance-big" id="gl-net-profit">RF 0</div>
+                            <div class="progress-bar-group">
+                                <label style="font-size:.8rem;font-weight:600;">Income: <span id="gl-income">RF 0</span></label>
+                                <div class="progress"><div class="bar-success" id="gl-income-bar"></div></div>
+                                <label style="font-size:.8rem;font-weight:600;">Expenses: <span id="gl-expense">RF 0</span></label>
+                                <div class="progress"><div class="bar-danger" id="gl-expense-bar"></div></div>
+                            </div>
+                        </div>
+
+                        <div class="glance-card">
+                            <div class="glance-card-head"><h4>Expenses</h4><span>By department</span></div>
+                            <div class="glance-sub">Spending in current scope</div>
+                            <div class="glance-big" id="gl-total-expense">RF 0</div>
+                            <div class="glance-donut-wrap">
+                                <canvas id="glance-expense-chart" width="130" height="130"></canvas>
+                                <div class="glance-legend" id="glance-expense-legend"></div>
+                            </div>
+                        </div>
+
+                        <div class="glance-card">
+                            <div class="glance-card-head"><h4>Bank Accounts</h4><span>As of today</span></div>
+                            <div id="glance-banks-list">
+                                <p class="glance-sub">No banks added yet.</p>
+                            </div>
+                            <button type="button" class="link-btn" id="glance-banks-goto" style="margin-top:6px;">Go to Bank Management →</button>
+                        </div>
+                    </div>
+
+                    <div class="glance-title">Detailed overview</div>
                     <div class="grid-cards">
                         <div class="card-item neutral">
                             <h5>Active Records</h5>
@@ -297,7 +301,7 @@
                         </div>
                         <div class="card-item success">
                             <h5>Total Revenue</h5>
-                            <div class="value" id="stat-revenue" style="color: var(--success);">RF 0</div>
+                            <div class="value" id="stat-revenue" style="color: var(--primary-dark);">RF 0</div>
                         </div>
                         <div class="card-item danger">
                             <h5>Total Expenses</h5>
@@ -330,7 +334,7 @@
                                 <span style="color: var(--text-muted); font-size: 0.85rem;">Real-time</span>
                             </div>
                             <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 1rem;">
-                                <div>Total Inflow: <strong id="cash-in" style="color: var(--success);">RF 0</strong></div>
+                                <div>Total Inflow: <strong id="cash-in" style="color: var(--primary-dark);">RF 0</strong></div>
                                 <div>Total Outflow: <strong id="cash-out" style="color: var(--danger);">RF 0</strong></div>
                                 <div>Assets Recorded: <strong id="cash-assets">RF 0</strong></div>
                                 <div>Liabilities Recorded: <strong id="cash-liabilities">RF 0</strong></div>
@@ -343,7 +347,6 @@
                         <div class="dept-grid" id="dept-breakdown-grid"></div>
                     </div>
 
-                    <!-- Pending approvals widget: visible to whoever can approve something -->
                     <div id="pending-approvals-wrap" class="dept-breakdown hidden">
                         <h3><i class="fa-solid fa-clock-rotate-left"></i> Waiting on your approval</h3>
                         <div class="ext-grid" id="pending-approvals-grid"></div>
@@ -383,14 +386,8 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Description</th>
-                                    <th>Department</th>
-                                    <th>Section / Project</th>
-                                    <th>Presbytery Location</th>
-                                    <th>Amount (RF)</th>
-                                    <th>Actions</th>
+                                    <th>Date</th><th>Type</th><th>Description</th><th>Department</th>
+                                    <th>Section / Project</th><th>Presbytery Location</th><th>Amount (RF)</th><th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="tx-table-body">
@@ -401,11 +398,11 @@
                     <div class="table-footer" id="tx-table-footer"></div>
                 </section>
 
-                <!-- ============ View: Reports ============ -->
+                <!-- ============ View: Reports (QuickBooks-style hub) ============ -->
                 <section id="view-reports" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Financial Statements &amp; Reports</h2>
+                            <h2>Reports &amp; Analytics</h2>
                             <p>View Balance Sheet, Income Statements, and export data for the selected scope.</p>
                         </div>
                         <div style="display: flex; gap: 10px;">
@@ -414,25 +411,40 @@
                         </div>
                     </div>
 
-                    <div class="financial-statement-card" id="printable-report">
-                        <h3 style="text-align: center; font-size: 1.3rem;">EPR FINANCIAL STATEMENT</h3>
-                        <p style="text-align: center; color: var(--text-muted); margin-bottom: 25px;" id="statement-scope">System Wide Statement</p>
-
-                        <div style="margin-bottom: 25px;">
-                            <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss Summary</h4>
-                            <div class="statement-row"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong></div>
-                            <div class="statement-row"><span>Total Operating Expenses</span><strong id="stmt-expenses">RF 0</strong></div>
-                            <div class="statement-row highlight"><span>Net Operating Balance</span><strong id="stmt-net">RF 0</strong></div>
-                        </div>
+                    <div class="reports-layout">
+                        <aside class="reports-side">
+                            <button type="button" class="reports-side-item active">Standard reports</button>
+                            <button type="button" class="reports-side-item">Custom reports</button>
+                            <button type="button" class="reports-side-item">Management reports</button>
+                            <button type="button" class="reports-side-item">Performance centre</button>
+                            <div style="padding:10px 12px 4px; font-size:.7rem; font-weight:800; text-transform:uppercase; color:var(--text-muted);">Favourites</div>
+                            <div class="reports-fav-row"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></div>
+                            <div class="reports-fav-row"><span>Profit and Loss</span><i class="fa-solid fa-star"></i></div>
+                            <div class="reports-fav-row"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></div>
+                        </aside>
 
                         <div>
-                            <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
-                            <div class="statement-row"><span>Current Assets (Cash &amp; Bank)</span><strong id="stmt-assets">RF 0</strong></div>
-                            <div class="statement-row"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong></div>
-                            <div class="statement-row highlight"><span>Calculated Net Worth</span><strong id="stmt-equity">RF 0</strong></div>
-                        </div>
+                            <div class="financial-statement-card" id="printable-report">
+                                <h3 style="text-align: center; font-size: 1.3rem;">SAS FINANCIAL STATEMENT</h3>
+                                <p style="text-align: center; color: var(--text-muted); margin-bottom: 25px;" id="statement-scope">System Wide Statement</p>
 
-                        <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
+                                <div style="margin-bottom: 25px;">
+                                    <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss Summary</h4>
+                                    <div class="statement-row"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong></div>
+                                    <div class="statement-row"><span>Total Operating Expenses</span><strong id="stmt-expenses">RF 0</strong></div>
+                                    <div class="statement-row highlight"><span>Net Operating Balance</span><strong id="stmt-net">RF 0</strong></div>
+                                </div>
+
+                                <div>
+                                    <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
+                                    <div class="statement-row"><span>Current Assets (Cash &amp; Bank)</span><strong id="stmt-assets">RF 0</strong></div>
+                                    <div class="statement-row"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong></div>
+                                    <div class="statement-row highlight"><span>Calculated Net Worth</span><strong id="stmt-equity">RF 0</strong></div>
+                                </div>
+
+                                <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -440,7 +452,7 @@
                 <section id="view-departments" class="view-panel">
                     <div class="view-header">
                         <h2>Departments &amp; Presbyteries</h2>
-                        <p>Every EPR location carries the full set of departments below; each sub-section is managed by whichever user has been assigned to it.</p>
+                        <p>Every SAS location carries the full set of departments below; each sub-section is managed by whichever user has been assigned to it.</p>
                     </div>
 
                     <div class="org-tabs">
@@ -449,12 +461,12 @@
                     </div>
 
                     <div id="org-panel-departments" class="org-chart-root">
-                        <div class="org-root-node">EPR</div>
+                        <div class="org-root-node">SAS</div>
                         <div class="org-dept-grid" id="org-dept-grid"></div>
                     </div>
 
                     <div id="org-panel-presbyteries" class="org-chart-root hidden">
-                        <div class="org-root-node">EPR</div>
+                        <div class="org-root-node">SAS</div>
                         <div class="pres-grid" id="org-pres-grid"></div>
                     </div>
                 </section>
@@ -479,7 +491,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Email Address <span class="req">*</span></label>
-                                    <input type="email" id="user-email" required placeholder="user@epr.org">
+                                    <input type="email" id="user-email" required placeholder="user@yourcompany.com">
                                 </div>
                                 <div class="form-group" id="user-password-group">
                                     <label>Set Password <span class="req">*</span></label>
@@ -500,7 +512,7 @@
                                         <select id="user-role" required>
                                             <option value="finance">Finance User (Staff)</option>
                                             <option value="manager">Department Manager (Staff)</option>
-                                            <option value="superadmin">Superadmin (EPR Central)</option>
+                                            <option value="superadmin">Superadmin (SAS Central)</option>
                                         </select>
                                     </div>
                                     <div class="field-hint">Superadmins can view and manage every presbytery and department. Finance users can approve cheques. Staff are locked to one assignment below.</div>
@@ -539,14 +551,7 @@
                             <div class="table-wrap ext-scroll-x">
                                 <table class="data-table">
                                     <thead>
-                                        <tr>
-                                            <th>Name</th>
-                                            <th>Email</th>
-                                            <th>Role</th>
-                                            <th>Presbytery</th>
-                                            <th>Department / Section</th>
-                                            <th>Actions</th>
-                                        </tr>
+                                        <tr><th>Name</th><th>Email</th><th>Role</th><th>Presbytery</th><th>Department / Section</th><th>Actions</th></tr>
                                     </thead>
                                     <tbody id="users-table-body">
                                         <tr class="table-empty-row"><td colspan="6">Loading users…</td></tr>
@@ -561,7 +566,7 @@
                 <section id="view-invoices" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Customer Invoices</h2>
+                            <h2>Sales &amp; Get Paid — Invoices</h2>
                             <p id="invoices-scope-note">Every invoice raised by staff needs Superadmin approval before it counts as issued.</p>
                         </div>
                         <button class="btn btn-primary" id="open-invoice-modal-btn"><i class="fa-solid fa-plus"></i> New Invoice</button>
@@ -581,7 +586,7 @@
                 <section id="view-bills" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Pay Bills</h2>
+                            <h2>Expenses &amp; Pay Bills</h2>
                             <p id="bills-scope-note">Bills raised for payment need Superadmin approval before they are marked as paid.</p>
                         </div>
                         <button class="btn btn-primary" id="open-bill-modal-btn"><i class="fa-solid fa-plus"></i> New Bill</button>
@@ -690,7 +695,7 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Bank Management</h2>
-                            <p>Every bank account EPR uses. Superadmin only.</p>
+                            <p>Every bank account SAS uses. Superadmin only.</p>
                         </div>
                         <button class="btn btn-primary" id="open-bank-modal-btn"><i class="fa-solid fa-plus"></i> New Bank</button>
                     </div>
@@ -735,7 +740,7 @@
     <div id="tx-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="tx-modal-title">Record Transaction</h3>
+                <h3 id="tx-modal-title"><i class="fa-solid fa-receipt"></i> Record Transaction</h3>
                 <button class="close-btn" id="close-tx-modal">&times;</button>
             </div>
             <form id="tx-form" novalidate>
@@ -784,7 +789,7 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Confirm Delete ============ -->
+    <!-- ============ Modal: Confirm ============ -->
     <div id="confirm-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -804,7 +809,7 @@
     <!-- ============ Modal: Invoice ============ -->
     <div id="invoice-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="invoice-modal-title">Record Invoice</h3><button class="close-btn" id="close-invoice-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="invoice-modal-title"><i class="fa-solid fa-file-invoice"></i> Record Invoice</h3><button class="close-btn" id="close-invoice-modal">&times;</button></div>
             <form id="invoice-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="invoice-edit-id" value="">
@@ -828,7 +833,7 @@
     <!-- ============ Modal: Bill ============ -->
     <div id="bill-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="bill-modal-title">Record Bill</h3><button class="close-btn" id="close-bill-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="bill-modal-title"><i class="fa-solid fa-receipt"></i> Record Bill</h3><button class="close-btn" id="close-bill-modal">&times;</button></div>
             <form id="bill-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="bill-edit-id" value="">
@@ -852,7 +857,7 @@
     <!-- ============ Modal: Cheque ============ -->
     <div id="cheque-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="cheque-modal-title">Prepare Cheque</h3><button class="close-btn" id="close-cheque-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="cheque-modal-title"><i class="fa-solid fa-money-check"></i> Prepare Cheque</h3><button class="close-btn" id="close-cheque-modal">&times;</button></div>
             <form id="cheque-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="cheque-edit-id" value="">
@@ -876,7 +881,7 @@
     <!-- ============ Modal: Supplier ============ -->
     <div id="supplier-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="supplier-modal-title">Add Supplier</h3><button class="close-btn" id="close-supplier-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="supplier-modal-title"><i class="fa-solid fa-truck-field"></i> Add Supplier</h3><button class="close-btn" id="close-supplier-modal">&times;</button></div>
             <form id="supplier-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="supplier-edit-id" value="">
@@ -896,7 +901,7 @@
     <!-- ============ Modal: Customer ============ -->
     <div id="customer-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="customer-modal-title">Add Customer</h3><button class="close-btn" id="close-customer-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="customer-modal-title"><i class="fa-solid fa-address-book"></i> Add Customer</h3><button class="close-btn" id="close-customer-modal">&times;</button></div>
             <form id="customer-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="customer-edit-id" value="">
@@ -916,7 +921,7 @@
     <!-- ============ Modal: Project ============ -->
     <div id="project-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="project-modal-title">Add Project</h3><button class="close-btn" id="close-project-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="project-modal-title"><i class="fa-solid fa-diagram-project"></i> Add Project</h3><button class="close-btn" id="close-project-modal">&times;</button></div>
             <form id="project-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="project-edit-id" value="">
@@ -951,7 +956,7 @@
     <!-- ============ Modal: Budget Line (superadmin only) ============ -->
     <div id="budget-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="budget-modal-title">Add Budget Line</h3><button class="close-btn" id="close-budget-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="budget-modal-title"><i class="fa-solid fa-scale-balanced"></i> Add Budget Line</h3><button class="close-btn" id="close-budget-modal">&times;</button></div>
             <form id="budget-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="budget-edit-id" value="">
@@ -970,7 +975,7 @@
     <!-- ============ Modal: Bank (superadmin only) ============ -->
     <div id="bank-modal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header"><h3 id="bank-modal-title">Add Bank</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="bank-modal-title"><i class="fa-solid fa-building-columns"></i> Add Bank</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
             <form id="bank-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="bank-edit-id" value="">
