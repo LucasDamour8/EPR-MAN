@@ -17,6 +17,14 @@
      scoped CRUD.
    - Budget Management, Bank Management, Chart of Accounts: visible
      and usable by Superadmin only.
+
+   FIX (this version): scopedFieldsFromForm() previously passed
+   currentUser.subsection straight through with no fallback, which
+   crashed addDoc()/updateDoc() with "Unsupported field value: undefined"
+   whenever a user profile was missing that field. It now guarantees a
+   string on every field, and every ext-module write additionally runs
+   through sanitizePayload() as a safety net so this class of bug can't
+   crash a save again.
 ====================================================================== */
 
 import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
@@ -484,15 +492,15 @@ function describeAuthError(err) {
 // ---------------------------------------------------------------------
 function initAppSession() {
     $('app-container').classList.remove('hidden');
-    const isSuper = currentUser.role === 'superadmin';
+    const isSuperUser = currentUser.role === 'superadmin';
 
-    $('admin-menu-item').classList.toggle('hidden', !isSuper);
-    $('superadmin-filter-bar').classList.toggle('hidden', !isSuper);
-    $('admin-filter-section').classList.toggle('hidden', !isSuper);
-    $('my-assignment-card').classList.toggle('hidden', isSuper);
-    $('ext-admin-menu').classList.toggle('hidden', !isSuper);
+    $('admin-menu-item').classList.toggle('hidden', !isSuperUser);
+    $('superadmin-filter-bar').classList.toggle('hidden', !isSuperUser);
+    $('admin-filter-section').classList.toggle('hidden', !isSuperUser);
+    $('my-assignment-card').classList.toggle('hidden', isSuperUser);
+    $('ext-admin-menu').classList.toggle('hidden', !isSuperUser);
 
-    if (isSuper) {
+    if (isSuperUser) {
         currentScope = { presbytery: 'ALL', department: 'ALL' };
         $('sa-presbytery-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
     } else {
@@ -513,7 +521,7 @@ function initAppSession() {
     subscribeCustomers();
     subscribeProjects();
     subscribeBanks();
-    if (isSuper) { subscribeUsers(); subscribeBudgets(); }
+    if (isSuperUser) { subscribeUsers(); subscribeBudgets(); }
     else { subscribeOwnProfile(); }
 }
 
@@ -658,15 +666,31 @@ function setupScopedModalFields(prefix, hasSubsection, editRecord) {
     }
 }
 
+// FIXED: previously returned currentUser.subsection with no fallback for
+// non-superadmins, which crashed addDoc()/updateDoc() with "Unsupported
+// field value: undefined" whenever that field was missing on a profile.
+// Every branch now guarantees a real string value.
 function scopedFieldsFromForm(prefix, hasSubsection) {
     if (isSuper()) {
-        return {
-            department: $(`${prefix}-dept`).value,
-            subsection: hasSubsection ? $(`${prefix}-subsection`).value : (currentUser.subsection || 'ALL'),
-            presbytery: $(`${prefix}-pres`).value
-        };
+        const deptVal = $(`${prefix}-dept`).value || '';
+        const presVal = $(`${prefix}-pres`).value || '';
+        const subVal = hasSubsection ? ($(`${prefix}-subsection`).value || '') : (currentUser.subsection || 'ALL');
+        return { department: deptVal, subsection: subVal, presbytery: presVal };
     }
-    return { department: currentUser.department, subsection: currentUser.subsection, presbytery: currentUser.presbytery };
+    return {
+        department: currentUser.department || '',
+        subsection: currentUser.subsection || '',
+        presbytery: currentUser.presbytery || ''
+    };
+}
+
+// Safety net: Firestore's addDoc/updateDoc reject any field whose value is
+// literally undefined. This strips that risk from every ext-module write,
+// regardless of where an undefined might have crept in.
+function sanitizePayload(obj) {
+    const clean = {};
+    Object.keys(obj).forEach(k => { clean[k] = obj[k] === undefined ? '' : obj[k]; });
+    return clean;
 }
 
 function closeAllExtModals() {
@@ -724,13 +748,13 @@ async function onSubmitTxForm(e) {
     let deptField = currentUser.department, subsec = currentUser.subsection, pres = currentUser.presbytery;
     if (superVisible) { deptField = $('tx-dept').value; subsec = $('tx-subsection').value; pres = $('tx-pres').value; }
 
-    const payload = {
+    const payload = sanitizePayload({
         date: $('tx-date').value || new Date().toISOString().split('T')[0],
         type: $('tx-type').value,
         desc: $('tx-desc').value.trim(),
         amount: parseFloat($('tx-amount').value),
         department: deptField, subsection: subsec, presbytery: pres
-    };
+    });
 
     if (!payload.desc || isNaN(payload.amount) || payload.amount < 0) {
         showToast('error', 'Please provide a valid description and amount.');
@@ -744,7 +768,7 @@ async function onSubmitTxForm(e) {
             await updateDoc(doc(db, COLLECTIONS.TRANSACTIONS, editId), payload);
             showToast('success', 'Transaction updated.');
         } else {
-            await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() });
+            await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }));
             showToast('success', 'Transaction saved.');
         }
         closeTxModal();
@@ -782,12 +806,12 @@ async function onSubmitUserForm(e) {
     const email = $('user-email').value.trim().toLowerCase();
     const password = $('user-password').value;
 
-    const profileFields = {
+    const profileFields = sanitizePayload({
         name, email, role,
         presbytery: roleSuper ? 'ALL' : $('user-pres').value,
         department: roleSuper ? 'ALL' : $('user-dept').value,
         subsection: roleSuper ? 'ALL' : $('user-subsection').value
-    };
+    });
 
     if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
     if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
@@ -810,7 +834,7 @@ async function onSubmitUserForm(e) {
             const tempAuth = getAuth(tempApp);
             try {
                 const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
-                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), { ...profileFields, createdAt: serverTimestamp() });
+                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), sanitizePayload({ ...profileFields, createdAt: serverTimestamp() }));
                 showToast('success', `${name} created and assigned successfully.`);
             } finally { await deleteApp(tempApp); }
         }
@@ -1285,7 +1309,7 @@ async function onSubmitInvoiceForm(e) {
     const customer = customersDb.find(c => c.id === customerId);
     const scope = scopedFieldsFromForm('invoice', true);
 
-    const payload = {
+    const payload = sanitizePayload({
         number: $('invoice-number').value.trim(),
         customerId, customerName: customer ? customer.name : '',
         desc: $('invoice-desc').value.trim(),
@@ -1293,7 +1317,7 @@ async function onSubmitInvoiceForm(e) {
         date: $('invoice-date').value || new Date().toISOString().split('T')[0],
         due: $('invoice-due').value || '',
         ...scope
-    };
+    });
     if (!payload.number || !customerId || !payload.desc || isNaN(payload.amount) || payload.amount < 0) {
         showToast('error', 'Fill in invoice number, customer, description and a valid amount.'); return;
     }
@@ -1304,7 +1328,7 @@ async function onSubmitInvoiceForm(e) {
             await updateDoc(doc(db, COLLECTIONS.INVOICES, editId), payload);
             showToast('success', 'Invoice updated.');
         } else {
-            await addDoc(collection(db, COLLECTIONS.INVOICES), { ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() });
+            await addDoc(collection(db, COLLECTIONS.INVOICES), sanitizePayload({ ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() }));
             showToast('success', 'Invoice submitted for Superadmin approval.');
         }
         $('invoice-modal').classList.add('hidden');
@@ -1410,7 +1434,7 @@ async function onSubmitBillForm(e) {
     const supplier = suppliersDb.find(s => s.id === supplierId);
     const scope = scopedFieldsFromForm('bill', true);
 
-    const payload = {
+    const payload = sanitizePayload({
         number: $('bill-number').value.trim(),
         supplierId, supplierName: supplier ? supplier.name : '',
         desc: $('bill-desc').value.trim(),
@@ -1418,7 +1442,7 @@ async function onSubmitBillForm(e) {
         date: $('bill-date').value || new Date().toISOString().split('T')[0],
         due: $('bill-due').value || '',
         ...scope
-    };
+    });
     if (!payload.number || !supplierId || !payload.desc || isNaN(payload.amount) || payload.amount < 0) {
         showToast('error', 'Fill in bill number, supplier, description and a valid amount.'); return;
     }
@@ -1429,7 +1453,7 @@ async function onSubmitBillForm(e) {
             await updateDoc(doc(db, COLLECTIONS.BILLS, editId), payload);
             showToast('success', 'Bill updated.');
         } else {
-            await addDoc(collection(db, COLLECTIONS.BILLS), { ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() });
+            await addDoc(collection(db, COLLECTIONS.BILLS), sanitizePayload({ ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() }));
             showToast('success', 'Bill submitted for Superadmin approval.');
         }
         $('bill-modal').classList.add('hidden');
@@ -1535,7 +1559,7 @@ async function onSubmitChequeForm(e) {
     const bank = banksDb.find(b => b.id === bankId);
     const scope = scopedFieldsFromForm('cheque', true);
 
-    const payload = {
+    const payload = sanitizePayload({
         number: $('cheque-number').value.trim(),
         payee: $('cheque-payee').value.trim(),
         bankId, bankName: bank ? bank.name : '',
@@ -1543,7 +1567,7 @@ async function onSubmitChequeForm(e) {
         date: $('cheque-date').value || new Date().toISOString().split('T')[0],
         memo: $('cheque-memo').value.trim(),
         ...scope
-    };
+    });
     if (!payload.number || !payload.payee || !bankId || isNaN(payload.amount) || payload.amount < 0) {
         showToast('error', 'Fill in cheque number, payee, bank and a valid amount.'); return;
     }
@@ -1554,7 +1578,7 @@ async function onSubmitChequeForm(e) {
             await updateDoc(doc(db, COLLECTIONS.CHEQUES, editId), payload);
             showToast('success', 'Cheque updated.');
         } else {
-            await addDoc(collection(db, COLLECTIONS.CHEQUES), { ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() });
+            await addDoc(collection(db, COLLECTIONS.CHEQUES), sanitizePayload({ ...payload, status: 'pending_approval', createdBy: currentUser.email, createdAt: serverTimestamp() }));
             showToast('success', 'Cheque submitted for approval.');
         }
         $('cheque-modal').classList.add('hidden');
@@ -1650,17 +1674,17 @@ async function onSubmitSupplierForm(e) {
     e.preventDefault();
     const editId = $('supplier-edit-id').value;
     const scope = scopedFieldsFromForm('supplier', false);
-    const payload = {
+    const payload = sanitizePayload({
         name: $('supplier-name').value.trim(), contact: $('supplier-contact').value.trim(),
         phone: $('supplier-phone').value.trim(), email: $('supplier-email').value.trim(),
         address: $('supplier-address').value.trim(),
         department: scope.department, presbytery: scope.presbytery
-    };
+    });
     if (!payload.name) { showToast('error', 'Supplier name is required.'); return; }
     const btn = $('supplier-submit-btn'); btn.disabled = true;
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.SUPPLIERS, editId), payload); showToast('success', 'Supplier updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.SUPPLIERS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Supplier added.'); }
+        else { await addDoc(collection(db, COLLECTIONS.SUPPLIERS), sanitizePayload({ ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() })); showToast('success', 'Supplier added.'); }
         $('supplier-modal').classList.add('hidden');
     } catch (err) { showToast('error', "Couldn't save supplier: " + err.message); }
     finally { btn.disabled = false; }
@@ -1736,17 +1760,17 @@ async function onSubmitCustomerForm(e) {
     e.preventDefault();
     const editId = $('customer-edit-id').value;
     const scope = scopedFieldsFromForm('customer', false);
-    const payload = {
+    const payload = sanitizePayload({
         name: $('customer-name').value.trim(), contact: $('customer-contact').value.trim(),
         phone: $('customer-phone').value.trim(), email: $('customer-email').value.trim(),
         address: $('customer-address').value.trim(),
         department: scope.department, presbytery: scope.presbytery
-    };
+    });
     if (!payload.name) { showToast('error', 'Customer name is required.'); return; }
     const btn = $('customer-submit-btn'); btn.disabled = true;
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.CUSTOMERS, editId), payload); showToast('success', 'Customer updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.CUSTOMERS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Customer added.'); }
+        else { await addDoc(collection(db, COLLECTIONS.CUSTOMERS), sanitizePayload({ ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() })); showToast('success', 'Customer added.'); }
         $('customer-modal').classList.add('hidden');
     } catch (err) { showToast('error', "Couldn't save customer: " + err.message); }
     finally { btn.disabled = false; }
@@ -1826,19 +1850,19 @@ async function onSubmitProjectForm(e) {
     e.preventDefault();
     const editId = $('project-edit-id').value;
     const scope = scopedFieldsFromForm('project', true);
-    const payload = {
+    const payload = sanitizePayload({
         name: $('project-name').value.trim(), desc: $('project-desc').value.trim(),
         start: $('project-start').value || '', end: $('project-end').value || '',
         budget: parseFloat($('project-budget').value) || 0,
         progress: parseInt($('project-progress').value, 10) || 0,
         status: $('project-status').value,
         ...scope
-    };
+    });
     if (!payload.name) { showToast('error', 'Project name is required.'); return; }
     const btn = $('project-submit-btn'); btn.disabled = true;
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.PROJECTS, editId), payload); showToast('success', 'Project updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.PROJECTS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Project created.'); }
+        else { await addDoc(collection(db, COLLECTIONS.PROJECTS), sanitizePayload({ ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() })); showToast('success', 'Project created.'); }
         $('project-modal').classList.add('hidden');
     } catch (err) { showToast('error', "Couldn't save project: " + err.message); }
     finally { btn.disabled = false; }
@@ -1925,18 +1949,18 @@ async function onSubmitBudgetForm(e) {
     e.preventDefault();
     if (!guardSuperadminAction()) return;
     const editId = $('budget-edit-id').value;
-    const payload = {
+    const payload = sanitizePayload({
         department: $('budget-dept').value, presbytery: $('budget-pres').value,
         category: $('budget-category').value.trim(), period: $('budget-period').value.trim(),
         amount: parseFloat($('budget-amount').value), notes: $('budget-notes').value.trim()
-    };
+    });
     if (!payload.category || !payload.period || isNaN(payload.amount) || payload.amount < 0) {
         showToast('error', 'Fill in category, period and a valid amount.'); return;
     }
     const btn = $('budget-submit-btn'); btn.disabled = true;
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.BUDGETS, editId), payload); showToast('success', 'Budget line updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.BUDGETS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Budget line added.'); }
+        else { await addDoc(collection(db, COLLECTIONS.BUDGETS), sanitizePayload({ ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() })); showToast('success', 'Budget line added.'); }
         $('budget-modal').classList.add('hidden');
     } catch (err) { showToast('error', "Couldn't save budget line: " + err.message); }
     finally { btn.disabled = false; }
@@ -2016,16 +2040,16 @@ async function onSubmitBankForm(e) {
     e.preventDefault();
     if (!guardSuperadminAction()) return;
     const editId = $('bank-edit-id').value;
-    const payload = {
+    const payload = sanitizePayload({
         name: $('bank-name').value.trim(), branch: $('bank-branch').value.trim(),
         account: $('bank-account').value.trim(), currency: $('bank-currency').value.trim() || 'RWF',
         balance: parseFloat($('bank-balance').value) || 0, notes: $('bank-notes').value.trim()
-    };
+    });
     if (!payload.name || !payload.account) { showToast('error', 'Bank name and account number are required.'); return; }
     const btn = $('bank-submit-btn'); btn.disabled = true;
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.BANKS, editId), payload); showToast('success', 'Bank updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.BANKS), { ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() }); showToast('success', 'Bank added.'); }
+        else { await addDoc(collection(db, COLLECTIONS.BANKS), sanitizePayload({ ...payload, createdBy: currentUser.email, createdAt: serverTimestamp() })); showToast('success', 'Bank added.'); }
         $('bank-modal').classList.add('hidden');
     } catch (err) { showToast('error', "Couldn't save bank: " + err.message); }
     finally { btn.disabled = false; }
