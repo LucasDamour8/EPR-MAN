@@ -88,21 +88,26 @@
             </div>
 
             <nav class="sidebar-menu">
-                <button type="button" class="nav-item" id="rail-create-btn"><i class="fa-solid fa-circle-plus"></i>Create</button>
-                <button type="button" class="nav-item" id="rail-bookmarks-btn"><i class="fa-solid fa-bookmark"></i>Bookmarks</button>
+                <button type="button" class="nav-item" id="rail-create-btn" data-flyout="create"><i class="fa-solid fa-circle-plus"></i>Create</button>
+                <button type="button" class="nav-item" id="rail-bookmarks-btn" data-flyout="bookmarks"><i class="fa-solid fa-bookmark"></i>Bookmarks</button>
                 <button type="button" class="nav-item active" data-view="overview"><i class="fa-solid fa-house"></i>Home</button>
-                <button type="button" class="nav-item" data-view="transactions"><i class="fa-solid fa-list-check"></i>Feed <span class="count-chip" id="nav-tx-count">0</span></button>
-                <button type="button" class="nav-item" data-view="reports"><i class="fa-solid fa-chart-simple"></i>Reports</button>
-                <button type="button" class="nav-item" id="rail-apps-btn"><i class="fa-solid fa-grip"></i>All apps</button>
+                <button type="button" class="nav-item" data-view="transactions" data-flyout="feed"><i class="fa-solid fa-list-check"></i>Feed <span class="count-chip" id="nav-tx-count">0</span></button>
+                <button type="button" class="nav-item" data-view="reports" data-flyout="reports"><i class="fa-solid fa-chart-simple"></i>Reports</button>
+                <button type="button" class="nav-item" id="rail-apps-btn" data-flyout="apps"><i class="fa-solid fa-grip"></i>All apps</button>
             </nav>
 
             <div class="sidebar-section-title">Pinned</div>
             <nav class="sidebar-menu">
-                <button type="button" class="nav-item" data-view="transactions"><i class="fa-solid fa-coins"></i>Accounting</button>
-                <button type="button" class="nav-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expenses <span class="count-chip" id="nav-bills-count">0</span></button>
-                <button type="button" class="nav-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales <span class="count-chip" id="nav-invoices-count">0</span></button>
-                <button type="button" class="nav-item" id="rail-customise-btn"><i class="fa-solid fa-sliders"></i>Customise</button>
+                <button type="button" class="nav-item" data-view="transactions" data-flyout="accounting"><i class="fa-solid fa-coins"></i>Accounting</button>
+                <button type="button" class="nav-item" data-view="bills" data-flyout="expenses"><i class="fa-solid fa-receipt"></i>Expenses <span class="count-chip" id="nav-bills-count">0</span></button>
+                <button type="button" class="nav-item" data-view="invoices" data-flyout="sales"><i class="fa-solid fa-file-invoice"></i>Sales <span class="count-chip" id="nav-invoices-count">0</span></button>
+                <button type="button" class="nav-item" id="rail-customise-btn" data-flyout="customise"><i class="fa-solid fa-sliders"></i>Customise</button>
             </nav>
+
+            <!-- Hover flyout: shows each rail item's sub-links, QuickBooks-style -->
+            <div id="rail-flyout" class="rail-flyout hidden">
+                <div id="rail-flyout-content" class="rail-flyout-content"></div>
+            </div>
 
             <div class="sidebar-footer">SAS &copy; 2026 &middot; Live via Firestore</div>
         </aside>
