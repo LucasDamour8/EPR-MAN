@@ -334,6 +334,183 @@ function setupEventListeners() {
     });
 
     setupExtModulesEventListeners();
+    setupRailFlyouts();
+}
+
+// ---------------------------------------------------------------------
+// 7b. ICON-RAIL HOVER FLYOUTS (QuickBooks-style: hover a rail item to see
+//     its sub-links; click still jumps straight to that item's main view)
+// ---------------------------------------------------------------------
+function setTxTypeFilter(type) {
+    txFilters.type = type;
+    const sel = $('tx-filter-type');
+    if (sel) sel.value = type;
+    renderTransactionsTable(getFilteredTransactions());
+}
+
+function getFlyoutGroups(key) {
+    const superAdmin = isSuper();
+    const lockedGroup = { items: [{ icon: 'fa-lock', label: 'Superadmin only', disabled: true }] };
+
+    switch (key) {
+        case 'create':
+            return [
+                { title: 'Quick create', items: [
+                    { icon: 'fa-receipt', label: 'New Transaction', action: () => { switchView('transactions'); openTxModal(); } },
+                    { icon: 'fa-file-invoice', label: 'New Invoice', action: () => { switchView('invoices'); openInvoiceModal(); } },
+                    { icon: 'fa-receipt', label: 'New Bill', action: () => { switchView('bills'); openBillModal(); } },
+                    { icon: 'fa-money-check', label: 'New Cheque', action: () => { switchView('cheques'); openChequeModal(); } },
+                    { icon: 'fa-truck-field', label: 'New Supplier', action: () => { switchView('suppliers'); openSupplierModal(); } },
+                    { icon: 'fa-address-book', label: 'New Customer', action: () => { switchView('customers'); openCustomerModal(); } },
+                    { icon: 'fa-diagram-project', label: 'New Project', action: () => { switchView('projects'); openProjectModal(); } }
+                ] },
+                ...(superAdmin ? [{ title: 'Admin', items: [
+                    { icon: 'fa-scale-balanced', label: 'New Budget Line', action: () => { switchView('budget'); openBudgetModal(); } },
+                    { icon: 'fa-building-columns', label: 'New Bank', action: () => { switchView('banks'); openBankModal(); } }
+                ] }] : [])
+            ];
+        case 'bookmarks':
+            return [{ title: 'Bookmarks', items: [], empty: 'No bookmarks yet — pin your favourite reports here soon.' }];
+        case 'feed':
+            return [{ title: 'Transactions', items: [
+                { icon: 'fa-list-check', label: 'All transactions', action: () => switchView('transactions') },
+                { icon: 'fa-arrow-trend-up', label: 'Income only', action: () => { switchView('transactions'); setTxTypeFilter('Income'); } },
+                { icon: 'fa-arrow-trend-down', label: 'Expenses only', action: () => { switchView('transactions'); setTxTypeFilter('Expense'); } },
+                { icon: 'fa-building-columns', label: 'Assets only', action: () => { switchView('transactions'); setTxTypeFilter('Asset'); } },
+                { icon: 'fa-scale-unbalanced', label: 'Liabilities only', action: () => { switchView('transactions'); setTxTypeFilter('Liability'); } }
+            ] }];
+        case 'reports':
+            return [
+                { title: 'Standard reports', items: [
+                    { icon: 'fa-file-invoice-dollar', label: 'Financial Statement', action: () => switchView('reports') },
+                    { icon: 'fa-file-excel', label: 'Export to Excel', action: () => exportReportToExcel() },
+                    { icon: 'fa-print', label: 'Print statement', action: () => window.print() }
+                ] },
+                { title: 'Management & performance', ...(superAdmin ? { items: [
+                    { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
+                    { icon: 'fa-chart-pie', label: 'Department breakdown', action: () => switchView('overview') }
+                ] } : lockedGroup) },
+                { title: 'Financial planning', ...(superAdmin ? { items: [
+                    { icon: 'fa-scale-balanced', label: 'Budgets', action: () => switchView('budget') },
+                    { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') }
+                ] } : lockedGroup) }
+            ];
+        case 'apps':
+            return [
+                { title: 'Sales & Get Paid', items: [
+                    { icon: 'fa-file-invoice', label: 'Invoices', action: () => switchView('invoices') },
+                    { icon: 'fa-address-book', label: 'Customer Hub', action: () => switchView('customers') }
+                ] },
+                { title: 'Expenses & Bills', items: [
+                    { icon: 'fa-receipt', label: 'Pay Bills', action: () => switchView('bills') },
+                    { icon: 'fa-truck-field', label: 'Suppliers', action: () => switchView('suppliers') },
+                    { icon: 'fa-money-check', label: 'Cheques', action: () => switchView('cheques') }
+                ] },
+                { title: 'Operations', items: [
+                    { icon: 'fa-diagram-project', label: 'Projects', action: () => switchView('projects') },
+                    { icon: 'fa-sitemap', label: 'Departments & Presbyteries', action: () => switchView('departments') }
+                ] },
+                ...(superAdmin ? [{ title: 'Admin tools', items: [
+                    { icon: 'fa-scale-balanced', label: 'Budget Management', action: () => switchView('budget') },
+                    { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') },
+                    { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
+                    { icon: 'fa-users-gear', label: 'User Admin', action: () => switchView('users') }
+                ] }] : []),
+                { items: [{ icon: 'fa-grip', label: 'Open full module list', action: () => openAppsPanel() }] }
+            ];
+        case 'accounting':
+            return [{ title: 'Accounting', items: [
+                { icon: 'fa-list-check', label: 'Transactions', action: () => switchView('transactions') },
+                ...(superAdmin ? [
+                    { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
+                    { icon: 'fa-scale-balanced', label: 'Budget Management', action: () => switchView('budget') },
+                    { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') }
+                ] : [])
+            ] }];
+        case 'expenses':
+            return [{ title: 'Expenses & Pay Bills', items: [
+                { icon: 'fa-receipt', label: 'Pay Bills', action: () => switchView('bills') },
+                { icon: 'fa-truck-field', label: 'Suppliers', action: () => switchView('suppliers') },
+                { icon: 'fa-plus', label: 'Record Expense', action: () => { switchView('transactions'); openTxModal(); const t = $('tx-type'); if (t) t.value = 'Expense'; } }
+            ] }];
+        case 'sales':
+            return [{ title: 'Sales & Get Paid', items: [
+                { icon: 'fa-file-invoice', label: 'Invoices', action: () => switchView('invoices') },
+                { icon: 'fa-address-book', label: 'Customer Hub', action: () => switchView('customers') },
+                { icon: 'fa-plus', label: 'Create Invoice', action: () => { switchView('invoices'); openInvoiceModal(); } }
+            ] }];
+        case 'customise':
+            return [{ title: 'Your account', items: [
+                { icon: 'fa-user', label: 'My profile', action: () => $('profile-dropdown').classList.remove('hidden') },
+                { icon: 'fa-sitemap', label: 'Departments & Presbyteries', action: () => switchView('departments') },
+                ...(superAdmin ? [{ icon: 'fa-users-gear', label: 'User Admin', action: () => switchView('users') }] : []),
+                { icon: 'fa-right-from-bracket', label: 'Sign out', action: () => doLogout() }
+            ] }];
+        default:
+            return [];
+    }
+}
+
+function renderFlyout(groups) {
+    const wrap = $('rail-flyout-content');
+    wrap.innerHTML = '';
+    let renderedAny = false;
+    groups.forEach(g => {
+        if (g.title) {
+            const t = document.createElement('div');
+            t.className = 'rf-group-title';
+            t.textContent = g.title;
+            wrap.appendChild(t);
+        }
+        if (!g.items || g.items.length === 0) {
+            const e = document.createElement('div');
+            e.className = 'rf-empty';
+            e.textContent = g.empty || 'Nothing here yet.';
+            wrap.appendChild(e);
+            renderedAny = true;
+            return;
+        }
+        g.items.forEach(it => {
+            renderedAny = true;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'rf-item' + (it.disabled ? ' disabled' : '');
+            btn.innerHTML = `<i class="fa-solid ${it.icon}"></i><span>${escapeHtml(it.label)}</span>`;
+            if (!it.disabled) btn.addEventListener('click', () => { it.action(); hideFlyout(); toggleSidebar(false); });
+            wrap.appendChild(btn);
+        });
+    });
+    if (!renderedAny) wrap.innerHTML = `<div class="rf-empty">Nothing here yet.</div>`;
+}
+
+let flyoutHideTimer = null;
+function showFlyoutFor(btn, key) {
+    if (!key) { hideFlyout(); return; }
+    clearTimeout(flyoutHideTimer);
+    const groups = getFlyoutGroups(key);
+    if (!groups.length) { hideFlyout(); return; }
+    renderFlyout(groups);
+    const panel = $('rail-flyout');
+    const rect = btn.getBoundingClientRect();
+    panel.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        const maxTop = window.innerHeight - panel.offsetHeight - 12;
+        panel.style.top = Math.max(8, Math.min(rect.top, Math.max(8, maxTop))) + 'px';
+    });
+}
+function hideFlyoutSoon() { flyoutHideTimer = setTimeout(hideFlyout, 180); }
+function hideFlyout() { $('rail-flyout').classList.add('hidden'); }
+
+function setupRailFlyouts() {
+    qsa('[data-flyout]').forEach(btn => {
+        btn.addEventListener('mouseenter', () => showFlyoutFor(btn, btn.dataset.flyout));
+        btn.addEventListener('mouseleave', hideFlyoutSoon);
+        btn.addEventListener('focus', () => showFlyoutFor(btn, btn.dataset.flyout));
+        btn.addEventListener('blur', hideFlyoutSoon);
+    });
+    const panel = $('rail-flyout');
+    panel.addEventListener('mouseenter', () => clearTimeout(flyoutHideTimer));
+    panel.addEventListener('mouseleave', hideFlyoutSoon);
 }
 
 function toggleSidebar(open) {
