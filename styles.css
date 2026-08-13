@@ -181,6 +181,29 @@ a { color: var(--primary-dark); }
 
 .sidebar-footer { margin-top: auto; padding: 10px 4px; font-size: 0.55rem; text-align: center; color: #b7bcc3; border-top: 1px solid var(--border); }
 
+/* Hover flyout — shows a rail item's sub-links, QuickBooks-style */
+.rail-flyout {
+    position: fixed; left: var(--rail-width); top: 0; z-index: 65;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow-md); min-width: 240px; max-width: 300px;
+    padding: 8px 0; max-height: calc(100vh - 24px); overflow-y: auto;
+}
+.rail-flyout-content .rf-group-title {
+    font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted); padding: 10px 16px 4px;
+}
+.rail-flyout-content .rf-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none;
+    text-align: left; padding: 9px 16px; font-size: .84rem; font-weight: 600; color: var(--text);
+}
+.rail-flyout-content .rf-item i { width: 16px; color: var(--primary-dark); text-align: center; font-size: .85rem; }
+.rail-flyout-content .rf-item:hover { background: var(--primary-light); color: var(--primary-darker); }
+.rail-flyout-content .rf-item .count-chip { margin-left: auto; }
+.rail-flyout-content .rf-item.disabled { color: var(--text-muted); cursor: default; }
+.rail-flyout-content .rf-item.disabled:hover { background: none; color: var(--text-muted); }
+.rail-flyout-content .rf-divider { height: 1px; background: var(--border); margin: 6px 0; }
+.rail-flyout-content .rf-empty { padding: 12px 16px; font-size: .8rem; color: var(--text-muted); }
+
 /* All-modules launcher panel (QuickBooks "All apps" grid equivalent) */
 .apps-panel {
     position: fixed; top: 0; left: 0; bottom: 0; width: 340px; max-width: 88vw; background: #fff;
@@ -196,6 +219,7 @@ a { color: var(--primary-dark); }
     border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: left; font-size: 0.78rem; font-weight: 700; color: var(--text);
 }
 .apps-grid-item i { font-size: 1.1rem; color: var(--primary-dark); }
+.apps-grid-item .count-chip { background: var(--accent); color:#fff; font-size:.62rem; padding:1px 7px; border-radius: 20px; font-weight:800; margin-left:auto; }
 .apps-grid-item:hover { border-color: var(--primary); background: var(--primary-light); }
 .apps-panel-assignment { margin: 0 18px 18px; padding: 14px; background: var(--primary-light); border-radius: 12px; font-size: 0.8rem; }
 .apps-panel-assignment .ab-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; color: var(--primary-darker); }
