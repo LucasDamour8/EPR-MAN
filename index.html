@@ -101,6 +101,7 @@
                 <button type="button" class="nav-item" data-view="transactions" data-flyout="accounting"><i class="fa-solid fa-coins"></i>Accounting</button>
                 <button type="button" class="nav-item" data-view="bills" data-flyout="expenses"><i class="fa-solid fa-receipt"></i>Expenses <span class="count-chip" id="nav-bills-count">0</span></button>
                 <button type="button" class="nav-item" data-view="invoices" data-flyout="sales"><i class="fa-solid fa-file-invoice"></i>Sales <span class="count-chip" id="nav-invoices-count">0</span></button>
+                <button type="button" class="nav-item" data-view="coa"><i class="fa-solid fa-chart-line"></i>Accounts</button>
                 <button type="button" class="nav-item" id="rail-customise-btn" data-flyout="customise"><i class="fa-solid fa-sliders"></i>Customise</button>
             </nav>
 
@@ -129,10 +130,10 @@
                 <button type="button" class="apps-grid-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i>Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="customers"><i class="fa-solid fa-address-book"></i>Customer Hub <span class="count-chip" id="nav-customers-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="projects"><i class="fa-solid fa-diagram-project"></i>Projects <span class="count-chip" id="nav-projects-count">0</span></button>
+                <button type="button" class="apps-grid-item" data-view="coa"><i class="fa-solid fa-chart-line"></i>Chart of Accounts</button>
                 <div id="apps-admin-only" class="hidden" style="display:contents;">
                     <button type="button" class="apps-grid-item" data-view="budget"><i class="fa-solid fa-scale-balanced"></i>Budget Management</button>
                     <button type="button" class="apps-grid-item" data-view="banks"><i class="fa-solid fa-building-columns"></i>Bank Management <span class="count-chip" id="nav-banks-count">0</span></button>
-                    <button type="button" class="apps-grid-item" data-view="coa"><i class="fa-solid fa-chart-line"></i>Chart of Accounts</button>
                     <button type="button" class="apps-grid-item" data-view="users"><i class="fa-solid fa-users-gear"></i>User Admin <span class="count-chip" id="nav-users-count">0</span></button>
                 </div>
             </div>
@@ -140,7 +141,7 @@
                 <div class="ab-row"><i class="fa-solid fa-building"></i><span id="ab-department">—</span></div>
                 <div class="ab-row"><i class="fa-solid fa-location-dot"></i><span id="ab-presbytery">—</span></div>
                 <div class="ab-row"><i class="fa-solid fa-diagram-project"></i><span id="ab-subsection">—</span></div>
-                <p class="ab-note">You only see data recorded under this department and presbytery. Contact your Superadmin to change this assignment.</p>
+                <p class="ab-note">You only see data recorded under this department and presbytery. Chart of Accounts is further limited to bank accounts you've personally posted against. Contact your Superadmin to change your assignment.</p>
             </div>
             <div id="admin-filter-section" class="hidden" style="padding: 0 18px 18px;">
                 <div class="sidebar-section-title" style="text-align:left;padding-left:0;">Departments</div>
@@ -253,7 +254,8 @@
                         <button type="button" class="pill-nav-btn" data-view="suppliers"><span class="pill-icon" style="background:var(--purple)"><i class="fa-solid fa-truck-field"></i></span>Suppliers</button>
                         <button type="button" class="pill-nav-btn" data-view="projects"><span class="pill-icon" style="background:var(--blue)"><i class="fa-solid fa-diagram-project"></i></span>Projects</button>
                         <button type="button" class="pill-nav-btn" data-view="cheques"><span class="pill-icon" style="background:var(--warning-dark)"><i class="fa-solid fa-money-check"></i></span>Cheques</button>
-                        <button type="button" class="pill-nav-btn" data-view="reports"><span class="pill-icon" style="background:var(--primary-darker)"><i class="fa-solid fa-file-invoice-dollar"></i></span>Reports</button>
+                        <button type="button" class="pill-nav-btn" data-view="coa"><span class="pill-icon" style="background:var(--primary-darker)"><i class="fa-solid fa-chart-line"></i></span>Chart of Accounts</button>
+                        <button type="button" class="pill-nav-btn" data-view="reports"><span class="pill-icon" style="background:#555"><i class="fa-solid fa-file-invoice-dollar"></i></span>Reports</button>
                     </div>
 
                     <div class="create-actions-row">
@@ -294,7 +296,7 @@
                             <div id="glance-banks-list">
                                 <p class="glance-sub">No banks added yet.</p>
                             </div>
-                            <button type="button" class="link-btn" id="glance-banks-goto" style="margin-top:6px;">Go to Bank Management →</button>
+                            <button type="button" class="link-btn" id="glance-banks-goto" style="margin-top:6px;">Go to Chart of Accounts →</button>
                         </div>
                     </div>
 
@@ -392,11 +394,11 @@
                             <thead>
                                 <tr>
                                     <th>Date</th><th>Type</th><th>Description</th><th>Department</th>
-                                    <th>Section / Project</th><th>Presbytery Location</th><th>Amount (RF)</th><th>Actions</th>
+                                    <th>Section / Project</th><th>Presbytery Location</th><th>Account</th><th>Amount (RF)</th><th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="tx-table-body">
-                                <tr class="table-empty-row"><td colspan="8">Loading transactions…</td></tr>
+                                <tr class="table-empty-row"><td colspan="9">Loading transactions…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -408,7 +410,7 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Reports &amp; Analytics</h2>
-                            <p>View Balance Sheet, Income Statements, and export data for the selected scope.</p>
+                            <p>Build a financial statement for any period, then export or print it.</p>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-outline" id="print-btn"><i class="fa-solid fa-print"></i> Print</button>
@@ -429,9 +431,28 @@
                         </aside>
 
                         <div>
+                            <div class="range-bar-wrap">
+                                <span class="ft-label"><i class="fa-solid fa-calendar-days"></i> Report period</span>
+                                <div class="range-bar" id="report-range-bar">
+                                    <button type="button" class="range-btn active" data-range="all">All time</button>
+                                    <button type="button" class="range-btn" data-range="today">Today</button>
+                                    <button type="button" class="range-btn" data-range="week">This week</button>
+                                    <button type="button" class="range-btn" data-range="month">This month</button>
+                                    <button type="button" class="range-btn" data-range="annual">This year</button>
+                                    <button type="button" class="range-btn" data-range="custom">Custom range</button>
+                                </div>
+                                <div class="custom-range-fields hidden">
+                                    <input type="date" class="range-from">
+                                    <span>to</span>
+                                    <input type="date" class="range-to">
+                                    <button type="button" class="btn btn-outline range-apply">Apply</button>
+                                </div>
+                            </div>
+
                             <div class="financial-statement-card" id="printable-report">
                                 <h3 style="text-align: center; font-size: 1.3rem;">SAS FINANCIAL STATEMENT</h3>
-                                <p style="text-align: center; color: var(--text-muted); margin-bottom: 25px;" id="statement-scope">System Wide Statement</p>
+                                <p style="text-align: center; color: var(--text-muted); margin-bottom: 6px;" id="statement-scope">System Wide Statement</p>
+                                <p style="text-align:center; color: var(--text-muted); font-size:.78rem; margin-bottom: 25px;" id="stmt-record-count"></p>
 
                                 <div style="margin-bottom: 25px;">
                                     <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss Summary</h4>
@@ -580,9 +601,9 @@
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
                             <thead>
-                                <tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Description</th><th>Amount (RF)</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
+                                <tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Description</th><th>Amount (RF)</th><th>Account</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
                             </thead>
-                            <tbody id="invoices-table-body"><tr class="table-empty-row"><td colspan="9">Loading invoices…</td></tr></tbody>
+                            <tbody id="invoices-table-body"><tr class="table-empty-row"><td colspan="10">Loading invoices…</td></tr></tbody>
                         </table>
                     </div>
                 </section>
@@ -600,9 +621,9 @@
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
                             <thead>
-                                <tr><th>Date</th><th>Bill #</th><th>Supplier</th><th>Description</th><th>Amount (RF)</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
+                                <tr><th>Date</th><th>Bill #</th><th>Supplier</th><th>Description</th><th>Amount (RF)</th><th>Account</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
                             </thead>
-                            <tbody id="bills-table-body"><tr class="table-empty-row"><td colspan="9">Loading bills…</td></tr></tbody>
+                            <tbody id="bills-table-body"><tr class="table-empty-row"><td colspan="10">Loading bills…</td></tr></tbody>
                         </table>
                     </div>
                 </section>
@@ -706,17 +727,17 @@
                     </div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
-                            <thead><tr><th>Bank Name</th><th>Branch</th><th>Account Number</th><th>Currency</th><th>Opening Balance</th><th>Actions</th></tr></thead>
+                            <thead><tr><th>Bank Name</th><th>Branch</th><th>Account Number</th><th>Currency</th><th>Current Balance</th><th>Actions</th></tr></thead>
                             <tbody id="banks-table-body"><tr class="table-empty-row"><td colspan="6">Loading banks…</td></tr></tbody>
                         </table>
                     </div>
                 </section>
 
-                <!-- ============ View: Chart of Accounts (superadmin only) ============ -->
+                <!-- ============ View: Chart of Accounts (open to all, scoped per user) ============ -->
                 <section id="view-coa" class="view-panel">
                     <div class="view-header">
                         <h2>Chart of Accounts</h2>
-                        <p>Pick a bank to see its cheque activity trend and overall department performance. Superadmin only.</p>
+                        <p id="coa-scope-note">Pick a bank to see its cash trend, live statement and department performance.</p>
                     </div>
 
                     <div class="ext-grid-wide" id="coa-bank-grid" style="margin-bottom:20px;"></div>
@@ -725,14 +746,39 @@
                         Add a bank under Bank Management, then select it here to see its trend.
                     </div>
 
-                    <div id="coa-charts" class="ext-grid-wide hidden">
-                        <div class="chart-box">
-                            <div class="chart-box-title"><i class="fa-solid fa-money-check"></i> <span id="coa-selected-bank-label">Cheque activity</span></div>
-                            <canvas id="coa-bank-chart" height="220"></canvas>
+                    <div id="coa-charts" class="hidden">
+                        <div class="range-bar-wrap">
+                            <span class="ft-label"><i class="fa-solid fa-calendar-days"></i> Statement period</span>
+                            <div class="range-bar" id="coa-range-bar">
+                                <button type="button" class="range-btn active" data-range="all">All time</button>
+                                <button type="button" class="range-btn" data-range="today">Today</button>
+                                <button type="button" class="range-btn" data-range="week">This week</button>
+                                <button type="button" class="range-btn" data-range="month">This month</button>
+                                <button type="button" class="range-btn" data-range="annual">This year</button>
+                                <button type="button" class="range-btn" data-range="custom">Custom range</button>
+                            </div>
+                            <div class="custom-range-fields hidden">
+                                <input type="date" class="range-from">
+                                <span>to</span>
+                                <input type="date" class="range-to">
+                                <button type="button" class="btn btn-outline range-apply">Apply</button>
+                            </div>
                         </div>
-                        <div class="chart-box">
-                            <div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Income vs Expense by department (current scope)</div>
-                            <canvas id="coa-dept-chart" height="220"></canvas>
+
+                        <div class="chart-box" style="margin-bottom:16px;">
+                            <div class="chart-box-title"><i class="fa-solid fa-file-invoice-dollar"></i> Bank Statement — <span id="coa-stmt-bank-label">—</span></div>
+                            <div class="stmt-grid" id="coa-stmt-grid"></div>
+                        </div>
+
+                        <div class="ext-grid-wide">
+                            <div class="chart-box">
+                                <div class="chart-box-title"><i class="fa-solid fa-chart-line"></i> <span id="coa-selected-bank-label">Cash trend</span></div>
+                                <canvas id="coa-bank-chart" height="220"></canvas>
+                            </div>
+                            <div class="chart-box">
+                                <div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Income vs Expense by department (current scope)</div>
+                                <canvas id="coa-dept-chart" height="220"></canvas>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -769,6 +815,15 @@
                     <div class="form-group">
                         <label>Amount (RF) <span class="req">*</span></label>
                         <input type="number" id="tx-amount" step="any" min="0" required placeholder="0.00">
+                    </div>
+                    <div class="form-group" id="tx-bank-group">
+                        <label>Bank / Cash Account <span class="req">*</span></label>
+                        <div class="acct-combo">
+                            <input type="text" id="tx-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
+                            <input type="hidden" id="tx-bank-id">
+                            <div class="acct-dropdown hidden" id="tx-bank-dropdown"></div>
+                        </div>
+                        <div class="field-hint">Every account is listed — start typing to filter live.</div>
                     </div>
                     <div class="form-group" id="tx-date-group">
                         <label>Date</label>
@@ -824,6 +879,14 @@
                     </div>
                     <div class="form-group"><label>Description <span class="req">*</span></label><input type="text" id="invoice-desc" required placeholder="What is this invoice for?"></div>
                     <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="invoice-amount" step="any" min="0" required></div>
+                    <div class="form-group" id="invoice-bank-group">
+                        <label>Bank / Cash Account to receive payment <span class="req">*</span></label>
+                        <div class="acct-combo">
+                            <input type="text" id="invoice-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
+                            <input type="hidden" id="invoice-bank-id">
+                            <div class="acct-dropdown hidden" id="invoice-bank-dropdown"></div>
+                        </div>
+                    </div>
                     <div class="form-group"><label>Invoice Date</label><input type="date" id="invoice-date"></div>
                     <div class="form-group"><label>Due Date</label><input type="date" id="invoice-due"></div>
                     <div class="form-group" id="invoice-dept-group"><label>Department</label><div class="select-wrap"><select id="invoice-dept"></select></div></div>
@@ -848,6 +911,14 @@
                     </div>
                     <div class="form-group"><label>Description <span class="req">*</span></label><input type="text" id="bill-desc" required placeholder="What is being paid for?"></div>
                     <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="bill-amount" step="any" min="0" required></div>
+                    <div class="form-group" id="bill-bank-group">
+                        <label>Bank / Cash Account to pay from <span class="req">*</span></label>
+                        <div class="acct-combo">
+                            <input type="text" id="bill-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
+                            <input type="hidden" id="bill-bank-id">
+                            <div class="acct-dropdown hidden" id="bill-bank-dropdown"></div>
+                        </div>
+                    </div>
                     <div class="form-group"><label>Bill Date</label><input type="date" id="bill-date"></div>
                     <div class="form-group"><label>Due Date</label><input type="date" id="bill-due"></div>
                     <div class="form-group" id="bill-dept-group"><label>Department</label><div class="select-wrap"><select id="bill-dept"></select></div></div>
@@ -868,8 +939,13 @@
                     <input type="hidden" id="cheque-edit-id" value="">
                     <div class="form-group"><label>Cheque Number <span class="req">*</span></label><input type="text" id="cheque-number" required placeholder="e.g. 000123"></div>
                     <div class="form-group"><label>Payee <span class="req">*</span></label><input type="text" id="cheque-payee" required placeholder="Who receives this cheque?"></div>
-                    <div class="form-group"><label>Bank Account <span class="req">*</span></label>
-                        <div class="select-wrap"><select id="cheque-bank" required><option value="">-- Select bank --</option></select></div>
+                    <div class="form-group" id="cheque-bank-group">
+                        <label>Bank Account <span class="req">*</span></label>
+                        <div class="acct-combo">
+                            <input type="text" id="cheque-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
+                            <input type="hidden" id="cheque-bank-id">
+                            <div class="acct-dropdown hidden" id="cheque-bank-dropdown"></div>
+                        </div>
                     </div>
                     <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="cheque-amount" step="any" min="0" required></div>
                     <div class="form-group"><label>Date</label><input type="date" id="cheque-date"></div>
