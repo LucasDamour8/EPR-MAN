@@ -63,7 +63,7 @@ const DEPT_ICONS = {
     "Department of Health": "fa-notes-medical"
 };
 
-const DEPT_CHART_COLORS = ["#2ca01c", "#ff8a3d", "#00a99d", "#6c4bd6", "#3b82f6", "#d0021b"];
+const DEPT_CHART_COLORS = ["#2ca01c", "#3b82f6", "#0e5c00", "#93c5fd", "#178000", "#1d4ed8"];
 
 const PRESBYTERIES = [
     "EPR Presbytery Zinga", "EPR Presbytery Kigali", "EPR Presbytery Remera",
@@ -2711,6 +2711,14 @@ function renderCoaStatement(bank, range) {
     `;
 }
 
+// Chart.js palette: white canvas background, primary greens, a couple of
+// supporting blues — matches the brand instead of red/orange.
+const CHART_GREEN = '#2ca01c';
+const CHART_GREEN_SOFT = 'rgba(44,160,28,0.14)';
+const CHART_BLUE = '#3b82f6';
+const CHART_BLUE_SOFT = 'rgba(59,130,246,0.12)';
+const CHART_GREEN_DARK = '#0e5c00';
+
 function renderCoaCharts() {
     const visible = getVisibleBanks();
     const charts = $('coa-charts');
@@ -2726,7 +2734,7 @@ function renderCoaCharts() {
 
     renderCoaStatement(bank, range);
 
-    // --- Bank trend chart: net movement (income - expense - cheques) per bucket ---
+    // --- Bank trend chart: money in vs money out per bucket ---
     const buckets = buildTrendBuckets(range.from || range.to ? range : { from: '', to: '' });
     const { tx, cheques } = getBankActivity(bank.id);
     const inSeries = buckets.map(bkt => tx.filter(t => t.type === 'Income' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
@@ -2735,43 +2743,64 @@ function renderCoaCharts() {
         cheques.filter(c => bkt.match(c.date)).reduce((s, c) => s + c.amount, 0)
     );
 
-    const bankCtx = $('coa-bank-chart');
-    if (bankCtx) {
-        if (coaBankChart) coaBankChart.destroy();
-        coaBankChart = new Chart(bankCtx, {
-            type: 'line',
-            data: {
-                labels: buckets.map(b => b.label),
-                datasets: [
-                    { label: 'Money in', data: inSeries, borderColor: '#2ca01c', backgroundColor: 'rgba(44,160,28,0.12)', fill: true, tension: 0.25 },
-                    { label: 'Money out', data: outSeries, borderColor: '#d0021b', backgroundColor: 'rgba(208,2,27,0.10)', fill: true, tension: 0.25 }
-                ]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
-        });
-    }
-
     // --- Department income vs expense chart (uses currently scoped transactions) ---
     const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
     const deptSource = isSuper() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
     const incomeByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
 
-    const deptCtx = $('coa-dept-chart');
-    if (deptCtx) {
-        if (coaDeptChart) coaDeptChart.destroy();
-        coaDeptChart = new Chart(deptCtx, {
-            type: 'bar',
-            data: {
-                labels: depts.map(shortDeptName),
-                datasets: [
-                    { label: 'Income', data: incomeByDept, backgroundColor: '#2ca01c', borderRadius: 6 },
-                    { label: 'Expense', data: expenseByDept, backgroundColor: '#d0021b', borderRadius: 6 }
-                ]
-            },
-            options: { responsive: true, scales: { y: { beginAtZero: true } } }
-        });
-    }
+    // Chart.js measures the canvas' parent box the instant it's constructed.
+    // If we build it in the same tick that we un-hide the container, the
+    // browser hasn't laid the container out yet and Chart.js locks onto a
+    // 0×0 (or stale) size forever. Deferring one animation frame — after the
+    // "hidden" class has actually been removed and painted — fixes that.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const bankCtx = $('coa-bank-chart');
+        if (bankCtx) {
+            if (coaBankChart) coaBankChart.destroy();
+            coaBankChart = new Chart(bankCtx, {
+                type: 'line',
+                data: {
+                    labels: buckets.map(b => b.label),
+                    datasets: [
+                        { label: 'Money in', data: inSeries, borderColor: CHART_GREEN, backgroundColor: CHART_GREEN_SOFT, fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: CHART_GREEN, borderWidth: 2.5 },
+                        { label: 'Money out', data: outSeries, borderColor: CHART_BLUE, backgroundColor: CHART_BLUE_SOFT, fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: CHART_BLUE, borderWidth: 2.5 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        const deptCtx = $('coa-dept-chart');
+        if (deptCtx) {
+            if (coaDeptChart) coaDeptChart.destroy();
+            coaDeptChart = new Chart(deptCtx, {
+                type: 'bar',
+                data: {
+                    labels: depts.map(shortDeptName),
+                    datasets: [
+                        { label: 'Income', data: incomeByDept, backgroundColor: CHART_GREEN, borderRadius: 8, maxBarThickness: 34 },
+                        { label: 'Expense', data: expenseByDept, backgroundColor: CHART_BLUE, borderRadius: 8, maxBarThickness: 34 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    }));
 }
 
 // ---------------------------------------------------------------------
