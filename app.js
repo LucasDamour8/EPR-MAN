@@ -2719,6 +2719,27 @@ const CHART_BLUE = '#3b82f6';
 const CHART_BLUE_SOFT = 'rgba(59,130,246,0.12)';
 const CHART_GREEN_DARK = '#0e5c00';
 
+// Chart.js's automatic "responsive" sizing depends on a ResizeObserver
+// reading the canvas' parent box. Right after a hidden CSS-grid panel is
+// un-hidden that box can still report a stale/zero size, so the chart is
+// built into a 0×0 canvas and nothing ever paints. To avoid that entirely
+// we measure the real pixel width ourselves and set the canvas' drawing
+// buffer directly (the same fixed-size approach already used for the
+// dashboard's small expense donut, which always renders correctly).
+function sizeCanvasExplicitly(canvas, height) {
+    if (!canvas) return { width: 0, height: 0 };
+    const wrap = canvas.closest('.chart-canvas-wrap') || canvas.parentElement;
+    const width = Math.max(260, Math.floor(wrap.getBoundingClientRect().width) || 600);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { width, height };
+}
+
 function renderCoaCharts() {
     const visible = getVisibleBanks();
     const charts = $('coa-charts');
@@ -2749,14 +2770,13 @@ function renderCoaCharts() {
     const incomeByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
 
-    // Chart.js measures the canvas' parent box the instant it's constructed.
-    // If we build it in the same tick that we un-hide the container, the
-    // browser hasn't laid the container out yet and Chart.js locks onto a
-    // 0×0 (or stale) size forever. Deferring one animation frame — after the
-    // "hidden" class has actually been removed and painted — fixes that.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    // One frame is enough to let the just-un-hidden grid finish laying out
+    // before we measure it — after that we size the canvas ourselves, so
+    // Chart.js never has to guess.
+    requestAnimationFrame(() => {
         const bankCtx = $('coa-bank-chart');
         if (bankCtx) {
+            sizeCanvasExplicitly(bankCtx, 260);
             if (coaBankChart) coaBankChart.destroy();
             coaBankChart = new Chart(bankCtx, {
                 type: 'line',
@@ -2768,7 +2788,7 @@ function renderCoaCharts() {
                     ]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: false, maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
@@ -2780,6 +2800,7 @@ function renderCoaCharts() {
 
         const deptCtx = $('coa-dept-chart');
         if (deptCtx) {
+            sizeCanvasExplicitly(deptCtx, 260);
             if (coaDeptChart) coaDeptChart.destroy();
             coaDeptChart = new Chart(deptCtx, {
                 type: 'bar',
@@ -2791,7 +2812,7 @@ function renderCoaCharts() {
                     ]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: false, maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
@@ -2800,8 +2821,17 @@ function renderCoaCharts() {
                 }
             });
         }
-    }));
+    });
 }
+
+// Keep both COA charts crisp and correctly sized if the window/panel resizes
+let coaResizeTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(coaResizeTimer);
+    coaResizeTimer = setTimeout(() => {
+        if ($('view-coa') && $('view-coa').classList.contains('active')) renderCoaCharts();
+    }, 200);
+});
 
 // ---------------------------------------------------------------------
 // 33. REPORTS — custom range statement (Today / Week / Month / Year / Custom)
