@@ -359,6 +359,15 @@ function setupEventListeners() {
 
     setupExtModulesEventListeners();
     setupRailFlyouts();
+
+    // Generic "Cancel" button in every wide modal's footer — just closes
+    // the modal it belongs to (data-modal points at the modal's id).
+    qsa('.modal-cancel-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const modal = $(btn.dataset.modal);
+            if (modal) modal.classList.add('hidden');
+        });
+    });
 }
 
 // ---------------------------------------------------------------------
