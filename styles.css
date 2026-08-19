@@ -619,17 +619,50 @@ a { color: var(--primary-dark); }
 .form-card, .table-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); }
 .form-card h3, .table-card h3 { font-size: 0.95rem; margin-bottom: 16px; }
 
-/* ---------- Modals (QuickBooks-style: light header bar, bottom action bar) ---------- */
+/* ---------- Modals (QuickBooks-style: light header bar, wide multi-column
+   body, bottom action bar with Cancel + Save) ---------- */
 .modal { position: fixed; inset: 0; background: rgba(15,23,42,0.55); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-.modal-content { background: #fff; border-radius: 10px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-md); }
-.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--bg); border-radius: 10px 10px 0 0; }
+.modal-content { background: #fff; border-radius: 10px; width: 100%; max-width: 760px; max-height: 92vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+.modal-content.modal-wide { max-width: 980px; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--bg); border-radius: 10px 10px 0 0; }
 .modal-header h3 { font-size: 1rem; display:flex; align-items:center; gap:10px; }
 .close-btn { background: none; border: none; font-size: 1.3rem; color: var(--text-muted); line-height: 1; }
 .close-btn:hover { color: var(--text); }
-.modal-body { padding: 20px; }
-.modal-footer { padding: 14px 20px 18px; border-top: 1px solid var(--border); }
+
+/* Wide, multi-column form body — fields flow left-to-right and wrap into as
+   many columns as fit, instead of stacking one-per-row. Fields that need
+   room (description, memo, address, the account search box) span the full
+   width via .span-full; two-across fields use .span-2. */
+.modal-body {
+    padding: 22px 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 18px 20px;
+    align-items: start;
+}
+.modal-body .form-group { margin-bottom: 0; min-width: 0; }
+.modal-body .form-group.span-2 { grid-column: span 2; }
+.modal-body .form-group.span-full { grid-column: 1 / -1; }
+.modal-body .form-group.amount-field input { font-size: 1.15rem; font-weight: 800; color: var(--primary-darker); text-align: right; }
+
+.modal-footer { padding: 16px 24px 20px; border-top: 1px solid var(--border); }
+.modal-footer-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.modal-footer-actions .btn { min-width: 120px; }
+
 .confirm-text { font-size: 0.9rem; color: var(--text); line-height: 1.5; margin-bottom: 20px; }
 .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+@media (max-width: 720px) {
+    .modal-body { grid-template-columns: 1fr; padding: 18px; }
+    .modal-body .form-group.span-2 { grid-column: 1 / -1; }
+    .modal-footer-actions { flex-direction: column-reverse; }
+    .modal-footer-actions .btn { width: 100%; }
+}
+
+/* The small "Are you sure?" confirm dialog should stay compact, not adopt
+   the wide multi-column form layout used by data-entry modals. */
+#confirm-modal .modal-content { max-width: 420px; }
+#confirm-modal .modal-body { display: block; padding: 20px; }
 
 /* ---------- Toasts ---------- */
 #toast-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 200; }
