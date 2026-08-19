@@ -789,7 +789,7 @@
 
     <!-- ============ Modal: New / Edit Transaction ============ -->
     <div id="tx-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header">
                 <h3 id="tx-modal-title"><i class="fa-solid fa-receipt"></i> Record Transaction</h3>
                 <button class="close-btn" id="close-tx-modal">&times;</button>
@@ -808,15 +808,19 @@
                             </select>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Description <span class="req">*</span></label>
-                        <input type="text" id="tx-desc" required placeholder="e.g. Project Operations Fee">
+                    <div class="form-group" id="tx-date-group">
+                        <label>Date</label>
+                        <input type="date" id="tx-date">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group amount-field">
                         <label>Amount (RF) <span class="req">*</span></label>
                         <input type="number" id="tx-amount" step="any" min="0" required placeholder="0.00">
                     </div>
-                    <div class="form-group" id="tx-bank-group">
+                    <div class="form-group span-full">
+                        <label>Description <span class="req">*</span></label>
+                        <input type="text" id="tx-desc" required placeholder="e.g. Project Operations Fee">
+                    </div>
+                    <div class="form-group span-full" id="tx-bank-group">
                         <label>Bank / Cash Account <span class="req">*</span></label>
                         <div class="acct-combo">
                             <input type="text" id="tx-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
@@ -824,10 +828,6 @@
                             <div class="acct-dropdown hidden" id="tx-bank-dropdown"></div>
                         </div>
                         <div class="field-hint">Every account is listed — start typing to filter live.</div>
-                    </div>
-                    <div class="form-group" id="tx-date-group">
-                        <label>Date</label>
-                        <input type="date" id="tx-date">
                     </div>
                     <div class="form-group" id="tx-dept-group">
                         <label>Department</label>
@@ -843,7 +843,10 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary btn-block" id="tx-submit-btn">Save Transaction</button>
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="tx-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="tx-submit-btn">Save Transaction</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -868,7 +871,7 @@
 
     <!-- ============ Modal: Invoice ============ -->
     <div id="invoice-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="invoice-modal-title"><i class="fa-solid fa-file-invoice"></i> Record Invoice</h3><button class="close-btn" id="close-invoice-modal">&times;</button></div>
             <form id="invoice-form" novalidate>
                 <div class="modal-body">
@@ -877,9 +880,11 @@
                     <div class="form-group"><label>Customer <span class="req">*</span></label>
                         <div class="select-wrap"><select id="invoice-customer" required><option value="">-- Select customer --</option></select></div>
                     </div>
-                    <div class="form-group"><label>Description <span class="req">*</span></label><input type="text" id="invoice-desc" required placeholder="What is this invoice for?"></div>
-                    <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="invoice-amount" step="any" min="0" required></div>
-                    <div class="form-group" id="invoice-bank-group">
+                    <div class="form-group amount-field"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="invoice-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Invoice Date</label><input type="date" id="invoice-date"></div>
+                    <div class="form-group"><label>Due Date</label><input type="date" id="invoice-due"></div>
+                    <div class="form-group span-full"><label>Description <span class="req">*</span></label><input type="text" id="invoice-desc" required placeholder="What is this invoice for?"></div>
+                    <div class="form-group span-full" id="invoice-bank-group">
                         <label>Bank / Cash Account to receive payment <span class="req">*</span></label>
                         <div class="acct-combo">
                             <input type="text" id="invoice-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
@@ -887,20 +892,23 @@
                             <div class="acct-dropdown hidden" id="invoice-bank-dropdown"></div>
                         </div>
                     </div>
-                    <div class="form-group"><label>Invoice Date</label><input type="date" id="invoice-date"></div>
-                    <div class="form-group"><label>Due Date</label><input type="date" id="invoice-due"></div>
                     <div class="form-group" id="invoice-dept-group"><label>Department</label><div class="select-wrap"><select id="invoice-dept"></select></div></div>
                     <div class="form-group" id="invoice-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="invoice-subsection"></select></div></div>
                     <div class="form-group" id="invoice-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="invoice-pres"></select></div></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="invoice-submit-btn">Submit Invoice</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="invoice-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="invoice-submit-btn">Submit Invoice</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Bill ============ -->
     <div id="bill-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="bill-modal-title"><i class="fa-solid fa-receipt"></i> Record Bill</h3><button class="close-btn" id="close-bill-modal">&times;</button></div>
             <form id="bill-form" novalidate>
                 <div class="modal-body">
@@ -909,9 +917,11 @@
                     <div class="form-group"><label>Supplier <span class="req">*</span></label>
                         <div class="select-wrap"><select id="bill-supplier" required><option value="">-- Select supplier --</option></select></div>
                     </div>
-                    <div class="form-group"><label>Description <span class="req">*</span></label><input type="text" id="bill-desc" required placeholder="What is being paid for?"></div>
-                    <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="bill-amount" step="any" min="0" required></div>
-                    <div class="form-group" id="bill-bank-group">
+                    <div class="form-group amount-field"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="bill-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Bill Date</label><input type="date" id="bill-date"></div>
+                    <div class="form-group"><label>Due Date</label><input type="date" id="bill-due"></div>
+                    <div class="form-group span-full"><label>Description <span class="req">*</span></label><input type="text" id="bill-desc" required placeholder="What is being paid for?"></div>
+                    <div class="form-group span-full" id="bill-bank-group">
                         <label>Bank / Cash Account to pay from <span class="req">*</span></label>
                         <div class="acct-combo">
                             <input type="text" id="bill-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
@@ -919,27 +929,32 @@
                             <div class="acct-dropdown hidden" id="bill-bank-dropdown"></div>
                         </div>
                     </div>
-                    <div class="form-group"><label>Bill Date</label><input type="date" id="bill-date"></div>
-                    <div class="form-group"><label>Due Date</label><input type="date" id="bill-due"></div>
                     <div class="form-group" id="bill-dept-group"><label>Department</label><div class="select-wrap"><select id="bill-dept"></select></div></div>
                     <div class="form-group" id="bill-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="bill-subsection"></select></div></div>
                     <div class="form-group" id="bill-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="bill-pres"></select></div></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="bill-submit-btn">Submit Bill</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="bill-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="bill-submit-btn">Submit Bill</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Cheque ============ -->
     <div id="cheque-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="cheque-modal-title"><i class="fa-solid fa-money-check"></i> Prepare Cheque</h3><button class="close-btn" id="close-cheque-modal">&times;</button></div>
             <form id="cheque-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="cheque-edit-id" value="">
                     <div class="form-group"><label>Cheque Number <span class="req">*</span></label><input type="text" id="cheque-number" required placeholder="e.g. 000123"></div>
                     <div class="form-group"><label>Payee <span class="req">*</span></label><input type="text" id="cheque-payee" required placeholder="Who receives this cheque?"></div>
-                    <div class="form-group" id="cheque-bank-group">
+                    <div class="form-group amount-field"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="cheque-amount" step="any" min="0" required></div>
+                    <div class="form-group"><label>Date</label><input type="date" id="cheque-date"></div>
+                    <div class="form-group span-full" id="cheque-bank-group">
                         <label>Bank Account <span class="req">*</span></label>
                         <div class="acct-combo">
                             <input type="text" id="cheque-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
@@ -947,21 +962,24 @@
                             <div class="acct-dropdown hidden" id="cheque-bank-dropdown"></div>
                         </div>
                     </div>
-                    <div class="form-group"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="cheque-amount" step="any" min="0" required></div>
-                    <div class="form-group"><label>Date</label><input type="date" id="cheque-date"></div>
-                    <div class="form-group"><label>Memo</label><input type="text" id="cheque-memo" placeholder="Optional note"></div>
+                    <div class="form-group span-full"><label>Memo</label><input type="text" id="cheque-memo" placeholder="Optional note"></div>
                     <div class="form-group" id="cheque-dept-group"><label>Department</label><div class="select-wrap"><select id="cheque-dept"></select></div></div>
                     <div class="form-group" id="cheque-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="cheque-subsection"></select></div></div>
                     <div class="form-group" id="cheque-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="cheque-pres"></select></div></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="cheque-submit-btn">Submit Cheque</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="cheque-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="cheque-submit-btn">Submit Cheque</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Supplier ============ -->
     <div id="supplier-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="supplier-modal-title"><i class="fa-solid fa-truck-field"></i> Add Supplier</h3><button class="close-btn" id="close-supplier-modal">&times;</button></div>
             <form id="supplier-form" novalidate>
                 <div class="modal-body">
@@ -970,18 +988,23 @@
                     <div class="form-group"><label>Contact Person</label><input type="text" id="supplier-contact"></div>
                     <div class="form-group"><label>Phone</label><input type="text" id="supplier-phone"></div>
                     <div class="form-group"><label>Email</label><input type="email" id="supplier-email"></div>
-                    <div class="form-group"><label>Address</label><input type="text" id="supplier-address"></div>
+                    <div class="form-group span-full"><label>Address</label><input type="text" id="supplier-address"></div>
                     <div class="form-group" id="supplier-dept-group"><label>Department</label><div class="select-wrap"><select id="supplier-dept"></select></div></div>
                     <div class="form-group" id="supplier-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="supplier-pres"></select></div></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="supplier-submit-btn">Save Supplier</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="supplier-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="supplier-submit-btn">Save Supplier</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Customer ============ -->
     <div id="customer-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="customer-modal-title"><i class="fa-solid fa-address-book"></i> Add Customer</h3><button class="close-btn" id="close-customer-modal">&times;</button></div>
             <form id="customer-form" novalidate>
                 <div class="modal-body">
@@ -990,31 +1013,32 @@
                     <div class="form-group"><label>Contact Person</label><input type="text" id="customer-contact"></div>
                     <div class="form-group"><label>Phone</label><input type="text" id="customer-phone"></div>
                     <div class="form-group"><label>Email</label><input type="email" id="customer-email"></div>
-                    <div class="form-group"><label>Address</label><input type="text" id="customer-address"></div>
+                    <div class="form-group span-full"><label>Address</label><input type="text" id="customer-address"></div>
                     <div class="form-group" id="customer-dept-group"><label>Department</label><div class="select-wrap"><select id="customer-dept"></select></div></div>
                     <div class="form-group" id="customer-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="customer-pres"></select></div></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="customer-submit-btn">Save Customer</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="customer-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="customer-submit-btn">Save Customer</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Project ============ -->
     <div id="project-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="project-modal-title"><i class="fa-solid fa-diagram-project"></i> Add Project</h3><button class="close-btn" id="close-project-modal">&times;</button></div>
             <form id="project-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="project-edit-id" value="">
-                    <div class="form-group"><label>Project Name <span class="req">*</span></label><input type="text" id="project-name" required></div>
-                    <div class="form-group"><label>Description</label><input type="text" id="project-desc" placeholder="Short description"></div>
+                    <div class="form-group span-full"><label>Project Name <span class="req">*</span></label><input type="text" id="project-name" required></div>
+                    <div class="form-group span-full"><label>Description</label><input type="text" id="project-desc" placeholder="Short description"></div>
                     <div class="form-group"><label>Start Date</label><input type="date" id="project-start"></div>
                     <div class="form-group"><label>Target End Date</label><input type="date" id="project-end"></div>
-                    <div class="form-group"><label>Budget (RF)</label><input type="number" id="project-budget" step="any" min="0" placeholder="0.00"></div>
-                    <div class="form-group">
-                        <label>Progress: <span id="project-progress-val">0%</span></label>
-                        <input type="range" id="project-progress" min="0" max="100" step="5" value="0">
-                    </div>
+                    <div class="form-group amount-field"><label>Budget (RF)</label><input type="number" id="project-budget" step="any" min="0" placeholder="0.00"></div>
                     <div class="form-group"><label>Status</label>
                         <div class="select-wrap">
                             <select id="project-status">
@@ -1025,18 +1049,27 @@
                             </select>
                         </div>
                     </div>
+                    <div class="form-group span-2">
+                        <label>Progress: <span id="project-progress-val">0%</span></label>
+                        <input type="range" id="project-progress" min="0" max="100" step="5" value="0">
+                    </div>
                     <div class="form-group" id="project-dept-group"><label>Department</label><div class="select-wrap"><select id="project-dept"></select></div></div>
                     <div class="form-group" id="project-subsection-group"><label>Sub-Section / Project Line</label><div class="select-wrap"><select id="project-subsection"></select></div></div>
                     <div class="form-group" id="project-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="project-pres"></select></div></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="project-submit-btn">Save Project</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="project-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="project-submit-btn">Save Project</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Budget Line (superadmin only) ============ -->
     <div id="budget-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="budget-modal-title"><i class="fa-solid fa-scale-balanced"></i> Add Budget Line</h3><button class="close-btn" id="close-budget-modal">&times;</button></div>
             <form id="budget-form" novalidate>
                 <div class="modal-body">
@@ -1045,17 +1078,22 @@
                     <div class="form-group"><label>Presbytery <span class="req">*</span></label><div class="select-wrap"><select id="budget-pres" required></select></div></div>
                     <div class="form-group"><label>Category <span class="req">*</span></label><input type="text" id="budget-category" required placeholder="e.g. Operations, Travel, Salaries"></div>
                     <div class="form-group"><label>Period <span class="req">*</span></label><input type="text" id="budget-period" required placeholder="e.g. 2026 or 2026-Q3"></div>
-                    <div class="form-group"><label>Planned Amount (RF) <span class="req">*</span></label><input type="number" id="budget-amount" step="any" min="0" required></div>
-                    <div class="form-group"><label>Notes</label><input type="text" id="budget-notes" placeholder="Optional"></div>
+                    <div class="form-group amount-field"><label>Planned Amount (RF) <span class="req">*</span></label><input type="number" id="budget-amount" step="any" min="0" required></div>
+                    <div class="form-group span-full"><label>Notes</label><input type="text" id="budget-notes" placeholder="Optional"></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="budget-submit-btn">Save Budget Line</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="budget-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="budget-submit-btn">Save Budget Line</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- ============ Modal: Bank (superadmin only) ============ -->
     <div id="bank-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="bank-modal-title"><i class="fa-solid fa-building-columns"></i> Add Bank</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
             <form id="bank-form" novalidate>
                 <div class="modal-body">
@@ -1064,10 +1102,15 @@
                     <div class="form-group"><label>Branch</label><input type="text" id="bank-branch"></div>
                     <div class="form-group"><label>Account Number <span class="req">*</span></label><input type="text" id="bank-account" required></div>
                     <div class="form-group"><label>Currency</label><input type="text" id="bank-currency" value="RWF"></div>
-                    <div class="form-group"><label>Opening Balance</label><input type="number" id="bank-balance" step="any" min="0" placeholder="0.00"></div>
-                    <div class="form-group"><label>Notes</label><input type="text" id="bank-notes" placeholder="Optional"></div>
+                    <div class="form-group amount-field"><label>Opening Balance</label><input type="number" id="bank-balance" step="any" min="0" placeholder="0.00"></div>
+                    <div class="form-group span-full"><label>Notes</label><input type="text" id="bank-notes" placeholder="Optional"></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary btn-block" id="bank-submit-btn">Save Bank</button></div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="bank-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="bank-submit-btn">Save Bank</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
