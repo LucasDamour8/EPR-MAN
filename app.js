@@ -1,32 +1,31 @@
 /* ======================================================================
    SAS — STANDARD ACCOUNTING SOFTWARE SYSTEM (Firestore-backed)
    ----------------------------------------------------------------------
-   v2 — adds:
-   - Every record now stores WHO did it: createdBy/createdById/createdByName/
-     createdByRole/createdByDept/createdByPresbytery, and on edits/approvals:
-     updatedBy/updatedById/updatedByName/updatedAt (+ approvedBy* on approvals).
-   - Every money-moving record (Transactions, Invoices, Bills, Cheques) now
-     links to a Bank/Cash Account, chosen from a searchable ("ajax-style")
-     account combobox that lists every account and filters as you type.
-   - Chart of Accounts is now open to every user (not Superadmin-only), but
-     scoped: Superadmin sees every account + everyone's activity; any other
-     user only sees an account if THEY personally have a record posted
-     against it, and only their own activity counts toward its numbers.
-   - Chart of Accounts shows a live Bank Statement (opening/current balance,
-     money in/out) with quick range filters (Today / Week / Month / Year /
-     Custom) that refresh the numbers and trend chart instantly (no reload).
-   - Reports view gained the same quick range filters for building a custom
-     financial statement (Today / Week / Month / Year / Custom range).
-
-   APPROVAL WORKFLOW (unchanged):
-   - Invoices & Bills: any role can submit; only Superadmin approves
-     or rejects. Approved/rejected records are locked.
-   - Cheques: any role can submit; Finance users or Superadmin approve
-     or reject.
-   - Suppliers / Customers / Projects: standard scoped CRUD.
-   - Budget Management, Bank Management, User Admin: Superadmin only.
-   - Chart of Accounts: open to all, content scoped per user (see above).
-====================================================================== */
+   v3 — adds on top of v2:
+   - QuickBooks-style "Expense" modal: payee/account/location searchable
+     pickers, a fully editable line-items grid (Category ← Projects,
+     Description, Amount, VAT, Billable, Customer/Project, Class ← every
+     sub-section in every department), "Add lines" / "Clear all lines",
+     live Subtotal/Total.
+   - QuickBooks-style "Bank Deposit" modal: account/date header, an
+     editable "Add funds to this deposit" grid (Received from ← Customers,
+     Account ← Projects, Description, Payment method, Ref no., Amount,
+     VAT, Class), live "Other funds total".
+   - QuickBooks-style double-entry "Journal Entry" modal: Account (bank
+     accounts + A/R + A/P + project categories), Debits, Credits,
+     Description, Name ← Customers/Suppliers, VAT, Location ← EPR
+     Presbyteries, Class ← sub-sections; running Total RWF debit/credit
+     footer; saved to its own JOURNAL_ENTRIES collection.
+   - Dashboard "Create actions" relabelled: Record expense → "Expense
+     Portal", Add bank deposit → "Sales Portal", Double journal entry →
+     "Accounting", plus a new "Customer Portal" quick action.
+   - User Admin now assigns by ticking any number of sub-projects from a
+     full grid of every department's sub-sections (not a single select):
+     "Assign By: Presbytery Location" hides Department and still shows
+     every sub-project in the system to tick; "Assign By: Department"
+     hides Presbytery Location and also shows every sub-project in the
+     system to tick.
+   ====================================================================== */
 
 import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -44,8 +43,7 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 // ---------------------------------------------------------------------
-// 1. ORGANIZATION STRUCTURE (edit these to match your own business —
-//    the rest of the app is fully data-driven off these two lists)
+// 1. ORGANIZATION STRUCTURE
 // ---------------------------------------------------------------------
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
@@ -73,12 +71,17 @@ const PRESBYTERIES = [
 const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User" };
 const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
-// Money-moving record kinds that must carry a bank/cash account reference,
-// and the field-name prefix used for each one's combobox / form fields.
-const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'cheque'];
+const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'cheque', 'exp', 'deposit'];
+
+const VAT_OPTIONS = [
+    "Capital Import (15%)", "Old Change In Use (14%)", "Standard (15%)", "Capital (15%)",
+    "Old Standard (14%)", "Exempt (0%)", "Old Capital Import (14%)", "Zero Rated (0%)"
+];
+
+const PAYMENT_METHODS = ["Cash", "Bank Transfer", "Mobile Money", "Cheque", "Card"];
 
 // ---------------------------------------------------------------------
-// 2. LOCAL CACHES (populated live from Firestore — never hand-edited)
+// 2. LOCAL CACHES
 // ---------------------------------------------------------------------
 let usersDb = [];
 let transactionsDb = [];
@@ -90,6 +93,7 @@ let customersDb = [];
 let projectsDb = [];
 let budgetsDb = [];
 let banksDb = [];
+let journalEntriesDb = [];
 
 // ---------------------------------------------------------------------
 // 3. APPLICATION STATE
@@ -107,7 +111,6 @@ let coaBankChart = null;
 let coaDeptChart = null;
 let glanceExpenseChart = null;
 
-// Range state shared by the "quick range" bars (Reports + Chart of Accounts)
 let reportRange = { preset: 'all', from: '', to: '' };
 let coaRange = { preset: 'all', from: '', to: '' };
 
@@ -130,8 +133,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     populateSubsections('user-dept', 'user-subsection');
     ACCOUNT_LINKED_PREFIXES.forEach(setupAccountCombobox);
+    setupStaticListCombobox('exp-location', () => PRESBYTERIES);
+    setupStaticListCombobox('exp-payee', () => [...new Set([...suppliersDb.map(s => s.name), ...customersDb.map(c => c.name)])]);
     setupRangeBar('report-range-bar', (r) => { reportRange = r; renderReportPanel(); });
     setupRangeBar('coa-range-bar', (r) => { coaRange = r; renderCoaCharts(); });
+    populateUserProjectsChecklist();
+    relabelCreateActions();
     await checkFirstRun();
 });
 
@@ -178,6 +185,49 @@ function fillSelect(select, values, prependValue, prependLabel) {
     });
 }
 
+function fillSimpleSelect(select, list, includeBlank, blankLabel) {
+    if (!select) return;
+    select.innerHTML = '';
+    if (includeBlank) {
+        const o = document.createElement('option');
+        o.value = ''; o.textContent = blankLabel || '-- Select --';
+        select.appendChild(o);
+    }
+    list.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        select.appendChild(o);
+    });
+}
+
+function getAllSubsectionsFlat() {
+    const list = [];
+    Object.entries(EPR_STRUCTURE).forEach(([dept, subs]) => subs.forEach(sub => list.push({ dept, sub })));
+    return list;
+}
+
+function fillOptGroupedSelect(select, groupedList, includeBlank) {
+    if (!select) return;
+    select.innerHTML = '';
+    if (includeBlank) {
+        const o = document.createElement('option');
+        o.value = ''; o.textContent = '-- Class --';
+        select.appendChild(o);
+    }
+    let lastDept = null, optgroup = null;
+    groupedList.forEach(({ dept, sub }) => {
+        if (dept !== lastDept) {
+            optgroup = document.createElement('optgroup');
+            optgroup.label = shortDeptName(dept);
+            select.appendChild(optgroup);
+            lastDept = dept;
+        }
+        const opt = document.createElement('option');
+        opt.value = sub; opt.textContent = sub;
+        optgroup.appendChild(opt);
+    });
+}
+
 function renderSidebarFilters() {
     const deptMenu = $('dept-sidebar-menu');
     const presMenu = $('pres-sidebar-menu');
@@ -212,6 +262,33 @@ function renderSidebarFilters() {
 }
 
 function shortDeptName(d) { return (d || '').replace('Department of ', ''); }
+
+// ---------------------------------------------------------------------
+// 6b. DASHBOARD CREATE-ACTIONS RELABEL
+//     "Record expense" → Expense Portal (opens the QB-style Expense modal)
+//     "Add bank deposit" → Sales Portal (opens the QB-style Deposit modal)
+//     "Double journal entry" → Accounting (opens the QB-style Journal modal)
+//     A new "Customer Portal" quick action is injected before "Show all".
+// ---------------------------------------------------------------------
+function relabelCreateActions() {
+    const relabel = (id, icon, label) => {
+        const btn = $(id);
+        if (!btn) return;
+        btn.innerHTML = `<i class="fa-solid ${icon}"></i> ${label}`;
+    };
+    relabel('qa-record-expense', 'fa-receipt', 'Expense Portal');
+    relabel('qa-bank-deposit', 'fa-file-invoice-dollar', 'Sales Portal');
+    relabel('qa-journal-entry', 'fa-scale-balanced', 'Accounting');
+
+    const showAllBtn = $('qa-show-all');
+    if (showAllBtn && !$('qa-customer-portal')) {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'ca-btn'; btn.id = 'qa-customer-portal';
+        btn.innerHTML = '<i class="fa-solid fa-address-book"></i> Customer Portal';
+        btn.addEventListener('click', () => switchView('customers'));
+        showAllBtn.parentElement.insertBefore(btn, showAllBtn);
+    }
+}
 
 // ---------------------------------------------------------------------
 // 7. EVENT WIRING
@@ -250,12 +327,10 @@ function setupEventListeners() {
     $('help-btn').addEventListener('click', () => showToast('info', 'Need a hand? Contact your Superadmin or SAS support.'));
     $('settings-btn').addEventListener('click', () => { switchView(isSuper() ? 'users' : 'overview'); });
 
-    // Every element that switches a view: rail nav items, pill quick-nav, all-apps grid
     qsa('.nav-item[data-view], .pill-nav-btn[data-view], .apps-grid-item[data-view]').forEach(item => {
         item.addEventListener('click', () => { switchView(item.getAttribute('data-view')); closeAppsPanel(); toggleSidebar(false); });
     });
 
-    // Icon rail extra actions
     $('rail-apps-btn').addEventListener('click', openAppsPanel);
     $('apps-panel-close').addEventListener('click', closeAppsPanel);
     $('rail-bookmarks-btn').addEventListener('click', () => showToast('info', 'Bookmarks are coming soon — pin your favourite reports here.'));
@@ -264,11 +339,10 @@ function setupEventListeners() {
     $('customise-link-btn').addEventListener('click', () => { e_toggleProfile(); });
     $('privacy-link-btn').addEventListener('click', () => showToast('info', 'Only people with matching department/presbytery access can see this scope\'s records. Chart of Accounts is further limited to accounts you\'ve personally posted against, unless you\'re a Superadmin.'));
 
-    // Quick create-actions row on the dashboard
-    $('qa-create-invoice').addEventListener('click', () => { switchView('invoices'); openInvoiceModal(); });
-    $('qa-record-expense').addEventListener('click', () => { switchView('transactions'); openTxModal(); $('tx-type').value = 'Expense'; });
-    $('qa-bank-deposit').addEventListener('click', () => { switchView('transactions'); openTxModal(); $('tx-type').value = 'Income'; });
-    $('qa-create-cheque').addEventListener('click', () => { switchView('cheques'); openChequeModal(); });
+    // Quick create-actions row on the dashboard — now opens the QB-style modals
+    $('qa-record-expense').addEventListener('click', () => openExpenseModal());
+    $('qa-bank-deposit').addEventListener('click', () => openDepositModal());
+    $('qa-journal-entry').addEventListener('click', () => openJournalModal());
     $('qa-show-all').addEventListener('click', openAppsPanel);
     $('glance-banks-goto').addEventListener('click', () => switchView('coa'));
 
@@ -322,6 +396,8 @@ function setupEventListeners() {
     });
     $('user-dept').addEventListener('change', () => populateSubsections('user-dept', 'user-subsection'));
 
+    qsa('input[name="user-assign-mode"]').forEach(r => r.addEventListener('change', onUserAssignModeChange));
+
     $('add-user-form').addEventListener('submit', onSubmitUserForm);
     $('user-cancel-edit-btn').addEventListener('click', resetUserForm);
     $('user-send-reset-btn').addEventListener('click', onSendResetForEditedUser);
@@ -334,6 +410,7 @@ function setupEventListeners() {
     txModal.addEventListener('click', (e) => { if (e.target === txModal) closeTxModal(); });
     $('tx-form').addEventListener('submit', onSubmitTxForm);
     $('tx-table-body').addEventListener('click', onTxTableClick);
+    $('open-expense-modal-btn').addEventListener('click', () => openExpenseModal());
 
     $('close-confirm-modal').addEventListener('click', closeConfirmModal);
     $('confirm-cancel-btn').addEventListener('click', closeConfirmModal);
@@ -358,10 +435,9 @@ function setupEventListeners() {
     });
 
     setupExtModulesEventListeners();
+    setupQbModalsEventListeners();
     setupRailFlyouts();
 
-    // Generic "Cancel" button in every wide modal's footer — just closes
-    // the modal it belongs to (data-modal points at the modal's id).
     qsa('.modal-cancel-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const modal = $(btn.dataset.modal);
@@ -371,7 +447,7 @@ function setupEventListeners() {
 }
 
 // ---------------------------------------------------------------------
-// 7a. WHO-DID-IT HELPERS (audit trail on every record)
+// 7a. WHO-DID-IT HELPERS
 // ---------------------------------------------------------------------
 function actorMeta() {
     return {
@@ -403,10 +479,6 @@ function whoLine(rec) {
 
 // ---------------------------------------------------------------------
 // 7b. SEARCHABLE ("AJAX-STYLE") BANK / CASH ACCOUNT PICKER
-//     Used anywhere a record needs to be tied to a bank account:
-//     Transactions, Invoices, Bills, Cheques. Every account is shown;
-//     typing filters the list live (simulated ajax via short debounce
-//     so it behaves like a live server-backed search box).
 // ---------------------------------------------------------------------
 function setupAccountCombobox(prefix) {
     const input = $(`${prefix}-bank-search`);
@@ -448,6 +520,8 @@ function setupAccountCombobox(prefix) {
                     input.value = `${b.name} — ${b.account}`;
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
+                    if (input.id === 'exp-bank-search') updateExpenseHeaderBalance(b);
+                    if (input.id === 'deposit-bank-search') updateDepositHeaderBalance(b);
                 });
                 dropdown.appendChild(row);
             });
@@ -457,10 +531,10 @@ function setupAccountCombobox(prefix) {
 
     input.addEventListener('focus', () => renderList(''));
     input.addEventListener('input', () => {
-        hidden.value = ''; // typing invalidates the previous pick until the user picks again
+        hidden.value = '';
         clearTimeout(debounceTimer);
         const term = input.value;
-        debounceTimer = setTimeout(() => renderList(term), 180); // ajax-style debounce
+        debounceTimer = setTimeout(() => renderList(term), 180);
     });
     input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 160));
 }
@@ -497,8 +571,54 @@ function validateAccountCombobox(prefix) {
 }
 
 // ---------------------------------------------------------------------
-// 7c. QUICK DATE-RANGE BARS (Today / Week / Month / Annual / Custom)
-//     Shared by the Reports view and the Chart of Accounts bank trend.
+// 7b-2. GENERIC STATIC-LIST SEARCHABLE COMBOBOX
+//       Used for "Payee" (Suppliers + Customers) and "Location" (EPR
+//       Presbyteries) fields on the Expense modal — same ajax-style feel
+//       as the bank picker, but backed by a plain string list.
+// ---------------------------------------------------------------------
+function setupStaticListCombobox(prefix, listProvider) {
+    const input = $(`${prefix}-search`);
+    const hidden = $(`${prefix}-id`);
+    const dropdown = $(`${prefix}-dropdown`);
+    if (!input || !hidden || !dropdown) return;
+    let debounceTimer = null;
+
+    function render(term) {
+        const t = (term || '').toLowerCase().trim();
+        const list = listProvider();
+        dropdown.innerHTML = '';
+        if (!list.length) { dropdown.innerHTML = `<div class="acct-empty">Nothing to pick from yet.</div>`; dropdown.classList.remove('hidden'); return; }
+        const matches = list.filter(v => !t || v.toLowerCase().includes(t)).slice(0, 40);
+        if (!matches.length) {
+            dropdown.innerHTML = `<div class="acct-empty">No matches for "${escapeHtml(term)}".</div>`;
+        } else {
+            matches.forEach(v => {
+                const row = document.createElement('div');
+                row.className = 'acct-dropdown-item';
+                row.innerHTML = `<div class="adi-main"><span class="adi-name">${escapeHtml(v)}</span></div>`;
+                row.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    hidden.value = v; input.value = v;
+                    dropdown.classList.add('hidden');
+                });
+                dropdown.appendChild(row);
+            });
+        }
+        dropdown.classList.remove('hidden');
+    }
+
+    input.addEventListener('focus', () => render(''));
+    input.addEventListener('input', () => {
+        hidden.value = '';
+        clearTimeout(debounceTimer);
+        const term = input.value;
+        debounceTimer = setTimeout(() => render(term), 150);
+    });
+    input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 160));
+}
+
+// ---------------------------------------------------------------------
+// 7c. QUICK DATE-RANGE BARS
 // ---------------------------------------------------------------------
 function isoDate(d) { return d.toISOString().split('T')[0]; }
 
@@ -506,7 +626,7 @@ function computePresetRange(preset, customFrom, customTo) {
     const today = new Date();
     if (preset === 'today') { const d = isoDate(today); return { from: d, to: d }; }
     if (preset === 'week') {
-        const dow = today.getDay() || 7; // Monday-start week
+        const dow = today.getDay() || 7;
         const monday = new Date(today); monday.setDate(today.getDate() - dow + 1);
         return { from: isoDate(monday), to: isoDate(today) };
     }
@@ -519,7 +639,7 @@ function computePresetRange(preset, customFrom, customTo) {
         return { from: isoDate(first), to: isoDate(today) };
     }
     if (preset === 'custom') return { from: customFrom || '', to: customTo || '' };
-    return { from: '', to: '' }; // 'all'
+    return { from: '', to: '' };
 }
 
 function setupRangeBar(barId, onChange) {
@@ -567,8 +687,7 @@ function dateInRange(dateStr, range) {
 }
 
 // ---------------------------------------------------------------------
-// 7d. ICON-RAIL HOVER FLYOUTS (QuickBooks-style: hover a rail item to see
-//     its sub-links; click still jumps straight to that item's main view)
+// 7d. ICON-RAIL HOVER FLYOUTS
 // ---------------------------------------------------------------------
 function setTxTypeFilter(type) {
     txFilters.type = type;
@@ -585,7 +704,9 @@ function getFlyoutGroups(key) {
         case 'create':
             return [
                 { title: 'Quick create', items: [
-                    { icon: 'fa-receipt', label: 'New Transaction', action: () => { switchView('transactions'); openTxModal(); } },
+                    { icon: 'fa-receipt', label: 'New Expense', action: () => openExpenseModal() },
+                    { icon: 'fa-building-columns', label: 'New Bank Deposit', action: () => openDepositModal() },
+                    { icon: 'fa-scale-balanced', label: 'New Journal Entry', action: () => openJournalModal() },
                     { icon: 'fa-file-invoice', label: 'New Invoice', action: () => { switchView('invoices'); openInvoiceModal(); } },
                     { icon: 'fa-receipt', label: 'New Bill', action: () => { switchView('bills'); openBillModal(); } },
                     { icon: 'fa-money-check', label: 'New Cheque', action: () => { switchView('cheques'); openChequeModal(); } },
@@ -650,6 +771,7 @@ function getFlyoutGroups(key) {
         case 'accounting':
             return [{ title: 'Accounting', items: [
                 { icon: 'fa-list-check', label: 'Transactions', action: () => switchView('transactions') },
+                { icon: 'fa-scale-balanced', label: 'New Journal Entry', action: () => openJournalModal() },
                 { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
                 ...(superAdmin ? [
                     { icon: 'fa-scale-balanced', label: 'Budget Management', action: () => switchView('budget') },
@@ -660,12 +782,13 @@ function getFlyoutGroups(key) {
             return [{ title: 'Expenses & Pay Bills', items: [
                 { icon: 'fa-receipt', label: 'Pay Bills', action: () => switchView('bills') },
                 { icon: 'fa-truck-field', label: 'Suppliers', action: () => switchView('suppliers') },
-                { icon: 'fa-plus', label: 'Record Expense', action: () => { switchView('transactions'); openTxModal(); const t = $('tx-type'); if (t) t.value = 'Expense'; } }
+                { icon: 'fa-plus', label: 'Record Expense', action: () => openExpenseModal() }
             ] }];
         case 'sales':
             return [{ title: 'Sales & Get Paid', items: [
                 { icon: 'fa-file-invoice', label: 'Invoices', action: () => switchView('invoices') },
                 { icon: 'fa-address-book', label: 'Customer Hub', action: () => switchView('customers') },
+                { icon: 'fa-building-columns', label: 'Bank Deposit', action: () => openDepositModal() },
                 { icon: 'fa-plus', label: 'Create Invoice', action: () => { switchView('invoices'); openInvoiceModal(); } }
             ] }];
         case 'customise':
@@ -824,7 +947,7 @@ async function onSubmitSetupForm(e) {
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const payload = { name, email, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', createdAt: serverTimestamp() };
+        const payload = { name, email, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', assignedProjects: [], createdAt: serverTimestamp() };
         await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), payload);
         await setDoc(doc(db, COLLECTIONS.META, 'system'), { initialized: true, initializedAt: serverTimestamp() });
 
@@ -895,7 +1018,7 @@ function doLogout() {
     usersDb = []; transactionsDb = [];
     invoicesDb = []; billsDb = []; chequesDb = [];
     suppliersDb = []; customersDb = []; projectsDb = [];
-    budgetsDb = []; banksDb = [];
+    budgetsDb = []; banksDb = []; journalEntriesDb = [];
     currentScope = { presbytery: 'ALL', department: 'ALL' };
     searchQuery = ''; txFilters = { type: 'ALL', from: '', to: '' };
     reportRange = { preset: 'all', from: '', to: '' };
@@ -941,11 +1064,14 @@ function initAppSession() {
         currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
         $('ab-department').textContent = shortDeptName(currentUser.department);
         $('ab-presbytery').textContent = currentUser.presbytery;
-        $('ab-subsection').textContent = currentUser.subsection;
+        $('ab-subsection').textContent = (currentUser.assignedProjects && currentUser.assignedProjects.length)
+            ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
+            : currentUser.subsection;
     }
 
     updateProfileUI();
     updateGreeting();
+    relabelCreateActions();
     switchView('overview');
 
     subscribeTransactions();
@@ -976,7 +1102,9 @@ function updateProfileUI() {
     $('pd-role-badge').className = `badge role-${currentUser.role}`;
     $('pd-presbytery').textContent = currentUser.presbytery === 'ALL' ? 'All presbyteries' : currentUser.presbytery;
     $('pd-department').textContent = currentUser.department === 'ALL' ? 'All departments' : currentUser.department;
-    $('pd-subsection').textContent = currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection;
+    $('pd-subsection').textContent = (currentUser.assignedProjects && currentUser.assignedProjects.length)
+        ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
+        : (currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection);
     $('user-scope-line').textContent = currentUser.role === 'superadmin'
         ? 'Full system access'
         : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`;
@@ -1054,7 +1182,9 @@ function subscribeOwnProfile() {
         updateProfileUI();
         $('ab-department').textContent = shortDeptName(currentUser.department);
         $('ab-presbytery').textContent = currentUser.presbytery;
-        $('ab-subsection').textContent = currentUser.subsection;
+        $('ab-subsection').textContent = (currentUser.assignedProjects && currentUser.assignedProjects.length)
+            ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
+            : currentUser.subsection;
         if (scopeChanged) {
             currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
             onScopeChanged();
@@ -1127,12 +1257,14 @@ function sanitizePayload(obj) {
 }
 
 function closeAllExtModals() {
-    ['invoice-modal','bill-modal','cheque-modal','supplier-modal','customer-modal','project-modal','budget-modal','bank-modal']
+    ['invoice-modal', 'bill-modal', 'cheque-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal', 'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal']
         .forEach(id => $(id) && $(id).classList.add('hidden'));
 }
 
 // ---------------------------------------------------------------------
-// 14. TRANSACTION MODAL + CRUD
+// 14. TRANSACTION MODAL + CRUD  (plain single-line transaction, kept for
+//     Asset / Liability entries and quick edits — Expense & Income now
+//     mainly flow through the QuickBooks-style modals below)
 // ---------------------------------------------------------------------
 function openTxModal(editTx) {
     const superVisible = isSuper();
@@ -1234,29 +1366,74 @@ function onTxTableClick(e) {
 
 // ---------------------------------------------------------------------
 // 15. USER FORM (create / edit) — superadmin only
+//     Assign-by toggle + full sub-project checklist grid.
 // ---------------------------------------------------------------------
+function populateUserProjectsChecklist(selectedList) {
+    const wrap = $('user-projects-checklist');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const selected = new Set(selectedList || []);
+    Object.entries(EPR_STRUCTURE).forEach(([dept, subs]) => {
+        const title = document.createElement('div');
+        title.className = 'checklist-group-title';
+        title.textContent = shortDeptName(dept);
+        wrap.appendChild(title);
+        subs.forEach(sub => {
+            const key = `${dept}::${sub}`;
+            const label = document.createElement('label');
+            label.className = 'checklist-item';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox'; cb.value = key;
+            if (selected.has(key)) cb.checked = true;
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + sub));
+            wrap.appendChild(label);
+        });
+    });
+}
+
+function getCheckedProjectKeys() {
+    return qsa('#user-projects-checklist input[type=checkbox]:checked').map(cb => cb.value);
+}
+
+function onUserAssignModeChange() {
+    const mode = document.querySelector('input[name="user-assign-mode"]:checked').value;
+    // "Assign By: Presbytery Location" → hide Department, show every sub-project to tick.
+    // "Assign By: Department" → hide Presbytery Location, show every sub-project to tick.
+    $('user-pres-field').classList.toggle('hidden', mode !== 'presbytery');
+    $('user-dept-field').classList.toggle('hidden', mode !== 'department');
+    // The checklist always lists every sub-project across every department,
+    // regardless of which mode is active — per the requested behaviour.
+    populateUserProjectsChecklist(getCheckedProjectKeys());
+}
+
 async function onSubmitUserForm(e) {
     e.preventDefault();
     const editId = $('user-edit-id').value;
     const role = $('user-role').value;
     const roleSuper = role === 'superadmin';
+    const mode = document.querySelector('input[name="user-assign-mode"]:checked').value;
 
     const name = $('user-name').value.trim();
     const email = $('user-email').value.trim().toLowerCase();
     const password = $('user-password').value;
+    const assignedProjects = roleSuper ? [] : getCheckedProjectKeys();
 
     const profileFields = sanitizePayload({
         name, email, role,
-        presbytery: roleSuper ? 'ALL' : $('user-pres').value,
-        department: roleSuper ? 'ALL' : $('user-dept').value,
-        subsection: roleSuper ? 'ALL' : $('user-subsection').value
+        presbytery: roleSuper ? 'ALL' : (mode === 'presbytery' ? $('user-pres').value : 'ALL'),
+        department: roleSuper ? 'ALL' : (mode === 'department' ? $('user-dept').value : 'ALL'),
+        subsection: roleSuper ? 'ALL' : (assignedProjects[0] ? assignedProjects[0].split('::')[1] : ''),
+        assignMode: roleSuper ? '' : mode
     });
+    profileFields.assignedProjects = assignedProjects;
 
     if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
     if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
-    if (!roleSuper && (!profileFields.presbytery || !profileFields.department || !profileFields.subsection)) {
-        showToast('error', 'Assign a presbytery, department and sub-section for this role.');
-        return;
+    if (!roleSuper) {
+        if (mode === 'presbytery' && !profileFields.presbytery) { showToast('error', 'Assign a presbytery location for this user.'); return; }
+        if (mode === 'department' && !profileFields.department) { showToast('error', 'Assign a department for this user.'); return; }
+        if (!assignedProjects.length) { showToast('error', 'Tick at least one sub-project for this user to work on.'); return; }
     }
 
     const submitBtn = $('user-submit-btn');
@@ -1273,7 +1450,7 @@ async function onSubmitUserForm(e) {
             const tempAuth = getAuth(tempApp);
             try {
                 const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
-                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), sanitizePayload({ ...profileFields, createdBy: currentUser.email, createdById: currentUser.id, createdByName: currentUser.name, createdAt: serverTimestamp() }));
+                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), sanitizePayload({ ...profileFields, assignedProjects, createdBy: currentUser.email, createdById: currentUser.id, createdByName: currentUser.name, createdAt: serverTimestamp() }));
                 showToast('success', `${name} created and assigned successfully.`);
             } finally { await deleteApp(tempApp); }
         }
@@ -1294,8 +1471,11 @@ function resetUserForm() {
     $('user-reset-group').classList.add('hidden');
     $('user-password').required = true;
     $('user-scope-fields').classList.remove('hidden');
-    qsa('#user-scope-fields select').forEach(sel => sel.required = true);
+    document.querySelector('input[name="user-assign-mode"][value="presbytery"]').checked = true;
+    $('user-pres-field').classList.remove('hidden');
+    $('user-dept-field').classList.add('hidden');
     populateSubsections('user-dept', 'user-subsection');
+    populateUserProjectsChecklist([]);
 }
 
 function onUsersTableClick(e) {
@@ -1317,10 +1497,13 @@ function onUsersTableClick(e) {
         const roleSuper = u.role === 'superadmin';
         $('user-scope-fields').classList.toggle('hidden', roleSuper);
         if (!roleSuper) {
-            $('user-pres').value = u.presbytery;
-            $('user-dept').value = u.department;
-            populateSubsections('user-dept', 'user-subsection');
-            $('user-subsection').value = u.subsection;
+            const mode = u.assignMode || (u.department === 'ALL' ? 'presbytery' : 'department');
+            document.querySelector(`input[name="user-assign-mode"][value="${mode}"]`).checked = true;
+            $('user-pres-field').classList.toggle('hidden', mode !== 'presbytery');
+            $('user-dept-field').classList.toggle('hidden', mode !== 'department');
+            if (mode === 'presbytery') $('user-pres').value = u.presbytery;
+            else $('user-dept').value = u.department;
+            populateUserProjectsChecklist(u.assignedProjects || []);
         }
         $('user-form-title').textContent = `Edit User — ${u.name}`;
         $('user-submit-btn').textContent = 'Save Changes';
@@ -1415,7 +1598,6 @@ function refreshAllViews() {
     $('income-bar').style.width = `${(income / totalPL) * 100}%`;
     $('expense-bar').style.width = `${(expense / totalPL) * 100}%`;
 
-    // Dashboard "Business at a glance" — Profit & Loss card
     $('gl-net-profit').textContent = formatRF(netProfit);
     $('gl-income').textContent = formatRF(income);
     $('gl-expense').textContent = formatRF(expense);
@@ -1472,7 +1654,6 @@ function renderDeptBreakdown(list, superVisible) {
     });
 }
 
-// Expenses-by-department donut for the "Business at a glance" panel
 function renderGlanceExpenseDonut(list) {
     const canvas = $('glance-expense-chart');
     const legendWrap = $('glance-expense-legend');
@@ -1502,7 +1683,6 @@ function renderGlanceExpenseDonut(list) {
     });
 }
 
-// Bank accounts glance list — scoped the same way as Chart of Accounts
 function renderGlanceBanks() {
     const wrap = $('glance-banks-list');
     if (!wrap) return;
@@ -1570,13 +1750,14 @@ function renderUsersTable() {
         return;
     }
     list.forEach(u => {
+        const projCount = (u.assignedProjects || []).length;
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(u.name)}</strong></td>
             <td>${escapeHtml(u.email)}</td>
             <td><span class="badge role-${u.role}">${ROLE_LABELS[u.role] || u.role}</span></td>
             <td>${u.presbytery === 'ALL' ? 'All presbyteries' : u.presbytery}</td>
-            <td>${u.department === 'ALL' ? 'All departments' : `${shortDeptName(u.department)} (${u.subsection})`}</td>
+            <td>${u.department === 'ALL' ? 'All departments' : shortDeptName(u.department)}${projCount ? ` <span class="muted-sm">(${projCount} project${projCount === 1 ? '' : 's'})</span>` : ''}</td>
             <td><div class="row-actions">
                 <button class="icon-action-btn user-edit-btn" data-id="${u.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover user-delete-btn" data-id="${u.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
@@ -2594,10 +2775,6 @@ function onBanksTableClick(e) {
 
 // ---------------------------------------------------------------------
 // 32. CHART OF ACCOUNTS
-//     Open to every user. Superadmin sees every bank + all activity.
-//     Everyone else only sees a bank if THEY personally posted a
-//     transaction or cheque against it, and only their own activity
-//     is counted toward that bank's numbers here.
 // ---------------------------------------------------------------------
 function getVisibleBanks() {
     if (isSuper()) return banksDb;
@@ -2610,7 +2787,6 @@ function getVisibleBanks() {
     return banksDb.filter(b => ownIds.has(b.id));
 }
 
-// Activity for a given bank, scoped to "my own records" unless Superadmin
 function getBankActivity(bankId) {
     const mine = (rec) => isSuper() || rec.createdById === currentUser.id;
     return {
@@ -2669,7 +2845,6 @@ function renderCoaBankGrid() {
     });
 }
 
-// Build daily buckets for short ranges, monthly buckets for longer ones
 function buildTrendBuckets(range) {
     const today = new Date();
     const from = range.from ? new Date(range.from + 'T00:00:00') : new Date(today.getFullYear(), today.getMonth() - 5, 1);
@@ -2720,21 +2895,12 @@ function renderCoaStatement(bank, range) {
     `;
 }
 
-// Chart.js palette: white canvas background, primary greens, a couple of
-// supporting blues — matches the brand instead of red/orange.
 const CHART_GREEN = '#2ca01c';
 const CHART_GREEN_SOFT = 'rgba(44,160,28,0.14)';
 const CHART_BLUE = '#3b82f6';
 const CHART_BLUE_SOFT = 'rgba(59,130,246,0.12)';
 const CHART_GREEN_DARK = '#0e5c00';
 
-// Chart.js's automatic "responsive" sizing depends on a ResizeObserver
-// reading the canvas' parent box. Right after a hidden CSS-grid panel is
-// un-hidden that box can still report a stale/zero size, so the chart is
-// built into a 0×0 canvas and nothing ever paints. To avoid that entirely
-// we measure the real pixel width ourselves and set the canvas' drawing
-// buffer directly (the same fixed-size approach already used for the
-// dashboard's small expense donut, which always renders correctly).
 function sizeCanvasExplicitly(canvas, height) {
     if (!canvas) return { width: 0, height: 0 };
     const wrap = canvas.closest('.chart-canvas-wrap') || canvas.parentElement;
@@ -2764,7 +2930,6 @@ function renderCoaCharts() {
 
     renderCoaStatement(bank, range);
 
-    // --- Bank trend chart: money in vs money out per bucket ---
     const buckets = buildTrendBuckets(range.from || range.to ? range : { from: '', to: '' });
     const { tx, cheques } = getBankActivity(bank.id);
     const inSeries = buckets.map(bkt => tx.filter(t => t.type === 'Income' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
@@ -2773,15 +2938,11 @@ function renderCoaCharts() {
         cheques.filter(c => bkt.match(c.date)).reduce((s, c) => s + c.amount, 0)
     );
 
-    // --- Department income vs expense chart (uses currently scoped transactions) ---
     const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
     const deptSource = isSuper() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
     const incomeByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
 
-    // One frame is enough to let the just-un-hidden grid finish laying out
-    // before we measure it — after that we size the canvas ourselves, so
-    // Chart.js never has to guess.
     requestAnimationFrame(() => {
         const bankCtx = $('coa-bank-chart');
         if (bankCtx) {
@@ -2833,7 +2994,6 @@ function renderCoaCharts() {
     });
 }
 
-// Keep both COA charts crisp and correctly sized if the window/panel resizes
 let coaResizeTimer = null;
 window.addEventListener('resize', () => {
     clearTimeout(coaResizeTimer);
@@ -2843,7 +3003,7 @@ window.addEventListener('resize', () => {
 });
 
 // ---------------------------------------------------------------------
-// 33. REPORTS — custom range statement (Today / Week / Month / Year / Custom)
+// 33. REPORTS
 // ---------------------------------------------------------------------
 function getReportTransactions() {
     const range = reportRange.preset === 'all' ? { from: '', to: '' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to);
@@ -2910,4 +3070,327 @@ function renderPendingApprovals() {
         card.addEventListener('click', () => switchView(it.kind === 'invoice' ? 'invoices' : it.kind === 'bill' ? 'bills' : 'cheques'));
         grid.appendChild(card);
     });
+}
+
+/* =======================================================================
+   35. QUICKBOOKS-STYLE MODALS — EXPENSE / BANK DEPOSIT / JOURNAL ENTRY
+   ======================================================================= */
+
+function setupQbModalsEventListeners() {
+    $('close-expense-modal').addEventListener('click', () => $('expense-modal').classList.add('hidden'));
+    $('expense-modal').addEventListener('click', (e) => { if (e.target === $('expense-modal')) $('expense-modal').classList.add('hidden'); });
+    $('expense-form').addEventListener('submit', onSubmitExpenseForm);
+    $('exp-add-line-btn').addEventListener('click', () => { addExpenseLine(); });
+    $('exp-clear-lines-btn').addEventListener('click', () => { $('exp-lines-body').innerHTML = ''; addExpenseLine(); addExpenseLine(); updateExpenseTotals(); });
+    $('exp-amount-display'); // header amount is display-only, driven by updateExpenseTotals
+
+    $('close-deposit-modal').addEventListener('click', () => $('deposit-modal').classList.add('hidden'));
+    $('deposit-modal').addEventListener('click', (e) => { if (e.target === $('deposit-modal')) $('deposit-modal').classList.add('hidden'); });
+    $('deposit-form').addEventListener('submit', onSubmitDepositForm);
+    $('deposit-add-line-btn').addEventListener('click', () => { addDepositLine(); });
+    $('deposit-clear-lines-btn').addEventListener('click', () => { $('deposit-lines-body').innerHTML = ''; addDepositLine(); addDepositLine(); updateDepositTotals(); });
+
+    $('close-journal-modal').addEventListener('click', () => $('journal-modal').classList.add('hidden'));
+    $('journal-modal').addEventListener('click', (e) => { if (e.target === $('journal-modal')) $('journal-modal').classList.add('hidden'); });
+    $('journal-form').addEventListener('submit', onSubmitJournalForm);
+    $('journal-save-new-btn').addEventListener('click', async (e) => { await onSubmitJournalForm(e, true); });
+    $('journal-add-line-btn').addEventListener('click', () => { addJournalLine(); });
+    $('journal-clear-lines-btn').addEventListener('click', () => { $('journal-lines-body').innerHTML = ''; for (let i = 0; i < 4; i++) addJournalLine(); updateJournalTotals(); });
+}
+
+function renumberLines(tbodyId) {
+    const tbody = $(tbodyId);
+    qsa('tr', tbody).forEach((tr, i) => { const firstTd = tr.querySelector('td'); if (firstTd) firstTd.textContent = i + 1; });
+}
+
+/* ---------- EXPENSE MODAL ---------- */
+function addExpenseLine() {
+    const tbody = $('exp-lines-body');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${tbody.children.length + 1}</td>
+        <td><select class="line-category"></select></td>
+        <td><input type="text" class="line-desc" placeholder="Description"></td>
+        <td><input type="number" class="line-amount" step="any" min="0" placeholder="0.00"></td>
+        <td><select class="line-vat"></select></td>
+        <td style="text-align:center;"><input type="checkbox" class="line-billable"></td>
+        <td><select class="line-customer"></select></td>
+        <td><select class="line-class"></select></td>
+        <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+    fillSimpleSelect(tr.querySelector('.line-category'), projectsDb.map(p => p.name), true, '-- Category (Project) --');
+    fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
+    fillSimpleSelect(tr.querySelector('.line-customer'), customersDb.map(c => c.name), true, '-- Customer/Project --');
+    fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
+    tr.querySelector('.line-amount').addEventListener('input', updateExpenseTotals);
+    tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('exp-lines-body'); updateExpenseTotals(); });
+    tbody.appendChild(tr);
+}
+
+function updateExpenseHeaderBalance(bank) {
+    // no-op placeholder kept for symmetry with deposit; balance already
+    // shown inline next to the account combobox via banksDb lookups.
+}
+
+function updateExpenseTotals() {
+    const rows = qsa('#exp-lines-body tr');
+    let total = 0;
+    rows.forEach(tr => { const v = parseFloat(tr.querySelector('.line-amount').value); if (!isNaN(v)) total += v; });
+    $('exp-subtotal').textContent = formatRF(total);
+    $('exp-total').textContent = formatRF(total);
+    $('exp-amount-display').textContent = formatRF(total);
+}
+
+function openExpenseModal() {
+    $('expense-form').reset();
+    $('exp-date').value = new Date().toISOString().split('T')[0];
+    resetAccountCombobox('exp');
+    const payeeInput = $('exp-payee-search'), payeeHidden = $('exp-payee-id');
+    if (payeeInput) payeeInput.value = '';
+    if (payeeHidden) payeeHidden.value = '';
+    const locInput = $('exp-location-search'), locHidden = $('exp-location-id');
+    if (locInput) locInput.value = '';
+    if (locHidden) locHidden.value = '';
+    $('exp-lines-body').innerHTML = '';
+    addExpenseLine(); addExpenseLine();
+    updateExpenseTotals();
+    $('expense-modal').classList.remove('hidden');
+}
+
+async function onSubmitExpenseForm(e) {
+    e.preventDefault();
+    if (!validateAccountCombobox('exp')) { showToast('error', 'Please choose the payment account for this expense.'); return; }
+    const acct = readAccountCombobox('exp');
+
+    const lines = [];
+    qsa('#exp-lines-body tr').forEach(tr => {
+        const category = tr.querySelector('.line-category').value;
+        const desc = tr.querySelector('.line-desc').value.trim();
+        const amount = parseFloat(tr.querySelector('.line-amount').value) || 0;
+        if (!category && !desc && !amount) return;
+        lines.push({
+            category, description: desc, amount,
+            vat: tr.querySelector('.line-vat').value,
+            billable: tr.querySelector('.line-billable').checked,
+            customerProject: tr.querySelector('.line-customer').value,
+            class: tr.querySelector('.line-class').value
+        });
+    });
+    const total = lines.reduce((s, l) => s + l.amount, 0);
+    if (!lines.length || total <= 0) { showToast('error', 'Add at least one line with a category and an amount.'); return; }
+
+    const scope = isSuper()
+        ? { department: currentScope.department !== 'ALL' ? currentScope.department : (lines[0].class ? Object.keys(EPR_STRUCTURE).find(d => EPR_STRUCTURE[d].includes(lines[0].class)) : 'ALL') || 'ALL', subsection: lines[0].class || 'ALL', presbytery: $('exp-location-id').value || currentScope.presbytery }
+        : { department: currentUser.department, subsection: currentUser.subsection, presbytery: currentUser.presbytery };
+
+    const payload = sanitizePayload({
+        date: $('exp-date').value || new Date().toISOString().split('T')[0],
+        type: 'Expense',
+        desc: lines[0].description || 'Expense',
+        amount: total,
+        payee: $('exp-payee-search').value || '',
+        method: $('exp-method').value || '',
+        ref: $('exp-ref').value.trim(),
+        location: $('exp-location-search').value || '',
+        bankId: acct.bankId, bankName: acct.bankName,
+        lines: JSON.stringify(lines),
+        ...scope
+    });
+
+    const btn = $('exp-submit-btn'); btn.disabled = true;
+    try {
+        await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+        showToast('success', `Expense of ${formatRF(total)} saved.`);
+        $('expense-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save expense: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+/* ---------- BANK DEPOSIT MODAL ---------- */
+function addDepositLine() {
+    const tbody = $('deposit-lines-body');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${tbody.children.length + 1}</td>
+        <td><select class="line-received"></select></td>
+        <td><select class="line-account"></select></td>
+        <td><input type="text" class="line-desc" placeholder="Description"></td>
+        <td><select class="line-method"></select></td>
+        <td><input type="text" class="line-ref" placeholder="Ref no."></td>
+        <td><input type="number" class="line-amount" step="any" min="0" placeholder="0.00"></td>
+        <td><select class="line-vat"></select></td>
+        <td><select class="line-class"></select></td>
+        <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+    fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
+    fillSimpleSelect(tr.querySelector('.line-account'), projectsDb.map(p => p.name), true, '-- Account (Project) --');
+    fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
+    fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
+    fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
+    tr.querySelector('.line-amount').addEventListener('input', updateDepositTotals);
+    tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('deposit-lines-body'); updateDepositTotals(); });
+    tbody.appendChild(tr);
+}
+
+function updateDepositHeaderBalance(bank) { /* balance already shown next to combobox via banksDb */ }
+
+function updateDepositTotals() {
+    const rows = qsa('#deposit-lines-body tr');
+    let total = 0;
+    rows.forEach(tr => { const v = parseFloat(tr.querySelector('.line-amount').value); if (!isNaN(v)) total += v; });
+    $('deposit-funds-total').textContent = formatRF(total);
+    $('deposit-amount-display').textContent = formatRF(total);
+}
+
+function openDepositModal() {
+    $('deposit-form').reset();
+    $('deposit-date').value = new Date().toISOString().split('T')[0];
+    resetAccountCombobox('deposit');
+    $('deposit-lines-body').innerHTML = '';
+    addDepositLine(); addDepositLine();
+    updateDepositTotals();
+    $('deposit-modal').classList.remove('hidden');
+}
+
+async function onSubmitDepositForm(e) {
+    e.preventDefault();
+    if (!validateAccountCombobox('deposit')) { showToast('error', 'Please choose which account this deposit goes into.'); return; }
+    const acct = readAccountCombobox('deposit');
+
+    const lines = [];
+    qsa('#deposit-lines-body tr').forEach(tr => {
+        const receivedFrom = tr.querySelector('.line-received').value;
+        const account = tr.querySelector('.line-account').value;
+        const desc = tr.querySelector('.line-desc').value.trim();
+        const amount = parseFloat(tr.querySelector('.line-amount').value) || 0;
+        if (!receivedFrom && !account && !desc && !amount) return;
+        lines.push({
+            receivedFrom, account, description: desc,
+            method: tr.querySelector('.line-method').value,
+            ref: tr.querySelector('.line-ref').value.trim(),
+            amount, vat: tr.querySelector('.line-vat').value,
+            class: tr.querySelector('.line-class').value
+        });
+    });
+    const total = lines.reduce((s, l) => s + l.amount, 0);
+    if (!lines.length || total <= 0) { showToast('error', 'Add at least one funds line with an amount.'); return; }
+
+    const scope = isSuper()
+        ? { department: currentScope.department !== 'ALL' ? currentScope.department : 'ALL', subsection: lines[0].class || 'ALL', presbytery: currentScope.presbytery }
+        : { department: currentUser.department, subsection: currentUser.subsection, presbytery: currentUser.presbytery };
+
+    const payload = sanitizePayload({
+        date: $('deposit-date').value || new Date().toISOString().split('T')[0],
+        type: 'Income',
+        desc: lines[0].description || `Deposit from ${lines[0].receivedFrom || 'various'}`,
+        amount: total,
+        bankId: acct.bankId, bankName: acct.bankName,
+        lines: JSON.stringify(lines),
+        ...scope
+    });
+
+    const btn = $('deposit-submit-btn'); btn.disabled = true;
+    try {
+        await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+        showToast('success', `Deposit of ${formatRF(total)} saved.`);
+        $('deposit-modal').classList.add('hidden');
+    } catch (err) { showToast('error', "Couldn't save deposit: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+/* ---------- JOURNAL ENTRY MODAL ---------- */
+function getJournalAccountOptions() {
+    const list = ['Accounts Receivable (A/R)', 'Accounts Payable (A/P)'];
+    banksDb.forEach(b => list.push(`${b.name} — ${b.account}`));
+    projectsDb.forEach(p => list.push(`${p.name} (Project)`));
+    return list;
+}
+
+function addJournalLine() {
+    const tbody = $('journal-lines-body');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${tbody.children.length + 1}</td>
+        <td><select class="line-account"></select></td>
+        <td><input type="number" class="line-debit" step="any" min="0" placeholder="0.00"></td>
+        <td><input type="number" class="line-credit" step="any" min="0" placeholder="0.00"></td>
+        <td><input type="text" class="line-desc" placeholder="Description"></td>
+        <td><select class="line-name"></select></td>
+        <td><select class="line-vat"></select></td>
+        <td><select class="line-location"></select></td>
+        <td><select class="line-class"></select></td>
+        <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+    fillSimpleSelect(tr.querySelector('.line-account'), getJournalAccountOptions(), true, '-- Account --');
+    fillSimpleSelect(tr.querySelector('.line-name'), [...new Set([...customersDb.map(c => c.name), ...suppliersDb.map(s => s.name)])], true, '-- Name --');
+    fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
+    fillSimpleSelect(tr.querySelector('.line-location'), PRESBYTERIES, true, '-- Location --');
+    fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
+    const debitInput = tr.querySelector('.line-debit'), creditInput = tr.querySelector('.line-credit');
+    debitInput.addEventListener('input', () => { if (parseFloat(debitInput.value) > 0) creditInput.value = ''; updateJournalTotals(); });
+    creditInput.addEventListener('input', () => { if (parseFloat(creditInput.value) > 0) debitInput.value = ''; updateJournalTotals(); });
+    tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('journal-lines-body'); updateJournalTotals(); });
+    tbody.appendChild(tr);
+}
+
+function updateJournalTotals() {
+    let debit = 0, credit = 0;
+    qsa('#journal-lines-body tr').forEach(tr => {
+        debit += parseFloat(tr.querySelector('.line-debit').value) || 0;
+        credit += parseFloat(tr.querySelector('.line-credit').value) || 0;
+    });
+    $('journal-total-debit').textContent = formatRF(debit);
+    $('journal-total-credit').textContent = formatRF(credit);
+}
+
+async function openJournalModal() {
+    $('journal-form').reset();
+    $('journal-date').value = new Date().toISOString().split('T')[0];
+    $('journal-lines-body').innerHTML = '';
+    for (let i = 0; i < 4; i++) addJournalLine();
+    updateJournalTotals();
+    try {
+        const snap = await getDocs(collection(db, COLLECTIONS.JOURNAL_ENTRIES));
+        $('journal-no').value = String(snap.size + 1);
+    } catch (err) { $('journal-no').value = ''; }
+    $('journal-modal').classList.remove('hidden');
+}
+
+async function onSubmitJournalForm(e, keepOpen) {
+    e.preventDefault();
+    const lines = [];
+    qsa('#journal-lines-body tr').forEach(tr => {
+        const account = tr.querySelector('.line-account').value;
+        const debit = parseFloat(tr.querySelector('.line-debit').value) || 0;
+        const credit = parseFloat(tr.querySelector('.line-credit').value) || 0;
+        const desc = tr.querySelector('.line-desc').value.trim();
+        if (!account && !debit && !credit && !desc) return;
+        lines.push({
+            account, debit, credit, description: desc,
+            name: tr.querySelector('.line-name').value,
+            vat: tr.querySelector('.line-vat').value,
+            location: tr.querySelector('.line-location').value,
+            class: tr.querySelector('.line-class').value
+        });
+    });
+    const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
+    const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+    if (!lines.length || totalDebit <= 0) { showToast('error', 'Add at least two lines with debit/credit amounts.'); return; }
+    if (Math.abs(totalDebit - totalCredit) > 0.01) { showToast('error', `Debits (${formatRF(totalDebit)}) must equal Credits (${formatRF(totalCredit)}) before saving.`); return; }
+
+    const payload = sanitizePayload({
+        date: $('journal-date').value || new Date().toISOString().split('T')[0],
+        journalNo: $('journal-no').value.trim(),
+        lines: JSON.stringify(lines),
+        totalDebit, totalCredit,
+        department: isSuper() ? currentScope.department : currentUser.department,
+        presbytery: isSuper() ? currentScope.presbytery : currentUser.presbytery
+    });
+
+    const btn = keepOpen ? $('journal-save-new-btn') : $('journal-submit-btn');
+    if (btn) btn.disabled = true;
+    try {
+        await addDoc(collection(db, COLLECTIONS.JOURNAL_ENTRIES), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+        showToast('success', `Journal entry #${payload.journalNo || ''} saved — balanced at ${formatRF(totalDebit)}.`);
+        if (keepOpen) { await openJournalModal(); }
+        else { $('journal-modal').classList.add('hidden'); }
+    } catch (err) { showToast('error', "Couldn't save journal entry: " + err.message); }
+    finally { if (btn) btn.disabled = false; }
 }
