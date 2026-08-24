@@ -3,13 +3,11 @@
    ----------------------------------------------------------------------
    Values copied from Firebase Console → Project settings → epr-manage
    (Web app) → SDK setup and configuration.
-
    It's normal and safe for firebaseConfig to be visible in client-side
    code — this apiKey is not a secret. Actual access control is enforced
    by Firestore Security Rules + Firebase Authentication, not by hiding
    this file.
 ====================================================================== */
-
 export const firebaseConfig = {
     apiKey: "AIzaSyCVRQbkg_ZUcuYAH9qzAnppXpMU6x15qcQ",
     authDomain: "epr-manage.firebaseapp.com",
@@ -31,5 +29,6 @@ export const COLLECTIONS = {
     CUSTOMERS: "customers",
     PROJECTS: "projects",
     BUDGETS: "budgets",
-    BANKS: "banks"
+    BANKS: "banks",
+    JOURNAL_ENTRIES: "journal_entries"
 };
