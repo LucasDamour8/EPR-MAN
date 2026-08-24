@@ -124,11 +124,11 @@
                 <button type="button" class="apps-grid-item" data-view="transactions"><i class="fa-solid fa-list-check"></i>Transactions</button>
                 <button type="button" class="apps-grid-item" data-view="reports"><i class="fa-solid fa-file-invoice-dollar"></i>Reports</button>
                 <button type="button" class="apps-grid-item" data-view="departments"><i class="fa-solid fa-sitemap"></i>Departments &amp; Presbyteries</button>
-                <button type="button" class="apps-grid-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales Portal</button>
-                <button type="button" class="apps-grid-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expense Portal</button>
+                <button type="button" class="apps-grid-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales &amp; Get Paid</button>
+                <button type="button" class="apps-grid-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expenses &amp; Pay Bills</button>
                 <button type="button" class="apps-grid-item" data-view="cheques"><i class="fa-solid fa-money-check"></i>Cheques <span class="count-chip" id="nav-cheques-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i>Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
-                <button type="button" class="apps-grid-item" data-view="customers"><i class="fa-solid fa-address-book"></i>Customer Portal <span class="count-chip" id="nav-customers-count">0</span></button>
+                <button type="button" class="apps-grid-item" data-view="customers"><i class="fa-solid fa-address-book"></i>Customer Hub <span class="count-chip" id="nav-customers-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="projects"><i class="fa-solid fa-diagram-project"></i>Projects <span class="count-chip" id="nav-projects-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="coa"><i class="fa-solid fa-chart-line"></i>Chart of Accounts</button>
                 <div id="apps-admin-only" class="hidden" style="display:contents;">
@@ -141,7 +141,7 @@
                 <div class="ab-row"><i class="fa-solid fa-building"></i><span id="ab-department">—</span></div>
                 <div class="ab-row"><i class="fa-solid fa-location-dot"></i><span id="ab-presbytery">—</span></div>
                 <div class="ab-row"><i class="fa-solid fa-diagram-project"></i><span id="ab-subsection">—</span></div>
-                <p class="ab-note">You only see data recorded under your assigned sub-projects. Chart of Accounts is further limited to bank accounts you've personally posted against. Contact your Superadmin to change your assignment.</p>
+                <p class="ab-note">You only see data recorded under this department and presbytery. Chart of Accounts is further limited to bank accounts you've personally posted against. Contact your Superadmin to change your assignment.</p>
             </div>
             <div id="admin-filter-section" class="hidden" style="padding: 0 18px 18px;">
                 <div class="sidebar-section-title" style="text-align:left;padding-left:0;">Departments</div>
@@ -248,9 +248,9 @@
 
                     <div class="pill-nav" id="pill-nav">
                         <button type="button" class="pill-nav-btn" data-view="transactions"><span class="pill-icon" style="background:var(--primary-dark)"><i class="fa-solid fa-coins"></i></span>Accounting</button>
-                        <button type="button" class="pill-nav-btn" data-view="bills"><span class="pill-icon" style="background:var(--accent-dark)"><i class="fa-solid fa-receipt"></i></span>Expense Portal</button>
-                        <button type="button" class="pill-nav-btn" data-view="invoices"><span class="pill-icon" style="background:var(--primary)"><i class="fa-solid fa-file-invoice"></i></span>Sales Portal</button>
-                        <button type="button" class="pill-nav-btn" data-view="customers"><span class="pill-icon" style="background:var(--teal)"><i class="fa-solid fa-address-book"></i></span>Customer Portal</button>
+                        <button type="button" class="pill-nav-btn" data-view="bills"><span class="pill-icon" style="background:var(--accent-dark)"><i class="fa-solid fa-receipt"></i></span>Expenses &amp; Pay Bills</button>
+                        <button type="button" class="pill-nav-btn" data-view="invoices"><span class="pill-icon" style="background:var(--primary)"><i class="fa-solid fa-file-invoice"></i></span>Sales &amp; Get Paid</button>
+                        <button type="button" class="pill-nav-btn" data-view="customers"><span class="pill-icon" style="background:var(--teal)"><i class="fa-solid fa-address-book"></i></span>Customer Hub</button>
                         <button type="button" class="pill-nav-btn" data-view="suppliers"><span class="pill-icon" style="background:var(--purple)"><i class="fa-solid fa-truck-field"></i></span>Suppliers</button>
                         <button type="button" class="pill-nav-btn" data-view="projects"><span class="pill-icon" style="background:var(--blue)"><i class="fa-solid fa-diagram-project"></i></span>Projects</button>
                         <button type="button" class="pill-nav-btn" data-view="cheques"><span class="pill-icon" style="background:var(--warning-dark)"><i class="fa-solid fa-money-check"></i></span>Cheques</button>
@@ -260,9 +260,10 @@
 
                     <div class="create-actions-row">
                         <span class="ca-label">Create actions</span>
-                        <button type="button" class="ca-btn" id="qa-record-expense"><i class="fa-solid fa-receipt"></i> Record expense</button>
-                        <button type="button" class="ca-btn" id="qa-bank-deposit"><i class="fa-solid fa-building-columns"></i> Add bank deposit</button>
-                        <button type="button" class="ca-btn" id="qa-journal-entry"><i class="fa-solid fa-scale-balanced"></i> Double journal entry</button>
+                        <button type="button" class="ca-btn" id="qa-create-invoice">Create invoice</button>
+                        <button type="button" class="ca-btn" id="qa-record-expense">Record expense</button>
+                        <button type="button" class="ca-btn" id="qa-bank-deposit">Add bank deposit</button>
+                        <button type="button" class="ca-btn" id="qa-create-cheque">Create cheque</button>
                         <button type="button" class="ca-btn show-all" id="qa-show-all">Show all</button>
                     </div>
 
@@ -366,10 +367,7 @@
                             <h2>Transactions Log</h2>
                             <p id="tx-scope-note">Isolated by role permissions and scope.</p>
                         </div>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button class="btn btn-outline" id="open-expense-modal-btn"><i class="fa-solid fa-receipt"></i> Record Expense</button>
-                            <button class="btn btn-primary" id="open-tx-modal-btn"><i class="fa-solid fa-plus"></i> New Transaction</button>
-                        </div>
+                        <button class="btn btn-primary" id="open-tx-modal-btn"><i class="fa-solid fa-plus"></i> New Transaction</button>
                     </div>
 
                     <div class="filter-toolbar">
@@ -504,7 +502,7 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>User &amp; Privilege Management</h2>
-                            <p>Create staff accounts and assign each one either to a Presbytery Location or a Department, then tick exactly which sub-projects they work on.</p>
+                            <p>Create staff accounts and assign each one to exactly one presbytery location and one department.</p>
                         </div>
                     </div>
 
@@ -543,30 +541,20 @@
                                             <option value="superadmin">Superadmin (SAS Central)</option>
                                         </select>
                                     </div>
-                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Finance users can approve cheques.</div>
+                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Finance users can approve cheques. Staff are locked to one assignment below.</div>
                                 </div>
-
-                                <div class="form-group" id="user-mode-group">
-                                    <label>Assign By</label>
-                                    <div class="radio-row">
-                                        <label><input type="radio" name="user-assign-mode" value="presbytery" checked> Presbytery Location <span class="field-hint" style="margin:0;">(hides department)</span></label>
-                                        <label><input type="radio" name="user-assign-mode" value="department"> Department <span class="field-hint" style="margin:0;">(hides location)</span></label>
-                                    </div>
-                                </div>
-
                                 <div id="user-scope-fields">
-                                    <div class="form-group" id="user-pres-field">
+                                    <div class="form-group">
                                         <label>Assign Presbytery Location <span class="req">*</span></label>
                                         <div class="select-wrap"><select id="user-pres" required></select></div>
                                     </div>
-                                    <div class="form-group hidden" id="user-dept-field">
+                                    <div class="form-group">
                                         <label>Assign Main Department <span class="req">*</span></label>
                                         <div class="select-wrap"><select id="user-dept" required></select></div>
                                     </div>
                                     <div class="form-group">
-                                        <label>Assign Sub-Projects <span class="req">*</span></label>
-                                        <div class="field-hint">Tick every sub-project this user should see and record against, across any department.</div>
-                                        <div id="user-projects-checklist" class="checklist-grid"></div>
+                                        <label>Assign Sub-Section / Project <span class="req">*</span></label>
+                                        <div class="select-wrap"><select id="user-subsection" required></select></div>
                                     </div>
                                 </div>
                                 <button type="submit" class="btn btn-primary btn-block" id="user-submit-btn">Create &amp; Assign User</button>
@@ -604,7 +592,7 @@
                 <section id="view-invoices" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Sales Portal — Invoices</h2>
+                            <h2>Sales &amp; Get Paid — Invoices</h2>
                             <p id="invoices-scope-note">Every invoice raised by staff needs Superadmin approval before it counts as issued.</p>
                         </div>
                         <button class="btn btn-primary" id="open-invoice-modal-btn"><i class="fa-solid fa-plus"></i> New Invoice</button>
@@ -624,7 +612,7 @@
                 <section id="view-bills" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Expense Portal — Bills</h2>
+                            <h2>Expenses &amp; Pay Bills</h2>
                             <p id="bills-scope-note">Bills raised for payment need Superadmin approval before they are marked as paid.</p>
                         </div>
                         <button class="btn btn-primary" id="open-bill-modal-btn"><i class="fa-solid fa-plus"></i> New Bill</button>
@@ -681,7 +669,7 @@
                 <section id="view-customers" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Customer Portal</h2>
+                            <h2>Customer Hub</h2>
                             <p id="customers-scope-note">Everyone you invoice or receive income from, in one place.</p>
                         </div>
                         <button class="btn btn-primary" id="open-customer-modal-btn"><i class="fa-solid fa-plus"></i> New Customer</button>
@@ -698,7 +686,7 @@
                 <section id="view-projects" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Projects <span class="muted-sm">(also used as the "Category" list on Expense &amp; Deposit forms)</span></h2>
+                            <h2>Projects</h2>
                             <p id="projects-scope-note">Track every project your department runs and how far along it is.</p>
                         </div>
                         <button class="btn btn-primary" id="open-project-modal-btn"><i class="fa-solid fa-plus"></i> New Project</button>
@@ -1121,226 +1109,6 @@
                     <div class="modal-footer-actions">
                         <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="bank-modal">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="bank-submit-btn">Save Bank</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============ Modal: Expense (QuickBooks-style replica) ============ -->
-    <div id="expense-modal" class="modal hidden qb-modal">
-        <div class="modal-content modal-wide">
-            <div class="qb-modal-topbar">
-                <h3><i class="fa-solid fa-clock-rotate-left"></i> Expense</h3>
-                <div class="qb-topbar-icons">
-                    <span><i class="fa-regular fa-comment-dots"></i> Give feedback</span>
-                    <span><i class="fa-regular fa-circle-question"></i></span>
-                    <button class="close-btn" id="close-expense-modal">&times;</button>
-                </div>
-            </div>
-            <form id="expense-form" novalidate>
-                <div class="qb-header-grid">
-                    <div class="qb-amount-huge">
-                        <div class="qb-amount-label">Amount</div>
-                        <div class="qb-amount-value" id="exp-amount-display">RF 0</div>
-                    </div>
-                    <div class="form-group">
-                        <label>Payee</label>
-                        <div class="acct-combo">
-                            <input type="text" id="exp-payee-search" placeholder="Who did you pay?" autocomplete="off">
-                            <input type="hidden" id="exp-payee-id">
-                            <div class="acct-dropdown hidden" id="exp-payee-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Payment account <span class="req">*</span></label>
-                        <div class="acct-combo">
-                            <input type="text" id="exp-bank-search" placeholder="Search accounts…" autocomplete="off">
-                            <input type="hidden" id="exp-bank-id">
-                            <div class="acct-dropdown hidden" id="exp-bank-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Payment Date</label>
-                        <input type="date" id="exp-date">
-                    </div>
-                    <div class="form-group">
-                        <label>Payment Method</label>
-                        <div class="select-wrap">
-                            <select id="exp-method">
-                                <option value="">-- Method --</option>
-                                <option>Cash</option><option>Bank Transfer</option><option>Mobile Money</option><option>Cheque</option><option>Card</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Ref no.</label>
-                        <input type="text" id="exp-ref" placeholder="Optional">
-                    </div>
-                    <div class="form-group">
-                        <label>Location</label>
-                        <div class="acct-combo">
-                            <input type="text" id="exp-location-search" placeholder="Search EPR locations…" autocomplete="off">
-                            <input type="hidden" id="exp-location-id">
-                            <div class="acct-dropdown hidden" id="exp-location-dropdown"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="qb-body-scroll">
-                    <div class="qb-section-title"><i class="fa-solid fa-list"></i> Category details</div>
-                    <div class="table-wrap ext-scroll-x">
-                        <table class="qb-line-table">
-                            <thead><tr>
-                                <th>#</th><th>Category</th><th>Description</th><th>Amount (RF)</th><th>VAT</th><th>Billable</th><th>Customer / Project</th><th>Class</th><th></th>
-                            </tr></thead>
-                            <tbody id="exp-lines-body"></tbody>
-                        </table>
-                    </div>
-                    <div class="qb-lines-actions">
-                        <button type="button" class="btn btn-outline" id="exp-add-line-btn"><i class="fa-solid fa-plus"></i> Add lines</button>
-                        <button type="button" class="btn btn-outline" id="exp-clear-lines-btn">Clear all lines</button>
-                    </div>
-                    <div class="qb-totals-row">
-                        <div><span class="qb-total-label">Subtotal</span><span id="exp-subtotal">RF 0</span></div>
-                        <div><span class="qb-total-label">Total</span><span id="exp-total">RF 0</span></div>
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <div class="modal-footer-actions">
-                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="expense-modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="exp-submit-btn">Save Expense</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============ Modal: Bank Deposit (QuickBooks-style replica) ============ -->
-    <div id="deposit-modal" class="modal hidden qb-modal">
-        <div class="modal-content modal-wide">
-            <div class="qb-modal-topbar">
-                <h3><i class="fa-solid fa-building-columns"></i> Bank Deposit</h3>
-                <div class="qb-topbar-icons">
-                    <span><i class="fa-regular fa-comment-dots"></i> Feedback</span>
-                    <span><i class="fa-regular fa-circle-question"></i></span>
-                    <button class="close-btn" id="close-deposit-modal">&times;</button>
-                </div>
-            </div>
-            <form id="deposit-form" novalidate>
-                <div class="qb-header-grid">
-                    <div class="qb-amount-huge">
-                        <div class="qb-amount-label">Amount</div>
-                        <div class="qb-amount-value" id="deposit-amount-display">RF 0</div>
-                    </div>
-                    <div class="form-group">
-                        <label>Account <span class="req">*</span></label>
-                        <div class="acct-combo">
-                            <input type="text" id="deposit-bank-search" placeholder="Search accounts…" autocomplete="off">
-                            <input type="hidden" id="deposit-bank-id">
-                            <div class="acct-dropdown hidden" id="deposit-bank-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Date</label>
-                        <input type="date" id="deposit-date">
-                    </div>
-                    <div class="form-group">
-                        <label>Currency</label>
-                        <div class="select-wrap"><select disabled><option>RWF Rwanda Franc</option></select></div>
-                    </div>
-                </div>
-                <div class="qb-body-scroll">
-                    <div class="qb-section-title">Show payments for this location:</div>
-                    <div class="deposit-locations-radio">
-                        <label><input type="radio" name="dep-loc" checked> All Locations</label>
-                        <label><input type="radio" name="dep-loc"> Unspecified Locations</label>
-                        <label><input type="radio" name="dep-loc"> Select Location</label>
-                    </div>
-                    <div class="qb-section-title">Select the payments included in this deposit</div>
-                    <div class="deposit-payments-empty"><i class="fa-solid fa-inbox" style="display:block;font-size:1.3rem;margin-bottom:8px;"></i>There are no transactions matching the criteria.</div>
-
-                    <div class="qb-section-title"><i class="fa-solid fa-plus"></i> Add funds to this deposit</div>
-                    <div class="table-wrap ext-scroll-x">
-                        <table class="qb-line-table">
-                            <thead><tr>
-                                <th>#</th><th>Received from</th><th>Account</th><th>Description</th><th>Payment method</th><th>Ref no.</th><th>Amount (RF)</th><th>VAT</th><th>Class</th><th></th>
-                            </tr></thead>
-                            <tbody id="deposit-lines-body"></tbody>
-                        </table>
-                    </div>
-                    <div class="qb-lines-actions">
-                        <button type="button" class="btn btn-outline" id="deposit-add-line-btn"><i class="fa-solid fa-plus"></i> Add lines</button>
-                        <button type="button" class="btn btn-outline" id="deposit-clear-lines-btn">Clear all lines</button>
-                    </div>
-                    <div class="qb-totals-row">
-                        <div><span class="qb-total-label">Other funds total</span><span id="deposit-funds-total">RF 0</span></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <div class="modal-footer-actions">
-                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="deposit-modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="deposit-submit-btn">Save Deposit</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============ Modal: Journal Entry (double-entry, QuickBooks-style replica) ============ -->
-    <div id="journal-modal" class="modal hidden qb-modal">
-        <div class="modal-content modal-wide">
-            <div class="qb-modal-topbar">
-                <h3 id="journal-modal-title"><i class="fa-solid fa-scale-balanced"></i> Journal Entry</h3>
-                <div class="qb-topbar-icons">
-                    <span><i class="fa-regular fa-copy"></i> Copy</span>
-                    <span><i class="fa-regular fa-comment-dots"></i> Feedback</span>
-                    <button class="close-btn" id="close-journal-modal">&times;</button>
-                </div>
-            </div>
-            <form id="journal-form" novalidate>
-                <div class="qb-header-grid">
-                    <div class="form-group">
-                        <label>Currency</label>
-                        <div class="select-wrap"><select disabled><option>RWF Rwanda Franc</option></select></div>
-                    </div>
-                    <div class="form-group">
-                        <label>Journal date</label>
-                        <input type="date" id="journal-date">
-                    </div>
-                    <div class="form-group">
-                        <label>Journal no.</label>
-                        <input type="text" id="journal-no">
-                    </div>
-                </div>
-                <div class="qb-body-scroll">
-                    <div class="table-wrap ext-scroll-x">
-                        <table class="qb-line-table">
-                            <thead><tr>
-                                <th>#</th><th>Account</th><th>Debits (RF)</th><th>Credits (RF)</th><th>Description</th><th>Name</th><th>VAT</th><th>Location</th><th>Class</th><th></th>
-                            </tr></thead>
-                            <tbody id="journal-lines-body"></tbody>
-                            <tfoot>
-                                <tr>
-                                    <td></td><td style="font-weight:800;">Total RWF</td>
-                                    <td style="font-weight:800;" id="journal-total-debit">RF 0</td>
-                                    <td style="font-weight:800;" id="journal-total-credit">RF 0</td>
-                                    <td colspan="6"></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                    <div class="qb-lines-actions">
-                        <button type="button" class="btn btn-outline" id="journal-add-line-btn"><i class="fa-solid fa-plus"></i> Add lines</button>
-                        <button type="button" class="btn btn-outline" id="journal-clear-lines-btn">Clear all lines</button>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <div class="modal-footer-actions">
-                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="journal-modal">Cancel</button>
-                        <button type="button" class="btn btn-outline" id="journal-save-new-btn">Save and new</button>
-                        <button type="submit" class="btn btn-primary" id="journal-submit-btn">Save</button>
                     </div>
                 </div>
             </form>
