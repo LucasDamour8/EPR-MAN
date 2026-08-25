@@ -36,7 +36,7 @@ const PRESBYTERIES = [
     "EPR Presbytery Gitarama", "EPR Presbytery Rubengera", "EPR Presbytery Kirinda", "EPR Presbytery Gisenyi"
 ];
 
-const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User" };
+const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User", accountant: "Accountant", general_accountant: "General Accountant" };
 const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
 const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'exp', 'deposit'];
@@ -48,6 +48,36 @@ const VAT_OPTIONS = [
 
 const PAYMENT_METHODS = ["Cash", "Bank Transfer", "Mobile Money", "Cheque", "Card"];
 
+// ---------------------------------------------------------------------
+// Chart of Accounts — account type / detail type structure (QuickBooks
+// style). Used by the "New account" modal and by every place an account
+// needs to be picked (e.g. the Expense form's Category column).
+// ---------------------------------------------------------------------
+const CURRENCY_OPTIONS = [
+    "RWF Rwanda Franc", "EUR Euro", "GBP British Pound Sterling", "USD United States Dollar",
+    "AED UAE Dirham", "AFN Afghan Afghani", "ALL Albanian Lek", "AMD Armenian Dram",
+    "KES Kenyan Shilling", "UGX Ugandan Shilling", "TZS Tanzanian Shilling", "BIF Burundian Franc"
+];
+
+const ACCOUNT_TYPE_STRUCTURE = {
+    "ASSET": [
+        "Cash and cash equivalents", "Accounts receivable (A/R)", "Current assets",
+        "Fixed assets", "Non-current assets"
+    ],
+    "LIABILITY": [
+        "Credit card", "Accounts payable (A/P)", "Current liabilities", "Non-current liabilities"
+    ],
+    "EQUITY": [
+        "Owner's equity", "Retained earnings", "Opening balance equity"
+    ],
+    "INCOME": [
+        "Sales of product income", "Service/fee income", "Discounts given", "Other income"
+    ],
+    "EXPENSE": [
+        "Operating expense", "Cost of goods sold", "Payroll expense", "Other expense"
+    ]
+};
+
 let usersDb = [];
 let transactionsDb = [];
 let invoicesDb = [];
@@ -58,6 +88,7 @@ let projectsDb = [];
 let budgetsDb = [];
 let banksDb = [];
 let journalEntriesDb = [];
+let accountsDb = [];
 
 let currentUser = null;
 let currentScope = { presbytery: "ALL", department: "ALL" };
@@ -80,7 +111,12 @@ let coaRange = { preset: 'all', from: '', to: '' };
 let unsubTx = null, unsubUsers = null, unsubOwnProfile = null;
 let unsubInvoices = null, unsubBills = null;
 let unsubSuppliers = null, unsubCustomers = null, unsubProjects = null;
-let unsubBudgets = null, unsubBanks = null;
+let unsubBudgets = null, unsubBanks = null, unsubAccounts = null;
+
+// Tracks which expense/deposit/journal table row last opened the "New
+// account" modal, so we know where to drop the newly-created account
+// once it's saved.
+let pendingAccountTarget = null;
 
 const $ = (id) => document.getElementById(id);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -95,6 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupRangeBar('report-range-bar', (r) => { reportRange = r; renderReportPanel(); });
     setupRangeBar('coa-range-bar', (r) => { coaRange = r; renderCoaCharts(); });
     populateUserProjectsChecklist();
+    setupAccountModal();
     await checkFirstRun();
 });
 
@@ -634,7 +671,8 @@ function getFlyoutGroups(key) {
                 ] },
                 ...(superAdmin ? [{ title: 'Admin', items: [
                     { icon: 'fa-scale-balanced', label: 'New Budget Line', action: () => { switchView('budget'); openBudgetModal(); } },
-                    { icon: 'fa-building-columns', label: 'New Bank', action: () => { switchView('banks'); openBankModal(); } }
+                    { icon: 'fa-building-columns', label: 'New Bank', action: () => { switchView('banks'); openBankModal(); } },
+                    { icon: 'fa-list', label: 'New Chart of Accounts entry', action: () => openAccountModal() }
                 ] }] : [])
             ];
         case 'bookmarks':
@@ -914,19 +952,19 @@ async function onForgotPassword() {
 
 function doLogout() {
     [unsubTx, unsubUsers, unsubOwnProfile, unsubInvoices, unsubBills,
-     unsubSuppliers, unsubCustomers, unsubProjects, unsubBudgets, unsubBanks]
+     unsubSuppliers, unsubCustomers, unsubProjects, unsubBudgets, unsubBanks, unsubAccounts]
         .forEach(u => { if (u) u(); });
     unsubTx = unsubUsers = unsubOwnProfile = null;
     unsubInvoices = unsubBills = null;
     unsubSuppliers = unsubCustomers = unsubProjects = null;
-    unsubBudgets = unsubBanks = null;
+    unsubBudgets = unsubBanks = unsubAccounts = null;
 
     signOut(auth).catch(() => {});
     currentUser = null;
     usersDb = []; transactionsDb = [];
     invoicesDb = []; billsDb = [];
     suppliersDb = []; customersDb = []; projectsDb = [];
-    budgetsDb = []; banksDb = []; journalEntriesDb = [];
+    budgetsDb = []; banksDb = []; journalEntriesDb = []; accountsDb = [];
     currentScope = { presbytery: 'ALL', department: 'ALL' };
     searchQuery = ''; txFilters = { type: 'ALL', from: '', to: '' };
     reportRange = { preset: 'all', from: '', to: '' };
@@ -986,6 +1024,7 @@ function initAppSession() {
     subscribeCustomers();
     subscribeProjects();
     subscribeBanks();
+    subscribeAccounts();
     if (isSuperUser) { subscribeUsers(); subscribeBudgets(); }
     else { subscribeOwnProfile(); }
 }
@@ -1018,7 +1057,7 @@ function updateProfileUI() {
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
 function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
 function hasFullScope() { return currentUser && (currentUser.role === 'superadmin' || currentUser.fullAccess === true); }
-function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance'); }
+function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
 
 function setSyncStatus(state) {
@@ -1164,7 +1203,7 @@ function sanitizePayload(obj) {
 }
 
 function closeAllExtModals() {
-    ['invoice-modal', 'bill-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal', 'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal']
+    ['invoice-modal', 'bill-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal', 'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal', 'account-modal']
         .forEach(id => $(id) && $(id).classList.add('hidden'));
 }
 
@@ -1806,6 +1845,9 @@ function setupExtModulesEventListeners() {
     $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) $('bank-modal').classList.add('hidden'); });
     $('bank-form').addEventListener('submit', onSubmitBankForm);
     $('banks-table-body').addEventListener('click', onBanksTableClick);
+
+    $('open-account-modal-btn').addEventListener('click', () => openAccountModal());
+    $('accounts-table-body').addEventListener('click', onAccountsTableClick);
 }
 
 function guardSuperadminView(viewId, sectionLabel) {
@@ -2543,6 +2585,276 @@ function onBanksTableClick(e) {
     }
 }
 
+// =======================================================================
+// CHART OF ACCOUNTS — "accounts" collection (QuickBooks-style New Account)
+// This is separate from the "banks" collection: banks are cash/bank
+// accounts used to pay from/into; "accounts" are the full ledger chart
+// used to *categorise* transactions (Asset/Liability/Equity/Income/Expense
+// with their detail types), and is what the Expense form's Category
+// column now picks from.
+// =======================================================================
+function subscribeAccounts() {
+    if (unsubAccounts) unsubAccounts();
+    unsubAccounts = onSnapshot(collection(db, COLLECTIONS.ACCOUNTS), (snap) => {
+        accountsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        accountsDb.sort((a, b) => (a.number || '').localeCompare(b.number || '', undefined, { numeric: true }) || (a.name || '').localeCompare(b.name || ''));
+        renderAccountsTable();
+        qsa('.line-category-input').forEach(inp => {
+            // Keep any open category comboboxes in sync when the accounts list updates live
+        });
+    }, (err) => showToast('error', 'Chart of Accounts feed error: ' + err.message));
+}
+
+function populateDetailTypeSelect(typeKey, selectedValue) {
+    const sel = $('account-detail-type');
+    if (!sel) return;
+    const details = ACCOUNT_TYPE_STRUCTURE[typeKey] || [];
+    sel.innerHTML = '';
+    if (!details.length) {
+        const o = document.createElement('option'); o.value = ''; o.textContent = '-- Select detail type --';
+        sel.appendChild(o);
+        return;
+    }
+    details.forEach(d => {
+        const o = document.createElement('option'); o.value = d; o.textContent = d;
+        sel.appendChild(o);
+    });
+    if (selectedValue) sel.value = selectedValue;
+}
+
+function setupAccountModal() {
+    fillSimpleSelect($('account-type'), Object.keys(ACCOUNT_TYPE_STRUCTURE), true, 'Select account type');
+    fillSimpleSelect($('account-vat'), VAT_OPTIONS, true, '-- Select VAT --');
+    fillSimpleSelect($('account-currency'), CURRENCY_OPTIONS, false);
+    $('account-currency').value = 'RWF Rwanda Franc';
+
+    $('account-type').addEventListener('change', () => populateDetailTypeSelect($('account-type').value, ''));
+    $('account-subaccount-toggle').addEventListener('change', () => {
+        $('account-parent-group').classList.toggle('hidden', !$('account-subaccount-toggle').checked);
+        refreshAccountParentOptions();
+    });
+
+    $('close-account-modal').addEventListener('click', () => closeAccountModal());
+    $('account-modal').addEventListener('click', (e) => { if (e.target === $('account-modal')) closeAccountModal(); });
+    $('account-form').addEventListener('submit', onSubmitAccountForm);
+}
+
+function refreshAccountParentOptions() {
+    const sel = $('account-parent');
+    if (!sel) return;
+    fillSimpleSelect(sel, accountsDb.map(a => `${a.number ? a.number + ' — ' : ''}${a.name}`), true, '-- Select parent account --');
+    sel.dataset.map = JSON.stringify(accountsDb.map(a => a.id));
+}
+
+function openAccountModal(edit, target) {
+    // `target` (optional) is the {row, callback} pair to return focus/selection to
+    // once the account is saved — used by the Expense line "+ Add new" flow.
+    pendingAccountTarget = target || null;
+    $('account-form').reset();
+    $('account-edit-id').value = '';
+    $('account-subaccount-toggle').checked = false;
+    $('account-parent-group').classList.add('hidden');
+    $('account-currency').value = 'RWF Rwanda Franc';
+    $('account-asof').value = new Date().toISOString().split('T')[0];
+    refreshAccountParentOptions();
+
+    if (edit) {
+        $('account-modal-title').textContent = 'Edit account';
+        $('account-submit-btn').textContent = 'Save changes';
+        $('account-edit-id').value = edit.id;
+        $('account-name').value = edit.name || '';
+        $('account-number').value = edit.number || '';
+        $('account-type').value = edit.type || '';
+        populateDetailTypeSelect(edit.type, edit.detailType);
+        $('account-vat').value = edit.vat || '';
+        $('account-opening-balance').value = edit.openingBalance || '';
+        $('account-asof').value = edit.asOfDate || new Date().toISOString().split('T')[0];
+        $('account-currency').value = edit.currency || 'RWF Rwanda Franc';
+        if (edit.parentId) {
+            $('account-subaccount-toggle').checked = true;
+            $('account-parent-group').classList.remove('hidden');
+            const idx = accountsDb.findIndex(a => a.id === edit.parentId);
+            if (idx > -1) $('account-parent').selectedIndex = idx + 1;
+        }
+    } else {
+        $('account-modal-title').textContent = 'New account';
+        $('account-submit-btn').textContent = 'Save';
+        $('account-type').selectedIndex = 0;
+        populateDetailTypeSelect('', '');
+    }
+    $('account-modal').classList.remove('hidden');
+}
+function closeAccountModal() { $('account-modal').classList.add('hidden'); pendingAccountTarget = null; }
+
+async function onSubmitAccountForm(e) {
+    e.preventDefault();
+    const editId = $('account-edit-id').value;
+    const name = $('account-name').value.trim();
+    const number = $('account-number').value.trim();
+    const type = $('account-type').value;
+    const detailType = $('account-detail-type').value;
+    const isSub = $('account-subaccount-toggle').checked;
+    const parentSel = $('account-parent');
+    const parentIdx = parentSel.selectedIndex - 1;
+    const parentId = (isSub && parentIdx > -1) ? accountsDb[parentIdx].id : '';
+
+    if (!name || !type || !detailType) { showToast('error', 'Fill in an account name, account type and detail type.'); return; }
+
+    const payload = sanitizePayload({
+        name, number, type, detailType, parentId,
+        vat: $('account-vat').value,
+        openingBalance: parseFloat($('account-opening-balance').value) || 0,
+        balance: parseFloat($('account-opening-balance').value) || 0,
+        asOfDate: $('account-asof').value || new Date().toISOString().split('T')[0],
+        currency: $('account-currency').value
+    });
+
+    const btn = $('account-submit-btn'); btn.disabled = true;
+    try {
+        let newId = editId;
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.ACCOUNTS, editId), { ...payload, ...updateMeta() });
+            showToast('success', 'Account updated.');
+        } else {
+            const ref = await addDoc(collection(db, COLLECTIONS.ACCOUNTS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+            newId = ref.id;
+            showToast('success', `Account "${name}" created.`);
+        }
+        closeAccountModal();
+        // If this account was created from an expense/deposit/journal line's
+        // "+ Add new" shortcut, select it straight back into that line.
+        if (pendingAccountTarget && pendingAccountTarget.onCreated) {
+            pendingAccountTarget.onCreated({ id: newId, ...payload });
+        }
+        pendingAccountTarget = null;
+    } catch (err) { showToast('error', "Couldn't save account: " + err.message); }
+    finally { btn.disabled = false; }
+}
+
+function renderAccountsTable() {
+    const tbody = $('accounts-table-body');
+    if (!tbody) return;
+    if (accountsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No chart-of-accounts entries yet. Click "New" to add one.</td></tr>`; return; }
+    tbody.innerHTML = '';
+    accountsDb.forEach(a => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${escapeHtml(a.number || '—')}</td>
+            <td><strong>${escapeHtml(a.name)}</strong></td>
+            <td><span class="badge">${escapeHtml(a.type || '')}</span></td>
+            <td>${escapeHtml(a.detailType || '—')}</td>
+            <td>${escapeHtml(a.currency || 'RWF Rwanda Franc')}</td>
+            <td>${formatRF(a.balance)}</td>
+            <td><div class="row-actions">
+                <button class="icon-action-btn" data-edit="${a.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${a.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function onAccountsTableClick(e) {
+    const editBtn = e.target.closest('[data-edit]');
+    const delBtn = e.target.closest('[data-delete]');
+    if (editBtn) { const a = accountsDb.find(x => x.id === editBtn.dataset.edit); if (a) openAccountModal(a); }
+    else if (delBtn) {
+        const a = accountsDb.find(x => x.id === delBtn.dataset.delete);
+        if (!a) return;
+        openConfirmModal(`Delete account "${a.name}"? Records already linked to it will keep the old name on record.`, async () => {
+            try { await deleteDoc(doc(db, COLLECTIONS.ACCOUNTS, a.id)); showToast('success', 'Account deleted.'); }
+            catch (err) { showToast('error', err.message); }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------
+// Searchable "Category" combobox used inside Expense line-item rows.
+// Lists every Chart-of-Accounts entry (all types), with a "+ Add new"
+// row pinned to the top that opens the New Account modal.
+// ---------------------------------------------------------------------
+function setupLineCategoryCombobox(row) {
+    const input = row.querySelector('.line-category-input');
+    const hidden = row.querySelector('.line-category-id');
+    const dropdown = row.querySelector('.line-category-dropdown');
+    if (!input || !hidden || !dropdown) return;
+    let debounceTimer = null;
+
+    function renderList(term) {
+        const t = (term || '').toLowerCase().trim();
+        dropdown.innerHTML = '';
+
+        const addNewRow = document.createElement('div');
+        addNewRow.className = 'acct-dropdown-item acct-add-new';
+        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new</span></div>`;
+        addNewRow.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dropdown.classList.add('hidden');
+            openAccountModal(null, {
+                onCreated: (acct) => {
+                    hidden.value = acct.id;
+                    input.value = formatAccountLabel(acct);
+                }
+            });
+        });
+        dropdown.appendChild(addNewRow);
+
+        const matches = accountsDb.filter(a =>
+            !t ||
+            (a.name || '').toLowerCase().includes(t) ||
+            (a.number || '').toLowerCase().includes(t) ||
+            (a.type || '').toLowerCase().includes(t)
+        ).slice(0, 40);
+
+        if (accountsDb.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'acct-empty';
+            empty.textContent = 'No accounts in the Chart of Accounts yet — use "+ Add new" above to create one.';
+            dropdown.appendChild(empty);
+        } else if (matches.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'acct-empty';
+            empty.textContent = `No accounts match "${term}".`;
+            dropdown.appendChild(empty);
+        } else {
+            matches.forEach(a => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'acct-dropdown-item';
+                rowEl.innerHTML = `
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(a.number ? a.number + ' ' : '')}${escapeHtml(a.name)} - ${escapeHtml((a.currency||'RWF').split(' ')[0])}</span></div>
+                    <span class="adi-acct" style="font-weight:700;">${escapeHtml(a.type || '')}</span>`;
+                rowEl.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    hidden.value = a.id;
+                    input.value = formatAccountLabel(a);
+                    dropdown.classList.add('hidden');
+                });
+                dropdown.appendChild(rowEl);
+            });
+        }
+        dropdown.classList.remove('hidden');
+    }
+
+    input.addEventListener('focus', () => renderList(input.value));
+    input.addEventListener('input', () => {
+        hidden.value = '';
+        clearTimeout(debounceTimer);
+        const term = input.value;
+        debounceTimer = setTimeout(() => renderList(term), 150);
+    });
+    input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 160));
+}
+
+function formatAccountLabel(a) {
+    return `${a.number ? a.number + ' ' : ''}${a.name} - ${(a.currency || 'RWF Rwanda Franc').split(' ')[0]}`;
+}
+
+function readLineCategory(row) {
+    const hidden = row.querySelector('.line-category-id');
+    const id = hidden ? hidden.value : '';
+    const acct = accountsDb.find(a => a.id === id);
+    return { accountId: id || '', accountName: acct ? acct.name : (row.querySelector('.line-category-input') || {}).value || '' };
+}
+
 function getVisibleBanks() {
     if (hasFullScope()) return banksDb;
     if (!currentUser) return [];
@@ -2907,7 +3219,13 @@ function addExpenseLine() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td>${tbody.children.length + 1}</td>
-        <td><select class="line-category"></select></td>
+        <td>
+            <div class="acct-combo line-category-combo">
+                <input type="text" class="line-category-input" placeholder="-- Category --" autocomplete="off">
+                <input type="hidden" class="line-category-id">
+                <div class="acct-dropdown hidden line-category-dropdown"></div>
+            </div>
+        </td>
         <td><input type="text" class="line-desc" placeholder="Description"></td>
         <td><input type="number" class="line-amount" step="any" min="0" placeholder="0.00"></td>
         <td><select class="line-vat"></select></td>
@@ -2915,7 +3233,7 @@ function addExpenseLine() {
         <td><select class="line-customer"></select></td>
         <td><select class="line-class"></select></td>
         <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
-    fillSimpleSelect(tr.querySelector('.line-category'), projectsDb.map(p => p.name), true, '-- Category (Project) --');
+    setupLineCategoryCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillSimpleSelect(tr.querySelector('.line-customer'), customersDb.map(c => c.name), true, '-- Customer/Project --');
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
@@ -2924,7 +3242,10 @@ function addExpenseLine() {
     tbody.appendChild(tr);
 }
 
-function updateExpenseHeaderBalance(bank) {}
+function updateExpenseHeaderBalance(bank) {
+    if (!bank) return;
+    $('exp-amount-display').dataset.bankBalance = computeBankBalance(bank);
+}
 
 function updateExpenseTotals() {
     const rows = qsa('#exp-lines-body tr');
@@ -2958,12 +3279,12 @@ async function onSubmitExpenseForm(e) {
 
     const lines = [];
     qsa('#exp-lines-body tr').forEach(tr => {
-        const category = tr.querySelector('.line-category').value;
+        const cat = readLineCategory(tr);
         const desc = tr.querySelector('.line-desc').value.trim();
         const amount = parseFloat(tr.querySelector('.line-amount').value) || 0;
-        if (!category && !desc && !amount) return;
+        if (!cat.accountId && !desc && !amount) return;
         lines.push({
-            category, description: desc, amount,
+            accountId: cat.accountId, category: cat.accountName, description: desc, amount,
             vat: tr.querySelector('.line-vat').value,
             billable: tr.querySelector('.line-billable').checked,
             customerProject: tr.querySelector('.line-customer').value,
@@ -2980,7 +3301,7 @@ async function onSubmitExpenseForm(e) {
     const payload = sanitizePayload({
         date: $('exp-date').value || new Date().toISOString().split('T')[0],
         type: 'Expense',
-        desc: lines[0].description || 'Expense',
+        desc: lines[0].description || lines[0].category || 'Expense',
         amount: total,
         payee: $('exp-payee-search').value || '',
         method: $('exp-method').value || '',
@@ -3006,7 +3327,13 @@ function addDepositLine() {
     tr.innerHTML = `
         <td>${tbody.children.length + 1}</td>
         <td><select class="line-received"></select></td>
-        <td><select class="line-account"></select></td>
+        <td>
+            <div class="acct-combo line-category-combo">
+                <input type="text" class="line-category-input" placeholder="-- Account --" autocomplete="off">
+                <input type="hidden" class="line-category-id">
+                <div class="acct-dropdown hidden line-category-dropdown"></div>
+            </div>
+        </td>
         <td><input type="text" class="line-desc" placeholder="Description"></td>
         <td><select class="line-method"></select></td>
         <td><input type="text" class="line-ref" placeholder="Ref no."></td>
@@ -3015,7 +3342,7 @@ function addDepositLine() {
         <td><select class="line-class"></select></td>
         <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
     fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
-    fillSimpleSelect(tr.querySelector('.line-account'), projectsDb.map(p => p.name), true, '-- Account (Project) --');
+    setupLineCategoryCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
@@ -3052,12 +3379,12 @@ async function onSubmitDepositForm(e) {
     const lines = [];
     qsa('#deposit-lines-body tr').forEach(tr => {
         const receivedFrom = tr.querySelector('.line-received').value;
-        const account = tr.querySelector('.line-account').value;
+        const cat = readLineCategory(tr);
         const desc = tr.querySelector('.line-desc').value.trim();
         const amount = parseFloat(tr.querySelector('.line-amount').value) || 0;
-        if (!receivedFrom && !account && !desc && !amount) return;
+        if (!receivedFrom && !cat.accountId && !desc && !amount) return;
         lines.push({
-            receivedFrom, account, description: desc,
+            receivedFrom, accountId: cat.accountId, account: cat.accountName, description: desc,
             method: tr.querySelector('.line-method').value,
             ref: tr.querySelector('.line-ref').value.trim(),
             amount, vat: tr.querySelector('.line-vat').value,
@@ -3093,6 +3420,7 @@ async function onSubmitDepositForm(e) {
 function getJournalAccountOptions() {
     const list = ['Accounts Receivable (A/R)', 'Accounts Payable (A/P)'];
     banksDb.forEach(b => list.push(`${b.name} — ${b.account}`));
+    accountsDb.forEach(a => list.push(formatAccountLabel(a)));
     projectsDb.forEach(p => list.push(`${p.name} (Project)`));
     return list;
 }
