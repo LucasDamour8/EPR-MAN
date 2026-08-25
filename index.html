@@ -98,7 +98,7 @@
 
             <div class="sidebar-section-title">Pinned</div>
             <nav class="sidebar-menu">
-                <button type="button" class="nav-item" data-view="transactions" data-flyout="accounting"><i class="fa-solid fa-coins"></i>Accounting</button>
+                <button type="button" class="nav-item" data-view="transactions" data-flyout="accounting"><i class="fa-solid fa-coins"></i>Accounting Field</button>
                 <button type="button" class="nav-item" data-view="bills" data-flyout="expenses"><i class="fa-solid fa-receipt"></i>Expenses <span class="count-chip" id="nav-bills-count">0</span></button>
                 <button type="button" class="nav-item" data-view="invoices" data-flyout="sales"><i class="fa-solid fa-file-invoice"></i>Sales <span class="count-chip" id="nav-invoices-count">0</span></button>
                 <button type="button" class="nav-item" data-view="coa"><i class="fa-solid fa-chart-line"></i>Accounts</button>
@@ -126,7 +126,6 @@
                 <button type="button" class="apps-grid-item" data-view="departments"><i class="fa-solid fa-sitemap"></i>Departments &amp; Presbyteries</button>
                 <button type="button" class="apps-grid-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales Portal</button>
                 <button type="button" class="apps-grid-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expense Portal</button>
-                <button type="button" class="apps-grid-item" data-view="cheques"><i class="fa-solid fa-money-check"></i>Cheques <span class="count-chip" id="nav-cheques-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i>Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="customers"><i class="fa-solid fa-address-book"></i>Customer Portal <span class="count-chip" id="nav-customers-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="projects"><i class="fa-solid fa-diagram-project"></i>Projects <span class="count-chip" id="nav-projects-count">0</span></button>
@@ -247,13 +246,12 @@
                     </div>
 
                     <div class="pill-nav" id="pill-nav">
-                        <button type="button" class="pill-nav-btn" data-view="transactions"><span class="pill-icon" style="background:var(--primary-dark)"><i class="fa-solid fa-coins"></i></span>Accounting</button>
+                        <button type="button" class="pill-nav-btn" data-view="transactions"><span class="pill-icon" style="background:var(--primary-dark)"><i class="fa-solid fa-coins"></i></span>Accounting Field</button>
                         <button type="button" class="pill-nav-btn" data-view="bills"><span class="pill-icon" style="background:var(--accent-dark)"><i class="fa-solid fa-receipt"></i></span>Expense Portal</button>
                         <button type="button" class="pill-nav-btn" data-view="invoices"><span class="pill-icon" style="background:var(--primary)"><i class="fa-solid fa-file-invoice"></i></span>Sales Portal</button>
                         <button type="button" class="pill-nav-btn" data-view="customers"><span class="pill-icon" style="background:var(--teal)"><i class="fa-solid fa-address-book"></i></span>Customer Portal</button>
                         <button type="button" class="pill-nav-btn" data-view="suppliers"><span class="pill-icon" style="background:var(--purple)"><i class="fa-solid fa-truck-field"></i></span>Suppliers</button>
                         <button type="button" class="pill-nav-btn" data-view="projects"><span class="pill-icon" style="background:var(--blue)"><i class="fa-solid fa-diagram-project"></i></span>Projects</button>
-                        <button type="button" class="pill-nav-btn" data-view="cheques"><span class="pill-icon" style="background:var(--warning-dark)"><i class="fa-solid fa-money-check"></i></span>Cheques</button>
                         <button type="button" class="pill-nav-btn" data-view="coa"><span class="pill-icon" style="background:var(--primary-darker)"><i class="fa-solid fa-chart-line"></i></span>Chart of Accounts</button>
                         <button type="button" class="pill-nav-btn" data-view="reports"><span class="pill-icon" style="background:#555"><i class="fa-solid fa-file-invoice-dollar"></i></span>Reports</button>
                     </div>
@@ -363,7 +361,7 @@
                 <section id="view-transactions" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Transactions Log</h2>
+                            <h2>Accounting Field — Transactions Log</h2>
                             <p id="tx-scope-note">Isolated by role permissions and scope.</p>
                         </div>
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -412,7 +410,7 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Reports &amp; Analytics</h2>
-                            <p>Build a financial statement for any period, then export or print it.</p>
+                            <p>Build a financial statement for any period, then export or print it. Click any figure below to jump straight to the records behind it.</p>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-outline" id="print-btn"><i class="fa-solid fa-print"></i> Print</button>
@@ -451,6 +449,19 @@
                                 </div>
                             </div>
 
+                            <div class="ext-grid-wide" style="margin-bottom:16px;">
+                                <div class="chart-box">
+                                    <div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Income vs Expense by department</div>
+                                    <div class="chart-canvas-wrap"><canvas id="report-dept-chart"></canvas></div>
+                                </div>
+                                <div class="chart-box">
+                                    <div class="chart-box-title"><i class="fa-solid fa-chart-pie"></i> Where the money went</div>
+                                    <div class="chart-canvas-wrap" style="display:flex;align-items:center;justify-content:center;">
+                                        <canvas id="report-pie-chart" style="max-height:260px;"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="financial-statement-card" id="printable-report">
                                 <h3 style="text-align: center; font-size: 1.3rem;">SAS FINANCIAL STATEMENT</h3>
                                 <p style="text-align: center; color: var(--text-muted); margin-bottom: 6px;" id="statement-scope">System Wide Statement</p>
@@ -458,15 +469,15 @@
 
                                 <div style="margin-bottom: 25px;">
                                     <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss Summary</h4>
-                                    <div class="statement-row"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong></div>
-                                    <div class="statement-row"><span>Total Operating Expenses</span><strong id="stmt-expenses">RF 0</strong></div>
+                                    <div class="statement-row clickable" data-jump="Income"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
+                                    <div class="statement-row clickable" data-jump="Expense"><span>Total Operating Expenses</span><strong id="stmt-expenses">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row highlight"><span>Net Operating Balance</span><strong id="stmt-net">RF 0</strong></div>
                                 </div>
 
                                 <div>
                                     <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
-                                    <div class="statement-row"><span>Current Assets (Cash &amp; Bank)</span><strong id="stmt-assets">RF 0</strong></div>
-                                    <div class="statement-row"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong></div>
+                                    <div class="statement-row clickable" data-jump="Asset"><span>Current Assets (Cash &amp; Bank)</span><strong id="stmt-assets">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
+                                    <div class="statement-row clickable" data-jump="Liability"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row highlight"><span>Calculated Net Worth</span><strong id="stmt-equity">RF 0</strong></div>
                                 </div>
 
@@ -504,7 +515,7 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>User &amp; Privilege Management</h2>
-                            <p>Create staff accounts and assign each one either to a Presbytery Location or a Department, then tick exactly which sub-projects they work on.</p>
+                            <p>Create staff accounts and assign each one either to a Presbytery Location or a Department, then tick exactly which sub-projects they work on — or grant full access to every EPR Location.</p>
                         </div>
                     </div>
 
@@ -543,7 +554,14 @@
                                             <option value="superadmin">Superadmin (SAS Central)</option>
                                         </select>
                                     </div>
-                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Finance users can approve cheques.</div>
+                                    <div class="field-hint">Superadmins can view and manage every presbytery and department.</div>
+                                </div>
+
+                                <div class="form-group" id="user-full-access-group">
+                                    <label class="checklist-item" style="border:1px dashed var(--border); border-radius:8px; padding:10px 12px;">
+                                        <input type="checkbox" id="user-full-access">
+                                        <span>Grant full access to every EPR Location <span class="field-hint" style="margin:0;">(sees &amp; records against all presbyteries/departments, like a Superadmin's scope, while keeping their staff role)</span></span>
+                                    </label>
                                 </div>
 
                                 <div class="form-group" id="user-mode-group">
@@ -600,7 +618,7 @@
                     </div>
                 </section>
 
-                <!-- ============ View: Invoices ============ -->
+                <!-- ============ View: Invoices (Sales Portal) ============ -->
                 <section id="view-invoices" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
@@ -609,6 +627,9 @@
                         </div>
                         <button class="btn btn-primary" id="open-invoice-modal-btn"><i class="fa-solid fa-plus"></i> New Invoice</button>
                     </div>
+
+                    <div class="portal-stat-row" id="invoices-stat-row"></div>
+
                     <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Managers and Finance users submit invoices for approval. Only a Superadmin can approve or reject one — once approved, an invoice is locked and counted as issued.</div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
@@ -620,7 +641,7 @@
                     </div>
                 </section>
 
-                <!-- ============ View: Bills ============ -->
+                <!-- ============ View: Bills (Expense Portal) ============ -->
                 <section id="view-bills" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
@@ -629,6 +650,9 @@
                         </div>
                         <button class="btn btn-primary" id="open-bill-modal-btn"><i class="fa-solid fa-plus"></i> New Bill</button>
                     </div>
+
+                    <div class="portal-stat-row" id="bills-stat-row"></div>
+
                     <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Managers and Finance users submit bills to be paid. Only a Superadmin can approve (mark paid) or reject a bill.</div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
@@ -636,26 +660,6 @@
                                 <tr><th>Date</th><th>Bill #</th><th>Supplier</th><th>Description</th><th>Amount (RF)</th><th>Account</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
                             </thead>
                             <tbody id="bills-table-body"><tr class="table-empty-row"><td colspan="10">Loading bills…</td></tr></tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <!-- ============ View: Cheques ============ -->
-                <section id="view-cheques" class="view-panel">
-                    <div class="view-header flex-between">
-                        <div>
-                            <h2>Cheques</h2>
-                            <p id="cheques-scope-note">New cheques wait for approval from a Finance user or Superadmin before they are valid.</p>
-                        </div>
-                        <button class="btn btn-primary" id="open-cheque-modal-btn"><i class="fa-solid fa-plus"></i> New Cheque</button>
-                    </div>
-                    <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Any staff member can prepare a cheque. It must be approved by a Finance user (or Superadmin) before it can be cashed.</div>
-                    <div class="table-wrap ext-scroll-x">
-                        <table class="data-table">
-                            <thead>
-                                <tr><th>Date</th><th>Cheque #</th><th>Payee</th><th>Bank</th><th>Amount (RF)</th><th>Department</th><th>Presbytery</th><th>Status</th><th>Actions</th></tr>
-                            </thead>
-                            <tbody id="cheques-table-body"><tr class="table-empty-row"><td colspan="9">Loading cheques…</td></tr></tbody>
                         </table>
                     </div>
                 </section>
@@ -949,40 +953,6 @@
                     <div class="modal-footer-actions">
                         <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="bill-modal">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="bill-submit-btn">Submit Bill</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============ Modal: Cheque ============ -->
-    <div id="cheque-modal" class="modal hidden">
-        <div class="modal-content modal-wide">
-            <div class="modal-header"><h3 id="cheque-modal-title"><i class="fa-solid fa-money-check"></i> Prepare Cheque</h3><button class="close-btn" id="close-cheque-modal">&times;</button></div>
-            <form id="cheque-form" novalidate>
-                <div class="modal-body">
-                    <input type="hidden" id="cheque-edit-id" value="">
-                    <div class="form-group"><label>Cheque Number <span class="req">*</span></label><input type="text" id="cheque-number" required placeholder="e.g. 000123"></div>
-                    <div class="form-group"><label>Payee <span class="req">*</span></label><input type="text" id="cheque-payee" required placeholder="Who receives this cheque?"></div>
-                    <div class="form-group amount-field"><label>Amount (RF) <span class="req">*</span></label><input type="number" id="cheque-amount" step="any" min="0" required></div>
-                    <div class="form-group"><label>Date</label><input type="date" id="cheque-date"></div>
-                    <div class="form-group span-full" id="cheque-bank-group">
-                        <label>Bank Account <span class="req">*</span></label>
-                        <div class="acct-combo">
-                            <input type="text" id="cheque-bank-search" placeholder="Search accounts by name or number…" autocomplete="off">
-                            <input type="hidden" id="cheque-bank-id">
-                            <div class="acct-dropdown hidden" id="cheque-bank-dropdown"></div>
-                        </div>
-                    </div>
-                    <div class="form-group span-full"><label>Memo</label><input type="text" id="cheque-memo" placeholder="Optional note"></div>
-                    <div class="form-group" id="cheque-dept-group"><label>Department</label><div class="select-wrap"><select id="cheque-dept"></select></div></div>
-                    <div class="form-group" id="cheque-subsection-group"><label>Sub-Section / Project</label><div class="select-wrap"><select id="cheque-subsection"></select></div></div>
-                    <div class="form-group" id="cheque-pres-group"><label>Presbytery Location</label><div class="select-wrap"><select id="cheque-pres"></select></div></div>
-                </div>
-                <div class="modal-footer">
-                    <div class="modal-footer-actions">
-                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="cheque-modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="cheque-submit-btn">Submit Cheque</button>
                     </div>
                 </div>
             </form>
