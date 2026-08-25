@@ -550,11 +550,13 @@
                                     <div class="select-wrap">
                                         <select id="user-role" required>
                                             <option value="finance">Finance User (Staff)</option>
+                                            <option value="accountant">Accountant (Staff)</option>
+                                            <option value="general_accountant">General Accountant (Staff)</option>
                                             <option value="manager">Department Manager (Staff)</option>
                                             <option value="superadmin">Superadmin (SAS Central)</option>
                                         </select>
                                     </div>
-                                    <div class="field-hint">Superadmins can view and manage every presbytery and department.</div>
+                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Accountants and the General Accountant can record and post financial entries the same way Finance users can.</div>
                                 </div>
 
                                 <div class="form-group" id="user-full-access-group">
@@ -601,6 +603,8 @@
                                         <option value="superadmin">Superadmin</option>
                                         <option value="manager">Manager</option>
                                         <option value="finance">Finance</option>
+                                        <option value="accountant">Accountant</option>
+                                        <option value="general_accountant">General Accountant</option>
                                     </select>
                                 </div>
                             </div>
@@ -751,9 +755,12 @@
 
                 <!-- ============ View: Chart of Accounts (open to all, scoped per user) ============ -->
                 <section id="view-coa" class="view-panel">
-                    <div class="view-header">
-                        <h2>Chart of Accounts</h2>
-                        <p id="coa-scope-note">Pick a bank to see its cash trend, live statement and department performance.</p>
+                    <div class="view-header flex-between">
+                        <div>
+                            <h2>Chart of Accounts</h2>
+                            <p id="coa-scope-note">Pick a bank to see its cash trend, live statement and department performance.</p>
+                        </div>
+                        <button class="btn btn-primary" id="open-account-modal-btn"><i class="fa-solid fa-plus"></i> New account</button>
                     </div>
 
                     <div class="ext-grid-wide" id="coa-bank-grid" style="margin-bottom:20px;"></div>
@@ -795,6 +802,16 @@
                                 <div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Income vs Expense by department (current scope)</div>
                                 <div class="chart-canvas-wrap"><canvas id="coa-dept-chart"></canvas></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-box" style="margin-top:20px;">
+                        <div class="chart-box-title"><i class="fa-solid fa-list"></i> Full Chart of Accounts</div>
+                        <div class="table-wrap ext-scroll-x">
+                            <table class="data-table">
+                                <thead><tr><th>Number</th><th>Name</th><th>Type</th><th>Detail Type</th><th>Currency</th><th>Balance</th><th>Actions</th></tr></thead>
+                                <tbody id="accounts-table-body"><tr class="table-empty-row"><td colspan="7">Loading chart of accounts…</td></tr></tbody>
+                            </table>
                         </div>
                     </div>
                 </section>
@@ -1097,6 +1114,69 @@
         </div>
     </div>
 
+    <!-- ============ Modal: New / Edit Chart-of-Accounts entry (QuickBooks-style replica) ============ -->
+    <div id="account-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:560px;">
+            <div class="modal-header">
+                <h3 id="account-modal-title">New account</h3>
+                <button class="close-btn" id="close-account-modal">&times;</button>
+            </div>
+            <form id="account-form" novalidate>
+                <div class="modal-body" style="grid-template-columns: 1fr 1fr;">
+                    <input type="hidden" id="account-edit-id" value="">
+                    <div class="form-group">
+                        <label>Account name <span class="req">*</span></label>
+                        <input type="text" id="account-name" required placeholder="e.g. Fuel and Transport">
+                    </div>
+                    <div class="form-group">
+                        <label>Account number</label>
+                        <input type="text" id="account-number" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label>Account type <span class="req">*</span></label>
+                        <div class="select-wrap"><select id="account-type" required></select></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Detail type <span class="req">*</span></label>
+                        <div class="select-wrap"><select id="account-detail-type" required disabled><option value="">Select detail type</option></select></div>
+                    </div>
+                    <div class="form-group span-full">
+                        <label class="checklist-item" style="border:none;padding:0;">
+                            <input type="checkbox" id="account-subaccount-toggle">
+                            <span>Make this a subaccount</span>
+                        </label>
+                    </div>
+                    <div class="form-group span-full hidden" id="account-parent-group">
+                        <label>Parent account</label>
+                        <div class="select-wrap"><select id="account-parent"></select></div>
+                    </div>
+                    <div class="form-group span-full">
+                        <label>Default VAT Code</label>
+                        <div class="select-wrap"><select id="account-vat"></select></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Opening balance</label>
+                        <input type="number" id="account-opening-balance" step="any" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>As of</label>
+                        <input type="date" id="account-asof">
+                    </div>
+                    <div class="form-group span-full">
+                        <label>Currency</label>
+                        <div class="select-wrap"><select id="account-currency"></select></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-footer-actions">
+                        <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="account-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="account-submit-btn">Save</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- ============ Modal: Expense (QuickBooks-style replica) ============ -->
     <div id="expense-modal" class="modal hidden qb-modal">
         <div class="modal-content modal-wide">
@@ -1110,10 +1190,6 @@
             </div>
             <form id="expense-form" novalidate>
                 <div class="qb-header-grid">
-                    <div class="qb-amount-huge">
-                        <div class="qb-amount-label">Amount</div>
-                        <div class="qb-amount-value" id="exp-amount-display">RF 0</div>
-                    </div>
                     <div class="form-group">
                         <label>Payee</label>
                         <div class="acct-combo">
@@ -1129,6 +1205,10 @@
                             <input type="hidden" id="exp-bank-id">
                             <div class="acct-dropdown hidden" id="exp-bank-dropdown"></div>
                         </div>
+                    </div>
+                    <div class="qb-amount-huge">
+                        <div class="qb-amount-label">Amount</div>
+                        <div class="qb-amount-value" id="exp-amount-display">RF 0</div>
                     </div>
                     <div class="form-group">
                         <label>Payment Date</label>
@@ -1200,10 +1280,6 @@
             </div>
             <form id="deposit-form" novalidate>
                 <div class="qb-header-grid">
-                    <div class="qb-amount-huge">
-                        <div class="qb-amount-label">Amount</div>
-                        <div class="qb-amount-value" id="deposit-amount-display">RF 0</div>
-                    </div>
                     <div class="form-group">
                         <label>Account <span class="req">*</span></label>
                         <div class="acct-combo">
@@ -1211,6 +1287,10 @@
                             <input type="hidden" id="deposit-bank-id">
                             <div class="acct-dropdown hidden" id="deposit-bank-dropdown"></div>
                         </div>
+                    </div>
+                    <div class="qb-amount-huge">
+                        <div class="qb-amount-label">Amount</div>
+                        <div class="qb-amount-value" id="deposit-amount-display">RF 0</div>
                     </div>
                     <div class="form-group">
                         <label>Date</label>
