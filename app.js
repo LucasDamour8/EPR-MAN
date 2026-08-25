@@ -1,32 +1,3 @@
-/* ======================================================================
-   SAS — STANDARD ACCOUNTING SOFTWARE SYSTEM (Firestore-backed)
-   ----------------------------------------------------------------------
-   v3 — adds on top of v2:
-   - QuickBooks-style "Expense" modal: payee/account/location searchable
-     pickers, a fully editable line-items grid (Category ← Projects,
-     Description, Amount, VAT, Billable, Customer/Project, Class ← every
-     sub-section in every department), "Add lines" / "Clear all lines",
-     live Subtotal/Total.
-   - QuickBooks-style "Bank Deposit" modal: account/date header, an
-     editable "Add funds to this deposit" grid (Received from ← Customers,
-     Account ← Projects, Description, Payment method, Ref no., Amount,
-     VAT, Class), live "Other funds total".
-   - QuickBooks-style double-entry "Journal Entry" modal: Account (bank
-     accounts + A/R + A/P + project categories), Debits, Credits,
-     Description, Name ← Customers/Suppliers, VAT, Location ← EPR
-     Presbyteries, Class ← sub-sections; running Total RWF debit/credit
-     footer; saved to its own JOURNAL_ENTRIES collection.
-   - Dashboard "Create actions" relabelled: Record expense → "Expense
-     Portal", Add bank deposit → "Sales Portal", Double journal entry →
-     "Accounting", plus a new "Customer Portal" quick action.
-   - User Admin now assigns by ticking any number of sub-projects from a
-     full grid of every department's sub-sections (not a single select):
-     "Assign By: Presbytery Location" hides Department and still shows
-     every sub-project in the system to tick; "Assign By: Department"
-     hides Presbytery Location and also shows every sub-project in the
-     system to tick.
-   ====================================================================== */
-
 import { firebaseConfig, COLLECTIONS } from './firebase-config.js';
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -42,9 +13,6 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
-// ---------------------------------------------------------------------
-// 1. ORGANIZATION STRUCTURE
-// ---------------------------------------------------------------------
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
     "Department of Development and Diakonia": ["Development", "Project SCA", "Project CCDP", "Diakonia"],
@@ -71,7 +39,7 @@ const PRESBYTERIES = [
 const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User" };
 const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
-const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'cheque', 'exp', 'deposit'];
+const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'exp', 'deposit'];
 
 const VAT_OPTIONS = [
     "Capital Import (15%)", "Old Change In Use (14%)", "Standard (15%)", "Capital (15%)",
@@ -80,14 +48,10 @@ const VAT_OPTIONS = [
 
 const PAYMENT_METHODS = ["Cash", "Bank Transfer", "Mobile Money", "Cheque", "Card"];
 
-// ---------------------------------------------------------------------
-// 2. LOCAL CACHES
-// ---------------------------------------------------------------------
 let usersDb = [];
 let transactionsDb = [];
 let invoicesDb = [];
 let billsDb = [];
-let chequesDb = [];
 let suppliersDb = [];
 let customersDb = [];
 let projectsDb = [];
@@ -95,9 +59,6 @@ let budgetsDb = [];
 let banksDb = [];
 let journalEntriesDb = [];
 
-// ---------------------------------------------------------------------
-// 3. APPLICATION STATE
-// ---------------------------------------------------------------------
 let currentUser = null;
 let currentScope = { presbytery: "ALL", department: "ALL" };
 let searchQuery = "";
@@ -110,24 +71,20 @@ let coaSelectedBankId = null;
 let coaBankChart = null;
 let coaDeptChart = null;
 let glanceExpenseChart = null;
+let reportDeptChart = null;
+let reportPieChart = null;
 
 let reportRange = { preset: 'all', from: '', to: '' };
 let coaRange = { preset: 'all', from: '', to: '' };
 
 let unsubTx = null, unsubUsers = null, unsubOwnProfile = null;
-let unsubInvoices = null, unsubBills = null, unsubCheques = null;
+let unsubInvoices = null, unsubBills = null;
 let unsubSuppliers = null, unsubCustomers = null, unsubProjects = null;
 let unsubBudgets = null, unsubBanks = null;
 
-// ---------------------------------------------------------------------
-// 4. DOM SHORTCUTS
-// ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-// ---------------------------------------------------------------------
-// 5. BOOT
-// ---------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
     buildStaticSelectOptions();
     setupEventListeners();
@@ -138,7 +95,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupRangeBar('report-range-bar', (r) => { reportRange = r; renderReportPanel(); });
     setupRangeBar('coa-range-bar', (r) => { coaRange = r; renderCoaCharts(); });
     populateUserProjectsChecklist();
-    relabelCreateActions();
     await checkFirstRun();
 });
 
@@ -159,9 +115,6 @@ async function checkFirstRun() {
     }
 }
 
-// ---------------------------------------------------------------------
-// 6. STATIC SELECT OPTIONS
-// ---------------------------------------------------------------------
 function buildStaticSelectOptions() {
     fillSelect($('sa-presbytery-select'), PRESBYTERIES, "ALL", "-- All Presbyteries --");
     fillSelect($('sa-department-select'), Object.keys(EPR_STRUCTURE), "ALL", "-- All Departments --");
@@ -204,6 +157,10 @@ function getAllSubsectionsFlat() {
     const list = [];
     Object.entries(EPR_STRUCTURE).forEach(([dept, subs]) => subs.forEach(sub => list.push({ dept, sub })));
     return list;
+}
+
+function getAllProjectKeys() {
+    return getAllSubsectionsFlat().map(({ dept, sub }) => `${dept}::${sub}`);
 }
 
 function fillOptGroupedSelect(select, groupedList, includeBlank) {
@@ -263,32 +220,6 @@ function renderSidebarFilters() {
 
 function shortDeptName(d) { return (d || '').replace('Department of ', ''); }
 
-// ---------------------------------------------------------------------
-// 6b. DASHBOARD CREATE-ACTIONS RELABEL
-// ---------------------------------------------------------------------
-function relabelCreateActions() {
-    const relabel = (id, icon, label) => {
-        const btn = $(id);
-        if (!btn) return;
-        btn.innerHTML = `<i class="fa-solid ${icon}"></i> ${label}`;
-    };
-    relabel('qa-record-expense', 'fa-receipt', 'Expense Portal');
-    relabel('qa-bank-deposit', 'fa-file-invoice-dollar', 'Sales Portal');
-    relabel('qa-journal-entry', 'fa-scale-balanced', 'Accounting');
-
-    const showAllBtn = $('qa-show-all');
-    if (showAllBtn && !$('qa-customer-portal')) {
-        const btn = document.createElement('button');
-        btn.type = 'button'; btn.className = 'ca-btn'; btn.id = 'qa-customer-portal';
-        btn.innerHTML = '<i class="fa-solid fa-address-book"></i> Customer Portal';
-        btn.addEventListener('click', () => switchView('customers'));
-        showAllBtn.parentElement.insertBefore(btn, showAllBtn);
-    }
-}
-
-// ---------------------------------------------------------------------
-// 7. EVENT WIRING
-// ---------------------------------------------------------------------
 function setupEventListeners() {
     $('setup-form').addEventListener('submit', onSubmitSetupForm);
     $('login-form').addEventListener('submit', onSubmitLogin);
@@ -333,7 +264,7 @@ function setupEventListeners() {
     $('rail-customise-btn').addEventListener('click', () => { e_toggleProfile(); });
     $('rail-create-btn').addEventListener('click', () => switchView('transactions'));
     $('customise-link-btn').addEventListener('click', () => { e_toggleProfile(); });
-    $('privacy-link-btn').addEventListener('click', () => showToast('info', 'Only people with matching department/presbytery access can see this scope\'s records. Chart of Accounts is further limited to accounts you\'ve personally posted against, unless you\'re a Superadmin.'));
+    $('privacy-link-btn').addEventListener('click', () => showToast('info', 'Only people with matching department/presbytery access can see this scope\'s records. Chart of Accounts is further limited to accounts you\'ve personally posted against, unless you\'re a Superadmin or have full EPR Location access.'));
 
     $('qa-record-expense').addEventListener('click', () => openExpenseModal());
     $('qa-bank-deposit').addEventListener('click', () => openDepositModal());
@@ -386,9 +317,11 @@ function setupEventListeners() {
 
     $('user-role').addEventListener('change', () => {
         const isSuperRole = $('user-role').value === 'superadmin';
-        $('user-scope-fields').classList.toggle('hidden', isSuperRole);
-        qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole);
+        $('user-full-access-group').classList.toggle('hidden', isSuperRole);
+        $('user-scope-fields').classList.toggle('hidden', isSuperRole || $('user-full-access').checked);
+        qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole && !$('user-full-access').checked);
     });
+    $('user-full-access').addEventListener('change', onUserFullAccessChange);
     $('user-dept').addEventListener('change', () => populateSubsections('user-dept', 'user-subsection'));
 
     qsa('input[name="user-assign-mode"]').forEach(r => r.addEventListener('change', onUserAssignModeChange));
@@ -418,6 +351,15 @@ function setupEventListeners() {
     $('print-btn').addEventListener('click', () => window.print());
     $('export-excel-btn').addEventListener('click', exportReportToExcel);
 
+    qsa('#printable-report .statement-row.clickable').forEach(row => {
+        row.addEventListener('click', () => {
+            const type = row.dataset.jump;
+            switchView('transactions');
+            setTxTypeFilter(type);
+            showToast('info', `Showing every ${type} record behind this figure.`);
+        });
+    });
+
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeTxModal(); closeConfirmModal();
@@ -441,9 +383,6 @@ function setupEventListeners() {
     });
 }
 
-// ---------------------------------------------------------------------
-// 7a. WHO-DID-IT HELPERS
-// ---------------------------------------------------------------------
 function actorMeta() {
     return {
         createdBy: currentUser.email,
@@ -472,9 +411,6 @@ function whoLine(rec) {
     return `${escapeHtml(name)}${role}`;
 }
 
-// ---------------------------------------------------------------------
-// 7b. SEARCHABLE ("AJAX-STYLE") BANK / CASH ACCOUNT PICKER
-// ---------------------------------------------------------------------
 function setupAccountCombobox(prefix) {
     const input = $(`${prefix}-bank-search`);
     const hidden = $(`${prefix}-bank-id`);
@@ -565,9 +501,6 @@ function validateAccountCombobox(prefix) {
     return ok;
 }
 
-// ---------------------------------------------------------------------
-// 7b-2. GENERIC STATIC-LIST SEARCHABLE COMBOBOX
-// ---------------------------------------------------------------------
 function setupStaticListCombobox(prefix, listProvider) {
     const input = $(`${prefix}-search`);
     const hidden = $(`${prefix}-id`);
@@ -609,9 +542,6 @@ function setupStaticListCombobox(prefix, listProvider) {
     input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 160));
 }
 
-// ---------------------------------------------------------------------
-// 7c. QUICK DATE-RANGE BARS
-// ---------------------------------------------------------------------
 function isoDate(d) { return d.toISOString().split('T')[0]; }
 
 function computePresetRange(preset, customFrom, customTo) {
@@ -678,9 +608,6 @@ function dateInRange(dateStr, range) {
     return true;
 }
 
-// ---------------------------------------------------------------------
-// 7d. ICON-RAIL HOVER FLYOUTS
-// ---------------------------------------------------------------------
 function setTxTypeFilter(type) {
     txFilters.type = type;
     const sel = $('tx-filter-type');
@@ -701,7 +628,6 @@ function getFlyoutGroups(key) {
                     { icon: 'fa-scale-balanced', label: 'New Journal Entry', action: () => openJournalModal() },
                     { icon: 'fa-file-invoice', label: 'New Invoice', action: () => { switchView('invoices'); openInvoiceModal(); } },
                     { icon: 'fa-receipt', label: 'New Bill', action: () => { switchView('bills'); openBillModal(); } },
-                    { icon: 'fa-money-check', label: 'New Cheque', action: () => { switchView('cheques'); openChequeModal(); } },
                     { icon: 'fa-truck-field', label: 'New Supplier', action: () => { switchView('suppliers'); openSupplierModal(); } },
                     { icon: 'fa-address-book', label: 'New Customer', action: () => { switchView('customers'); openCustomerModal(); } },
                     { icon: 'fa-diagram-project', label: 'New Project', action: () => { switchView('projects'); openProjectModal(); } }
@@ -745,8 +671,7 @@ function getFlyoutGroups(key) {
                 ] },
                 { title: 'Expenses & Bills', items: [
                     { icon: 'fa-receipt', label: 'Pay Bills', action: () => switchView('bills') },
-                    { icon: 'fa-truck-field', label: 'Suppliers', action: () => switchView('suppliers') },
-                    { icon: 'fa-money-check', label: 'Cheques', action: () => switchView('cheques') }
+                    { icon: 'fa-truck-field', label: 'Suppliers', action: () => switchView('suppliers') }
                 ] },
                 { title: 'Operations', items: [
                     { icon: 'fa-diagram-project', label: 'Projects', action: () => switchView('projects') },
@@ -761,7 +686,7 @@ function getFlyoutGroups(key) {
                 { items: [{ icon: 'fa-grip', label: 'Open full module list', action: () => openAppsPanel() }] }
             ];
         case 'accounting':
-            return [{ title: 'Accounting', items: [
+            return [{ title: 'Accounting Field', items: [
                 { icon: 'fa-list-check', label: 'Transactions', action: () => switchView('transactions') },
                 { icon: 'fa-scale-balanced', label: 'New Journal Entry', action: () => openJournalModal() },
                 { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
@@ -906,9 +831,6 @@ function makeChip(label, onRemove) {
     return chip;
 }
 
-// ---------------------------------------------------------------------
-// 8. VIEW SWITCHING
-// ---------------------------------------------------------------------
 function switchView(target) {
     qsa('.nav-item[data-view]').forEach(n => n.classList.toggle('active', n.getAttribute('data-view') === target));
     qsa('.pill-nav-btn[data-view]').forEach(n => n.classList.toggle('active', n.getAttribute('data-view') === target));
@@ -920,9 +842,6 @@ function switchView(target) {
     if (target === 'reports') renderReportPanel();
 }
 
-// ---------------------------------------------------------------------
-// 9. FIRST-RUN SETUP
-// ---------------------------------------------------------------------
 async function onSubmitSetupForm(e) {
     e.preventDefault();
     $('setup-error').textContent = '';
@@ -939,7 +858,7 @@ async function onSubmitSetupForm(e) {
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const payload = { name, email, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', assignedProjects: [], createdAt: serverTimestamp() };
+        const payload = { name, email, role: 'superadmin', presbytery: 'ALL', department: 'ALL', subsection: 'ALL', assignedProjects: [], fullAccess: true, createdAt: serverTimestamp() };
         await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), payload);
         await setDoc(doc(db, COLLECTIONS.META, 'system'), { initialized: true, initializedAt: serverTimestamp() });
 
@@ -954,9 +873,6 @@ async function onSubmitSetupForm(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 10. LOGIN / LOGOUT / PASSWORD RESET
-// ---------------------------------------------------------------------
 async function onSubmitLogin(e) {
     e.preventDefault();
     $('auth-error').textContent = '';
@@ -997,18 +913,18 @@ async function onForgotPassword() {
 }
 
 function doLogout() {
-    [unsubTx, unsubUsers, unsubOwnProfile, unsubInvoices, unsubBills, unsubCheques,
+    [unsubTx, unsubUsers, unsubOwnProfile, unsubInvoices, unsubBills,
      unsubSuppliers, unsubCustomers, unsubProjects, unsubBudgets, unsubBanks]
         .forEach(u => { if (u) u(); });
     unsubTx = unsubUsers = unsubOwnProfile = null;
-    unsubInvoices = unsubBills = unsubCheques = null;
+    unsubInvoices = unsubBills = null;
     unsubSuppliers = unsubCustomers = unsubProjects = null;
     unsubBudgets = unsubBanks = null;
 
     signOut(auth).catch(() => {});
     currentUser = null;
     usersDb = []; transactionsDb = [];
-    invoicesDb = []; billsDb = []; chequesDb = [];
+    invoicesDb = []; billsDb = [];
     suppliersDb = []; customersDb = []; projectsDb = [];
     budgetsDb = []; banksDb = []; journalEntriesDb = [];
     currentScope = { presbytery: 'ALL', department: 'ALL' };
@@ -1037,19 +953,17 @@ function describeAuthError(err) {
     return map[code] || (err && err.message) || 'Something went wrong.';
 }
 
-// ---------------------------------------------------------------------
-// 11. SESSION INITIALIZER
-// ---------------------------------------------------------------------
 function initAppSession() {
     $('app-container').classList.remove('hidden');
     const isSuperUser = currentUser.role === 'superadmin';
+    const hasFullAccess = isSuperUser || currentUser.fullAccess === true;
 
-    $('superadmin-filter-bar').classList.toggle('hidden', !isSuperUser);
+    $('superadmin-filter-bar').classList.toggle('hidden', !hasFullAccess);
     $('admin-filter-section').classList.toggle('hidden', !isSuperUser);
-    $('my-assignment-card').classList.toggle('hidden', isSuperUser);
+    $('my-assignment-card').classList.toggle('hidden', hasFullAccess);
     $('apps-admin-only').classList.toggle('hidden', !isSuperUser);
 
-    if (isSuperUser) {
+    if (hasFullAccess) {
         currentScope = { presbytery: 'ALL', department: 'ALL' };
         $('sa-presbytery-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
     } else {
@@ -1063,13 +977,11 @@ function initAppSession() {
 
     updateProfileUI();
     updateGreeting();
-    relabelCreateActions();
     switchView('overview');
 
     subscribeTransactions();
     subscribeInvoices();
     subscribeBills();
-    subscribeCheques();
     subscribeSuppliers();
     subscribeCustomers();
     subscribeProjects();
@@ -1086,30 +998,29 @@ function updateGreeting() {
 }
 
 function updateProfileUI() {
+    const hasFullAccess = isSuper() || currentUser.fullAccess === true;
     $('user-display-name').textContent = currentUser.name;
     $('avatar-initials').textContent = initials(currentUser.name);
     $('pd-name').textContent = currentUser.name;
     $('pd-email').textContent = currentUser.email;
     $('pd-role-badge').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
     $('pd-role-badge').className = `badge role-${currentUser.role}`;
-    $('pd-presbytery').textContent = currentUser.presbytery === 'ALL' ? 'All presbyteries' : currentUser.presbytery;
-    $('pd-department').textContent = currentUser.department === 'ALL' ? 'All departments' : currentUser.department;
+    $('pd-presbytery').textContent = (hasFullAccess || currentUser.presbytery === 'ALL') ? 'All presbyteries' : currentUser.presbytery;
+    $('pd-department').textContent = (hasFullAccess || currentUser.department === 'ALL') ? 'All departments' : currentUser.department;
     $('pd-subsection').textContent = (currentUser.assignedProjects && currentUser.assignedProjects.length)
         ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
         : (currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection);
     $('user-scope-line').textContent = currentUser.role === 'superadmin'
         ? 'Full system access'
-        : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`;
+        : (hasFullAccess ? 'Full EPR Location access' : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`);
 }
 
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
 function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
+function hasFullScope() { return currentUser && (currentUser.role === 'superadmin' || currentUser.fullAccess === true); }
 function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
 
-// ---------------------------------------------------------------------
-// 12. FIRESTORE LIVE SUBSCRIPTIONS — TRANSACTIONS
-// ---------------------------------------------------------------------
 function setSyncStatus(state) {
     const el = $('sync-indicator');
     if (!el) return;
@@ -1120,9 +1031,12 @@ function setSyncStatus(state) {
 function buildScopedQuery(collectionName) {
     const col = collection(db, collectionName);
     const clauses = [];
-    if (!isSuper()) {
+    if (!hasFullScope()) {
         clauses.push(where('department', '==', currentUser.department));
         clauses.push(where('presbytery', '==', currentUser.presbytery));
+    } else if (!isSuper()) {
+        if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
+        if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     } else {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
@@ -1147,7 +1061,6 @@ function onScopeChanged() {
     subscribeTransactions();
     subscribeInvoices();
     subscribeBills();
-    subscribeCheques();
     subscribeSuppliers();
     subscribeCustomers();
     subscribeProjects();
@@ -1169,8 +1082,11 @@ function subscribeOwnProfile() {
     unsubOwnProfile = onSnapshot(doc(db, COLLECTIONS.USERS, currentUser.id), (snap) => {
         if (!snap.exists()) { showToast('error', 'Your account was removed by an administrator.'); doLogout(); return; }
         const data = snap.data();
-        const scopeChanged = data.department !== currentUser.department || data.presbytery !== currentUser.presbytery;
+        const scopeChanged = data.department !== currentUser.department || data.presbytery !== currentUser.presbytery || data.fullAccess !== currentUser.fullAccess;
         currentUser = { id: snap.id, ...data };
+        const hasFullAccess = hasFullScope();
+        $('superadmin-filter-bar').classList.toggle('hidden', !hasFullAccess);
+        $('my-assignment-card').classList.toggle('hidden', hasFullAccess);
         updateProfileUI();
         $('ab-department').textContent = shortDeptName(currentUser.department);
         $('ab-presbytery').textContent = currentUser.presbytery;
@@ -1178,16 +1094,13 @@ function subscribeOwnProfile() {
             ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
             : currentUser.subsection;
         if (scopeChanged) {
-            currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
+            currentScope = hasFullAccess ? { presbytery: 'ALL', department: 'ALL' } : { presbytery: currentUser.presbytery, department: currentUser.department };
             onScopeChanged();
-            showToast('info', 'Your department/presbytery assignment was updated.');
+            showToast('info', 'Your access/assignment was updated.');
         }
     }, (err) => showToast('error', 'Profile sync error: ' + err.message));
 }
 
-// ---------------------------------------------------------------------
-// 13. SUBSECTION HELPERS
-// ---------------------------------------------------------------------
 function populateSubsections(deptSelectId, subSelectId) {
     const deptSel = $(deptSelectId);
     const subSelect = $(subSelectId);
@@ -1205,7 +1118,7 @@ function setupScopedModalFields(prefix, hasSubsection, editRecord) {
     const deptGroup = $(`${prefix}-dept-group`);
     const subGroup = $(`${prefix}-subsection-group`);
     const presGroup = $(`${prefix}-pres-group`);
-    const superVisible = isSuper();
+    const superVisible = hasFullScope();
 
     if (deptGroup) deptGroup.style.display = superVisible ? 'block' : 'none';
     if (subGroup) subGroup.style.display = (superVisible && hasSubsection) ? 'block' : 'none';
@@ -1231,7 +1144,7 @@ function setupScopedModalFields(prefix, hasSubsection, editRecord) {
 }
 
 function scopedFieldsFromForm(prefix, hasSubsection) {
-    if (isSuper()) {
+    if (hasFullScope()) {
         const deptVal = $(`${prefix}-dept`).value || '';
         const presVal = $(`${prefix}-pres`).value || '';
         const subVal = hasSubsection ? ($(`${prefix}-subsection`).value || '') : (currentUser.subsection || 'ALL');
@@ -1251,15 +1164,12 @@ function sanitizePayload(obj) {
 }
 
 function closeAllExtModals() {
-    ['invoice-modal', 'bill-modal', 'cheque-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal', 'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal']
+    ['invoice-modal', 'bill-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal', 'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal']
         .forEach(id => $(id) && $(id).classList.add('hidden'));
 }
 
-// ---------------------------------------------------------------------
-// 14. TRANSACTION MODAL + CRUD
-// ---------------------------------------------------------------------
 function openTxModal(editTx) {
-    const superVisible = isSuper();
+    const superVisible = hasFullScope();
     $('tx-dept-group').style.display = superVisible ? 'block' : 'none';
     $('tx-subsection-group').style.display = superVisible ? 'block' : 'none';
     $('tx-pres-group').style.display = superVisible ? 'block' : 'none';
@@ -1302,7 +1212,7 @@ function closeTxModal() { $('tx-modal').classList.add('hidden'); }
 async function onSubmitTxForm(e) {
     e.preventDefault();
     const editId = $('tx-edit-id').value;
-    const superVisible = isSuper();
+    const superVisible = hasFullScope();
 
     let deptField = currentUser.department, subsec = currentUser.subsection, pres = currentUser.presbytery;
     if (superVisible) { deptField = $('tx-dept').value; subsec = $('tx-subsection').value; pres = $('tx-pres').value; }
@@ -1356,9 +1266,6 @@ function onTxTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 15. USER FORM (create / edit) — superadmin only
-// ---------------------------------------------------------------------
 function populateUserProjectsChecklist(selectedList) {
     const wrap = $('user-projects-checklist');
     if (!wrap) return;
@@ -1387,6 +1294,14 @@ function getCheckedProjectKeys() {
     return qsa('#user-projects-checklist input[type=checkbox]:checked').map(cb => cb.value);
 }
 
+function onUserFullAccessChange() {
+    const full = $('user-full-access').checked;
+    $('user-scope-fields').classList.toggle('hidden', full);
+    $('user-mode-group').classList.toggle('hidden', full);
+    qsa('#user-scope-fields select').forEach(sel => sel.required = !full);
+    if (full) populateUserProjectsChecklist(getAllProjectKeys());
+}
+
 function onUserAssignModeChange() {
     const checked = document.querySelector('input[name="user-assign-mode"]:checked');
     const mode = checked ? checked.value : 'presbytery';
@@ -1402,26 +1317,28 @@ async function onSubmitUserForm(e) {
     const editId = $('user-edit-id').value;
     const role = $('user-role').value;
     const roleSuper = role === 'superadmin';
+    const fullAccess = !roleSuper && $('user-full-access').checked;
     const modeEl = document.querySelector('input[name="user-assign-mode"]:checked');
     const mode = modeEl ? modeEl.value : 'presbytery';
 
     const name = $('user-name').value.trim();
     const email = $('user-email').value.trim().toLowerCase();
     const password = $('user-password').value;
-    const assignedProjects = roleSuper ? [] : getCheckedProjectKeys();
+    const assignedProjects = (roleSuper || fullAccess) ? getAllProjectKeys() : getCheckedProjectKeys();
 
     const profileFields = sanitizePayload({
         name, email, role,
-        presbytery: roleSuper ? 'ALL' : (mode === 'presbytery' ? $('user-pres').value : 'ALL'),
-        department: roleSuper ? 'ALL' : (mode === 'department' ? $('user-dept').value : 'ALL'),
-        subsection: roleSuper ? 'ALL' : (assignedProjects[0] ? assignedProjects[0].split('::')[1] : ''),
-        assignMode: roleSuper ? '' : mode
+        presbytery: (roleSuper || fullAccess) ? 'ALL' : (mode === 'presbytery' ? $('user-pres').value : 'ALL'),
+        department: (roleSuper || fullAccess) ? 'ALL' : (mode === 'department' ? $('user-dept').value : 'ALL'),
+        subsection: (roleSuper || fullAccess) ? 'ALL' : (assignedProjects[0] ? assignedProjects[0].split('::')[1] : ''),
+        assignMode: (roleSuper || fullAccess) ? '' : mode
     });
     profileFields.assignedProjects = assignedProjects;
+    profileFields.fullAccess = fullAccess;
 
     if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
     if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
-    if (!roleSuper) {
+    if (!roleSuper && !fullAccess) {
         if (mode === 'presbytery' && !profileFields.presbytery) { showToast('error', 'Assign a presbytery location for this user.'); return; }
         if (mode === 'department' && !profileFields.department) { showToast('error', 'Assign a department for this user.'); return; }
         if (!assignedProjects.length) { showToast('error', 'Tick at least one sub-project for this user to work on.'); return; }
@@ -1441,7 +1358,7 @@ async function onSubmitUserForm(e) {
             const tempAuth = getAuth(tempApp);
             try {
                 const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
-                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), sanitizePayload({ ...profileFields, assignedProjects, createdBy: currentUser.email, createdById: currentUser.id, createdByName: currentUser.name, createdAt: serverTimestamp() }));
+                await setDoc(doc(db, COLLECTIONS.USERS, cred.user.uid), sanitizePayload({ ...profileFields, assignedProjects, fullAccess, createdBy: currentUser.email, createdById: currentUser.id, createdByName: currentUser.name, createdAt: serverTimestamp() }));
                 showToast('success', `${name} created and assigned successfully.`);
             } finally { await deleteApp(tempApp); }
         }
@@ -1461,7 +1378,10 @@ function resetUserForm() {
     $('user-password-group').classList.remove('hidden');
     $('user-reset-group').classList.add('hidden');
     $('user-password').required = true;
+    $('user-full-access').checked = false;
+    $('user-full-access-group').classList.remove('hidden');
     $('user-scope-fields').classList.remove('hidden');
+    $('user-mode-group').classList.remove('hidden');
     const presRadio = document.querySelector('input[name="user-assign-mode"][value="presbytery"]');
     if (presRadio) presRadio.checked = true;
     const presField = $('user-pres-field'), deptField = $('user-dept-field');
@@ -1488,8 +1408,11 @@ function onUsersTableClick(e) {
         $('user-reset-group').classList.remove('hidden');
 
         const roleSuper = u.role === 'superadmin';
-        $('user-scope-fields').classList.toggle('hidden', roleSuper);
-        if (!roleSuper) {
+        $('user-full-access-group').classList.toggle('hidden', roleSuper);
+        $('user-full-access').checked = !!u.fullAccess;
+        $('user-scope-fields').classList.toggle('hidden', roleSuper || !!u.fullAccess);
+        $('user-mode-group').classList.toggle('hidden', roleSuper || !!u.fullAccess);
+        if (!roleSuper && !u.fullAccess) {
             const mode = u.assignMode || (u.department === 'ALL' ? 'presbytery' : 'department');
             const radio = document.querySelector(`input[name="user-assign-mode"][value="${mode}"]`);
             if (radio) radio.checked = true;
@@ -1499,6 +1422,8 @@ function onUsersTableClick(e) {
             if (mode === 'presbytery') $('user-pres').value = u.presbytery;
             else $('user-dept').value = u.department;
             populateUserProjectsChecklist(u.assignedProjects || []);
+        } else if (!roleSuper) {
+            populateUserProjectsChecklist(getAllProjectKeys());
         }
         $('user-form-title').textContent = `Edit User — ${u.name}`;
         $('user-submit-btn').textContent = 'Save Changes';
@@ -1522,9 +1447,6 @@ async function onSendResetForEditedUser() {
     catch (err) { showToast('error', describeAuthError(err)); }
 }
 
-// ---------------------------------------------------------------------
-// 16. CONFIRM MODAL + TOASTS
-// ---------------------------------------------------------------------
 function openConfirmModal(text, onConfirm) {
     $('confirm-text').textContent = text;
     pendingConfirm = { onConfirm };
@@ -1542,9 +1464,6 @@ function showToast(type, message) {
     setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); }, 3400);
 }
 
-// ---------------------------------------------------------------------
-// 17. CLIENT-SIDE FILTER FOR TRANSACTIONS
-// ---------------------------------------------------------------------
 function getFilteredTransactions() {
     return transactionsDb.filter(tx => {
         if (txFilters.type !== 'ALL' && tx.type !== txFilters.type) return false;
@@ -1558,18 +1477,15 @@ function getFilteredTransactions() {
     });
 }
 
-// ---------------------------------------------------------------------
-// 18. MASTER RENDER
-// ---------------------------------------------------------------------
 function refreshAllViews() {
     const list = getFilteredTransactions();
-    const superVisible = isSuper();
+    const superVisible = hasFullScope();
 
     const scopeDesc = superVisible
         ? `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`
         : `Presbytery: [${currentUser.presbytery}] | Department: [${currentUser.department}] (locked to your assignment)`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
-    $('tx-scope-note').textContent = superVisible ? 'Superadmin — full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
+    $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
 
     let income = 0, expense = 0, assets = 0, liabilities = 0;
     list.forEach(tx => {
@@ -1652,7 +1568,7 @@ function renderDeptBreakdown(list, superVisible) {
 function renderGlanceExpenseDonut(list) {
     const canvas = $('glance-expense-chart');
     const legendWrap = $('glance-expense-legend');
-    if (!canvas || !legendWrap) return;
+    if (!canvas || !legendWrap || typeof Chart === 'undefined') return;
 
     const depts = Object.keys(EPR_STRUCTURE);
     const totals = depts.map(d => list.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0));
@@ -1661,7 +1577,7 @@ function renderGlanceExpenseDonut(list) {
     const colors = depts.map((_, i) => DEPT_CHART_COLORS[i % DEPT_CHART_COLORS.length]);
 
     if (glanceExpenseChart) glanceExpenseChart.destroy();
-    glanceExpenseChart = new Chart(canvas, {
+    glanceExpenseChart = new Chart(canvas.getContext('2d'), {
         type: 'doughnut',
         data: { labels, datasets: [{ data: hasData ? totals : [1], backgroundColor: hasData ? colors : ['#e3e5e8'], borderWidth: 0 }] },
         options: { responsive: false, cutout: '68%', plugins: { legend: { display: false }, tooltip: { enabled: hasData } } }
@@ -1683,9 +1599,9 @@ function renderGlanceBanks() {
     if (!wrap) return;
     const visible = getVisibleBanks();
     if (!visible.length) {
-        wrap.innerHTML = isSuper()
+        wrap.innerHTML = hasFullScope()
             ? `<p class="glance-sub">No banks added yet.</p>`
-            : `<p class="glance-sub">You haven't posted any transaction or cheque against a bank account yet.</p>`;
+            : `<p class="glance-sub">You haven't posted any transaction against a bank account yet.</p>`;
         return;
     }
     wrap.innerHTML = '';
@@ -1703,7 +1619,7 @@ function renderGlanceBanks() {
 function renderTransactionsTable(list) {
     const tbody = $('tx-table-body');
     tbody.innerHTML = '';
-    const superVisible = isSuper();
+    const superVisible = hasFullScope();
     $('ft-result-count').textContent = `${list.length} result${list.length === 1 ? '' : 's'}`;
 
     if (list.length === 0) {
@@ -1748,11 +1664,11 @@ function renderUsersTable() {
         const projCount = (u.assignedProjects || []).length;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>${escapeHtml(u.name)}</strong></td>
+            <td><strong>${escapeHtml(u.name)}</strong>${u.fullAccess ? ' <span class="badge" style="background:var(--primary-light);color:var(--primary-darker);">Full access</span>' : ''}</td>
             <td>${escapeHtml(u.email)}</td>
             <td><span class="badge role-${u.role}">${ROLE_LABELS[u.role] || u.role}</span></td>
-            <td>${u.presbytery === 'ALL' ? 'All presbyteries' : u.presbytery}</td>
-            <td>${u.department === 'ALL' ? 'All departments' : shortDeptName(u.department)}${projCount ? ` <span class="muted-sm">(${projCount} project${projCount === 1 ? '' : 's'})</span>` : ''}</td>
+            <td>${(u.presbytery === 'ALL') ? 'All presbyteries' : u.presbytery}</td>
+            <td>${(u.department === 'ALL') ? 'All departments' : shortDeptName(u.department)}${projCount ? ` <span class="muted-sm">(${projCount} project${projCount === 1 ? '' : 's'})</span>` : ''}</td>
             <td><div class="row-actions">
                 <button class="icon-action-btn user-edit-btn" data-id="${u.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover user-delete-btn" data-id="${u.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
@@ -1761,9 +1677,6 @@ function renderUsersTable() {
     });
 }
 
-// ---------------------------------------------------------------------
-// 19. DEPARTMENTS / PRESBYTERIES ORG CHART VIEW
-// ---------------------------------------------------------------------
 function renderOrgChart() {
     const superVisible = isSuper();
     const deptGrid = $('org-dept-grid');
@@ -1799,9 +1712,6 @@ function renderOrgChart() {
     });
 }
 
-// ---------------------------------------------------------------------
-// 20. GLOBAL LIVE SEARCH DROPDOWN
-// ---------------------------------------------------------------------
 function renderSearchDropdown() {
     const dropdown = $('search-results-dropdown');
     if (!searchQuery) { dropdown.classList.add('hidden'); return; }
@@ -1830,9 +1740,6 @@ function renderSearchDropdown() {
     dropdown.classList.remove('hidden');
 }
 
-// ---------------------------------------------------------------------
-// 21. EXPORT
-// ---------------------------------------------------------------------
 function exportReportToExcel() {
     const list = getReportTransactions();
     if (list.length === 0) { showToast('error', 'Nothing to export for the selected range/scope.'); return; }
@@ -1848,9 +1755,6 @@ function exportReportToExcel() {
     showToast('success', `Exported ${list.length} records to Excel.`);
 }
 
-// ---------------------------------------------------------------------
-// 22. HELPERS
-// ---------------------------------------------------------------------
 const formatRF = (amount) => "RF " + Number(amount || 0).toLocaleString();
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1859,13 +1763,6 @@ function statusPill(status) {
     return `<span class="status-pill status-${status}">${STATUS_LABELS[status] || status}</span>`;
 }
 
-/* =======================================================================
-   EXTENDED MODULES
-   ======================================================================= */
-
-// ---------------------------------------------------------------------
-// 23. EXT MODULE EVENT WIRING
-// ---------------------------------------------------------------------
 function setupExtModulesEventListeners() {
     $('open-invoice-modal-btn').addEventListener('click', () => openInvoiceModal());
     $('close-invoice-modal').addEventListener('click', () => $('invoice-modal').classList.add('hidden'));
@@ -1878,12 +1775,6 @@ function setupExtModulesEventListeners() {
     $('bill-modal').addEventListener('click', (e) => { if (e.target === $('bill-modal')) $('bill-modal').classList.add('hidden'); });
     $('bill-form').addEventListener('submit', onSubmitBillForm);
     $('bills-table-body').addEventListener('click', onBillsTableClick);
-
-    $('open-cheque-modal-btn').addEventListener('click', () => openChequeModal());
-    $('close-cheque-modal').addEventListener('click', () => $('cheque-modal').classList.add('hidden'));
-    $('cheque-modal').addEventListener('click', (e) => { if (e.target === $('cheque-modal')) $('cheque-modal').classList.add('hidden'); });
-    $('cheque-form').addEventListener('submit', onSubmitChequeForm);
-    $('cheques-table-body').addEventListener('click', onChequesTableClick);
 
     $('open-supplier-modal-btn').addEventListener('click', () => openSupplierModal());
     $('close-supplier-modal').addEventListener('click', () => $('supplier-modal').classList.add('hidden'));
@@ -1925,9 +1816,6 @@ function guardSuperadminView(viewId, sectionLabel) {
     return true;
 }
 
-// ---------------------------------------------------------------------
-// 24. INVOICES
-// ---------------------------------------------------------------------
 function subscribeInvoices() {
     if (unsubInvoices) unsubInvoices();
     unsubInvoices = onSnapshot(buildScopedQuery(COLLECTIONS.INVOICES), (snap) => {
@@ -2005,8 +1893,37 @@ async function onSubmitInvoiceForm(e) {
     finally { btn.disabled = false; }
 }
 
+function renderPortalStatRow(elId, list, kind) {
+    const wrap = $(elId);
+    if (!wrap) return;
+    const total = list.reduce((s, r) => s + (r.amount || 0), 0);
+    const pending = list.filter(r => r.status === 'pending_approval');
+    const approved = list.filter(r => r.status === 'approved');
+    const pendingTotal = pending.reduce((s, r) => s + (r.amount || 0), 0);
+    const approvedTotal = approved.reduce((s, r) => s + (r.amount || 0), 0);
+    const noun = kind === 'invoice' ? 'Invoiced' : 'Billed';
+    wrap.innerHTML = `
+        <div class="portal-stat-card">
+            <span class="psc-label">Total ${noun}</span>
+            <span class="psc-value">${formatRF(total)}</span>
+            <span class="psc-sub">${list.length} record${list.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="portal-stat-card warn">
+            <span class="psc-label">Awaiting approval</span>
+            <span class="psc-value">${formatRF(pendingTotal)}</span>
+            <span class="psc-sub">${pending.length} pending</span>
+        </div>
+        <div class="portal-stat-card ok">
+            <span class="psc-label">${kind === 'invoice' ? 'Issued' : 'Paid'}</span>
+            <span class="psc-value">${formatRF(approvedTotal)}</span>
+            <span class="psc-sub">${approved.length} approved</span>
+        </div>
+    `;
+}
+
 function renderInvoicesTable() {
     const tbody = $('invoices-table-body');
+    renderPortalStatRow('invoices-stat-row', invoicesDb, 'invoice');
     if (invoicesDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10">No invoices in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     invoicesDb.forEach(inv => {
@@ -2058,9 +1975,6 @@ function onInvoicesTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 25. BILLS
-// ---------------------------------------------------------------------
 function subscribeBills() {
     if (unsubBills) unsubBills();
     unsubBills = onSnapshot(buildScopedQuery(COLLECTIONS.BILLS), (snap) => {
@@ -2140,6 +2054,7 @@ async function onSubmitBillForm(e) {
 
 function renderBillsTable() {
     const tbody = $('bills-table-body');
+    renderPortalStatRow('bills-stat-row', billsDb, 'bill');
     if (billsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10">No bills in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     billsDb.forEach(bill => {
@@ -2190,134 +2105,6 @@ function onBillsTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 26. CHEQUES
-// ---------------------------------------------------------------------
-function subscribeCheques() {
-    if (unsubCheques) unsubCheques();
-    unsubCheques = onSnapshot(buildScopedQuery(COLLECTIONS.CHEQUES), (snap) => {
-        chequesDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        chequesDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-        renderChequesTable();
-        $('nav-cheques-count').textContent = chequesDb.length;
-        renderPendingApprovals();
-        if ($('view-coa').classList.contains('active')) { renderCoaBankGrid(); renderCoaCharts(); }
-    }, (err) => showToast('error', 'Cheques feed error: ' + err.message));
-}
-
-function openChequeModal(edit) {
-    setupScopedModalFields('cheque', true, edit);
-
-    if (edit) {
-        $('cheque-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Cheque';
-        $('cheque-submit-btn').textContent = 'Update Cheque';
-        $('cheque-edit-id').value = edit.id;
-        $('cheque-number').value = edit.number;
-        $('cheque-payee').value = edit.payee;
-        $('cheque-amount').value = edit.amount;
-        $('cheque-date').value = edit.date;
-        $('cheque-memo').value = edit.memo || '';
-        prefillAccountCombobox('cheque', edit.bankId);
-    } else {
-        $('cheque-modal-title').innerHTML = '<i class="fa-solid fa-money-check"></i> Prepare Cheque';
-        $('cheque-submit-btn').textContent = 'Submit Cheque';
-        $('cheque-form').reset();
-        $('cheque-edit-id').value = '';
-        $('cheque-date').value = new Date().toISOString().split('T')[0];
-        resetAccountCombobox('cheque');
-        setupScopedModalFields('cheque', true, null);
-    }
-    $('cheque-modal').classList.remove('hidden');
-}
-
-async function onSubmitChequeForm(e) {
-    e.preventDefault();
-    const editId = $('cheque-edit-id').value;
-    const scope = scopedFieldsFromForm('cheque', true);
-
-    if (!validateAccountCombobox('cheque')) { showToast('error', 'Please choose the bank this cheque is drawn against.'); return; }
-    const acct = readAccountCombobox('cheque');
-
-    const payload = sanitizePayload({
-        number: $('cheque-number').value.trim(),
-        payee: $('cheque-payee').value.trim(),
-        bankId: acct.bankId, bankName: acct.bankName,
-        amount: parseFloat($('cheque-amount').value),
-        date: $('cheque-date').value || new Date().toISOString().split('T')[0],
-        memo: $('cheque-memo').value.trim(),
-        ...scope
-    });
-    if (!payload.number || !payload.payee || !acct.bankId || isNaN(payload.amount) || payload.amount < 0) {
-        showToast('error', 'Fill in cheque number, payee, bank and a valid amount.'); return;
-    }
-
-    const btn = $('cheque-submit-btn'); btn.disabled = true;
-    try {
-        if (editId) {
-            await updateDoc(doc(db, COLLECTIONS.CHEQUES, editId), { ...payload, ...updateMeta() });
-            showToast('success', 'Cheque updated.');
-        } else {
-            await addDoc(collection(db, COLLECTIONS.CHEQUES), sanitizePayload({ ...payload, status: 'pending_approval', ...actorMeta(), createdAt: serverTimestamp() }));
-            showToast('success', 'Cheque submitted for approval.');
-        }
-        $('cheque-modal').classList.add('hidden');
-    } catch (err) { showToast('error', "Couldn't save cheque: " + err.message); }
-    finally { btn.disabled = false; }
-}
-
-function renderChequesTable() {
-    const tbody = $('cheques-table-body');
-    if (chequesDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="9">No cheques in this scope yet.</td></tr>`; return; }
-    tbody.innerHTML = '';
-    chequesDb.forEach(chq => {
-        const canEditRaw = (isSuper() || chq.createdById === currentUser.id) && chq.status === 'pending_approval';
-        const canApprove = isFinanceOrSuper() && chq.status === 'pending_approval';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${chq.date}</td><td><strong>${escapeHtml(chq.number)}</strong></td><td>${escapeHtml(chq.payee)}</td>
-            <td>${escapeHtml(chq.bankName || '—')}</td><td style="font-weight:bold;color:var(--danger)">${formatRF(chq.amount)}</td>
-            <td>${shortDeptName(chq.department)}</td><td>${(chq.presbytery||'').replace('EPR Presbytery ','')}</td>
-            <td>${statusPill(chq.status)}</td>
-            <td><div class="row-actions-wrap">
-                ${canApprove ? `<button class="btn btn-approve" style="padding:6px 10px;font-size:.75rem;" data-approve="${chq.id}"><i class="fa-solid fa-check"></i> Approve</button>
-                <button class="btn btn-reject" style="padding:6px 10px;font-size:.75rem;" data-reject="${chq.id}"><i class="fa-solid fa-xmark"></i> Reject</button>` : ''}
-                <button class="icon-action-btn" data-edit="${chq.id}" title="Edit" ${canEditRaw ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button>
-                <button class="icon-action-btn danger-hover" data-delete="${chq.id}" title="Delete" ${canEditRaw || isSuper() ? '' : 'disabled'}><i class="fa-solid fa-trash"></i></button>
-            </div></td>`;
-        tbody.appendChild(tr);
-    });
-}
-
-function onChequesTableClick(e) {
-    const approveBtn = e.target.closest('[data-approve]');
-    const rejectBtn = e.target.closest('[data-reject]');
-    const editBtn = e.target.closest('[data-edit]');
-    const delBtn = e.target.closest('[data-delete]');
-    if (approveBtn) {
-        updateDoc(doc(db, COLLECTIONS.CHEQUES, approveBtn.dataset.approve), { status: 'approved', ...updateMeta({ approvedBy: currentUser.email, approvedById: currentUser.id, approvedByName: currentUser.name, approvedAt: serverTimestamp() }) })
-            .then(() => showToast('success', 'Cheque approved.')).catch(err => showToast('error', err.message));
-    } else if (rejectBtn) {
-        const id = rejectBtn.dataset.reject;
-        openConfirmModal('Reject this cheque?', async () => {
-            try { await updateDoc(doc(db, COLLECTIONS.CHEQUES, id), { status: 'rejected', ...updateMeta({ approvedBy: currentUser.email, approvedById: currentUser.id, approvedByName: currentUser.name, approvedAt: serverTimestamp() }) }); showToast('success', 'Cheque rejected.'); }
-            catch (err) { showToast('error', err.message); }
-        });
-    } else if (editBtn) {
-        const chq = chequesDb.find(c => c.id === editBtn.dataset.edit);
-        if (chq) openChequeModal(chq);
-    } else if (delBtn) {
-        const chq = chequesDb.find(c => c.id === delBtn.dataset.delete);
-        if (!chq) return;
-        openConfirmModal(`Delete cheque "${chq.number}"? This cannot be undone.`, async () => {
-            try { await deleteDoc(doc(db, COLLECTIONS.CHEQUES, chq.id)); showToast('success', 'Cheque deleted.'); }
-            catch (err) { showToast('error', "Couldn't delete: " + err.message); }
-        });
-    }
-}
-
-// ---------------------------------------------------------------------
-// 27. SUPPLIERS
-// ---------------------------------------------------------------------
 function subscribeSuppliers() {
     if (unsubSuppliers) unsubSuppliers();
     unsubSuppliers = onSnapshot(buildScopedQuery(COLLECTIONS.SUPPLIERS), (snap) => {
@@ -2401,9 +2188,6 @@ function onSuppliersTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 28. CUSTOMER HUB
-// ---------------------------------------------------------------------
 function subscribeCustomers() {
     if (unsubCustomers) unsubCustomers();
     unsubCustomers = onSnapshot(buildScopedQuery(COLLECTIONS.CUSTOMERS), (snap) => {
@@ -2487,9 +2271,6 @@ function onCustomersTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 29. PROJECTS
-// ---------------------------------------------------------------------
 function subscribeProjects() {
     if (unsubProjects) unsubProjects();
     unsubProjects = onSnapshot(buildScopedQuery(COLLECTIONS.PROJECTS), (snap) => {
@@ -2584,9 +2365,6 @@ function onProjectsTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 30. BUDGET MANAGEMENT (superadmin only)
-// ---------------------------------------------------------------------
 function subscribeBudgets() {
     if (unsubBudgets) unsubBudgets();
     unsubBudgets = onSnapshot(collection(db, COLLECTIONS.BUDGETS), (snap) => {
@@ -2679,9 +2457,6 @@ function onBudgetTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 31. BANK MANAGEMENT (superadmin only to manage; all can read for pickers)
-// ---------------------------------------------------------------------
 function subscribeBanks() {
     if (unsubBanks) unsubBanks();
     unsubBanks = onSnapshot(collection(db, COLLECTIONS.BANKS), (snap) => {
@@ -2768,34 +2543,28 @@ function onBanksTableClick(e) {
     }
 }
 
-// ---------------------------------------------------------------------
-// 32. CHART OF ACCOUNTS
-// ---------------------------------------------------------------------
 function getVisibleBanks() {
-    if (isSuper()) return banksDb;
+    if (hasFullScope()) return banksDb;
     if (!currentUser) return [];
     const ownIds = new Set();
     transactionsDb.forEach(t => { if (t.bankId && t.createdById === currentUser.id) ownIds.add(t.bankId); });
-    chequesDb.forEach(c => { if (c.bankId && c.createdById === currentUser.id) ownIds.add(c.bankId); });
     invoicesDb.forEach(i => { if (i.bankId && i.createdById === currentUser.id) ownIds.add(i.bankId); });
     billsDb.forEach(bl => { if (bl.bankId && bl.createdById === currentUser.id) ownIds.add(bl.bankId); });
     return banksDb.filter(b => ownIds.has(b.id));
 }
 
 function getBankActivity(bankId) {
-    const mine = (rec) => isSuper() || rec.createdById === currentUser.id;
+    const mine = (rec) => hasFullScope() || rec.createdById === currentUser.id;
     return {
-        tx: transactionsDb.filter(t => t.bankId === bankId && mine(t)),
-        cheques: chequesDb.filter(c => c.bankId === bankId && c.status === 'approved' && mine(c))
+        tx: transactionsDb.filter(t => t.bankId === bankId && mine(t))
     };
 }
 
 function computeBankBalance(bank) {
-    const { tx, cheques } = getBankActivity(bank.id);
+    const { tx } = getBankActivity(bank.id);
     const inflow = tx.filter(t => t.type === 'Income').reduce((s, t) => s + (t.amount || 0), 0);
     const outflow = tx.filter(t => t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0);
-    const chequeOut = cheques.reduce((s, c) => s + (c.amount || 0), 0);
-    return (bank.balance || 0) + inflow - outflow - chequeOut;
+    return (bank.balance || 0) + inflow - outflow;
 }
 
 function renderCoaBankGrid() {
@@ -2804,9 +2573,9 @@ function renderCoaBankGrid() {
     const charts = $('coa-charts');
     if (!grid || !empty || !charts) return;
 
-    $('coa-scope-note').textContent = isSuper()
-        ? 'Superadmin view — every bank account and everyone\'s activity against it.'
-        : 'Showing only bank accounts you\'ve personally posted a transaction or cheque against. Their totals reflect only your own records.';
+    $('coa-scope-note').textContent = hasFullScope()
+        ? 'Full access view — every bank account and everyone\'s activity against it.'
+        : 'Showing only bank accounts you\'ve personally posted a transaction against. Their totals reflect only your own records.';
 
     const visible = getVisibleBanks();
     grid.innerHTML = '';
@@ -2814,9 +2583,9 @@ function renderCoaBankGrid() {
     if (visible.length === 0) {
         empty.classList.remove('hidden');
         charts.classList.add('hidden');
-        empty.innerHTML = isSuper()
+        empty.innerHTML = hasFullScope()
             ? `<i class="fa-solid fa-building-columns"></i>Add a bank under Bank Management, then it will appear here.`
-            : `<i class="fa-solid fa-building-columns"></i>You haven't posted a transaction or cheque against any bank account yet. Record one and it will show up here.`;
+            : `<i class="fa-solid fa-building-columns"></i>You haven't posted a transaction against any bank account yet. Record one and it will show up here.`;
         coaSelectedBankId = null;
         return;
     }
@@ -2825,7 +2594,7 @@ function renderCoaBankGrid() {
     if (!coaSelectedBankId || !visible.find(b => b.id === coaSelectedBankId)) coaSelectedBankId = visible[0].id;
 
     visible.forEach(b => {
-        const { tx, cheques } = getBankActivity(b.id);
+        const { tx } = getBankActivity(b.id);
         const card = document.createElement('div');
         card.className = `ext-card bank-card${coaSelectedBankId === b.id ? ' selected' : ''}`;
         card.innerHTML = `
@@ -2833,7 +2602,6 @@ function renderCoaBankGrid() {
             <div class="ext-sub">${escapeHtml(b.branch||'')} · ${escapeHtml(b.account)}</div>
             <div class="ext-row"><span>Current balance</span><strong>${formatRF(computeBankBalance(b))}</strong></div>
             <div class="ext-row"><span>Transactions posted</span><strong>${tx.length}</strong></div>
-            <div class="ext-row"><span>Cheques cleared</span><strong>${cheques.length}</strong></div>
         `;
         card.addEventListener('click', () => { coaSelectedBankId = b.id; renderCoaBankGrid(); renderCoaCharts(); });
         grid.appendChild(card);
@@ -2872,13 +2640,11 @@ function renderCoaStatement(bank, range) {
     if (!bank) { grid.innerHTML = ''; if (label) label.textContent = '—'; return; }
     if (label) label.textContent = `${bank.name} (${bank.account})`;
 
-    const { tx, cheques } = getBankActivity(bank.id);
+    const { tx } = getBankActivity(bank.id);
     const rangeTx = tx.filter(t => dateInRange(t.date, range) || (!range.from && !range.to));
-    const rangeChq = cheques.filter(c => dateInRange(c.date, range) || (!range.from && !range.to));
 
     const rangeIn = rangeTx.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
     const rangeOut = rangeTx.filter(t => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
-    const rangeChqOut = rangeChq.reduce((s, c) => s + c.amount, 0);
     const currentBalance = computeBankBalance(bank);
 
     grid.innerHTML = `
@@ -2886,7 +2652,6 @@ function renderCoaStatement(bank, range) {
         <div class="stmt-mini"><span>Current balance</span><strong class="${currentBalance >= 0 ? 'pos' : 'neg'}">${formatRF(currentBalance)}</strong></div>
         <div class="stmt-mini"><span>Money in (${rangeLabel(range)})</span><strong class="pos">${formatRF(rangeIn)}</strong></div>
         <div class="stmt-mini"><span>Money out (${rangeLabel(range)})</span><strong class="neg">${formatRF(rangeOut)}</strong></div>
-        <div class="stmt-mini"><span>Cheques cleared (${rangeLabel(range)})</span><strong class="neg">${formatRF(rangeChqOut)}</strong></div>
     `;
 }
 
@@ -2894,7 +2659,6 @@ const CHART_GREEN = '#2ca01c';
 const CHART_GREEN_SOFT = 'rgba(44,160,28,0.14)';
 const CHART_BLUE = '#3b82f6';
 const CHART_BLUE_SOFT = 'rgba(59,130,246,0.12)';
-const CHART_GREEN_DARK = '#0e5c00';
 
 function sizeCanvasExplicitly(canvas, height) {
     if (!canvas) return { width: 0, height: 0 };
@@ -2926,24 +2690,21 @@ function renderCoaCharts() {
     renderCoaStatement(bank, range);
 
     const buckets = buildTrendBuckets(range.from || range.to ? range : { from: '', to: '' });
-    const { tx, cheques } = getBankActivity(bank.id);
+    const { tx } = getBankActivity(bank.id);
     const inSeries = buckets.map(bkt => tx.filter(t => t.type === 'Income' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
-    const outSeries = buckets.map(bkt =>
-        tx.filter(t => t.type === 'Expense' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0) +
-        cheques.filter(c => bkt.match(c.date)).reduce((s, c) => s + c.amount, 0)
-    );
+    const outSeries = buckets.map(bkt => tx.filter(t => t.type === 'Expense' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
 
     const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
-    const deptSource = isSuper() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
+    const deptSource = hasFullScope() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
     const incomeByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
 
     requestAnimationFrame(() => {
         const bankCtx = $('coa-bank-chart');
-        if (bankCtx) {
+        if (bankCtx && typeof Chart !== 'undefined') {
             sizeCanvasExplicitly(bankCtx, 260);
             if (coaBankChart) coaBankChart.destroy();
-            coaBankChart = new Chart(bankCtx, {
+            coaBankChart = new Chart(bankCtx.getContext('2d'), {
                 type: 'line',
                 data: {
                     labels: buckets.map(b => b.label),
@@ -2964,10 +2725,10 @@ function renderCoaCharts() {
         }
 
         const deptCtx = $('coa-dept-chart');
-        if (deptCtx) {
+        if (deptCtx && typeof Chart !== 'undefined') {
             sizeCanvasExplicitly(deptCtx, 260);
             if (coaDeptChart) coaDeptChart.destroy();
-            coaDeptChart = new Chart(deptCtx, {
+            coaDeptChart = new Chart(deptCtx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: depts.map(shortDeptName),
@@ -2994,19 +2755,71 @@ window.addEventListener('resize', () => {
     clearTimeout(coaResizeTimer);
     coaResizeTimer = setTimeout(() => {
         if ($('view-coa') && $('view-coa').classList.contains('active')) renderCoaCharts();
+        if ($('view-reports') && $('view-reports').classList.contains('active')) renderReportPanel();
     }, 200);
 });
 
-// ---------------------------------------------------------------------
-// 33. REPORTS
-// ---------------------------------------------------------------------
 function getReportTransactions() {
     const range = reportRange.preset === 'all' ? { from: '', to: '' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to);
     return transactionsDb.filter(tx => dateInRange(tx.date, range) || (!range.from && !range.to));
 }
 
+function renderReportCharts(list) {
+    const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
+    const incomeByDept = depts.map(d => list.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
+    const expenseByDept = depts.map(d => list.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
+
+    const pieDepts = Object.keys(EPR_STRUCTURE);
+    const pieTotals = pieDepts.map(d => list.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0));
+    const pieHasData = pieTotals.some(v => v > 0);
+
+    requestAnimationFrame(() => {
+        const barCtx = $('report-dept-chart');
+        if (barCtx && typeof Chart !== 'undefined') {
+            sizeCanvasExplicitly(barCtx, 280);
+            if (reportDeptChart) reportDeptChart.destroy();
+            reportDeptChart = new Chart(barCtx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: depts.map(shortDeptName),
+                    datasets: [
+                        { label: 'Income', data: incomeByDept, backgroundColor: CHART_GREEN, borderRadius: 8, maxBarThickness: 34 },
+                        { label: 'Expense', data: expenseByDept, backgroundColor: CHART_BLUE, borderRadius: 8, maxBarThickness: 34 }
+                    ]
+                },
+                options: {
+                    responsive: false, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        const pieCanvas = $('report-pie-chart');
+        if (pieCanvas && typeof Chart !== 'undefined') {
+            pieCanvas.width = 260; pieCanvas.height = 260;
+            pieCanvas.style.width = '260px'; pieCanvas.style.height = '260px';
+            if (reportPieChart) reportPieChart.destroy();
+            reportPieChart = new Chart(pieCanvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: pieDepts.map(shortDeptName),
+                    datasets: [{ data: pieHasData ? pieTotals : [1], backgroundColor: pieHasData ? pieDepts.map((_, i) => DEPT_CHART_COLORS[i % DEPT_CHART_COLORS.length]) : ['#e3e5e8'], borderWidth: 1, borderColor: '#fff' }]
+                },
+                options: {
+                    responsive: false, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10.5 } } }, tooltip: { enabled: pieHasData } }
+                }
+            });
+        }
+    });
+}
+
 function renderReportPanel() {
-    const superVisible = isSuper();
+    const superVisible = hasFullScope();
     const scopeDesc = superVisible
         ? `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`
         : `Presbytery: [${currentUser.presbytery}] | Department: [${currentUser.department}] (locked to your assignment)`;
@@ -3031,11 +2844,10 @@ function renderReportPanel() {
     $('stmt-liabilities').textContent = formatRF(liabilities);
     $('stmt-equity').textContent = formatRF(netWorth);
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
+
+    renderReportCharts(list);
 }
 
-// ---------------------------------------------------------------------
-// 34. PENDING APPROVALS WIDGET (Overview)
-// ---------------------------------------------------------------------
 function renderPendingApprovals() {
     if (!currentUser) return;
     const wrap = $('pending-approvals-wrap');
@@ -3045,9 +2857,6 @@ function renderPendingApprovals() {
     if (isSuper()) {
         invoicesDb.filter(i => i.status === 'pending_approval').forEach(i => items.push({ type: 'Invoice', label: i.number, sub: i.customerName, amount: i.amount, id: i.id, kind: 'invoice' }));
         billsDb.filter(b => b.status === 'pending_approval').forEach(b => items.push({ type: 'Bill', label: b.number, sub: b.supplierName, amount: b.amount, id: b.id, kind: 'bill' }));
-    }
-    if (isFinanceOrSuper()) {
-        chequesDb.filter(c => c.status === 'pending_approval').forEach(c => items.push({ type: 'Cheque', label: c.number, sub: c.payee, amount: c.amount, id: c.id, kind: 'cheque' }));
     }
 
     if (items.length === 0) { wrap.classList.add('hidden'); grid.innerHTML = ''; return; }
@@ -3062,14 +2871,10 @@ function renderPendingApprovals() {
             <div class="ext-row"><span>Amount</span><strong>${formatRF(it.amount)}</strong></div>
         `;
         card.style.cursor = 'pointer';
-        card.addEventListener('click', () => switchView(it.kind === 'invoice' ? 'invoices' : it.kind === 'bill' ? 'bills' : 'cheques'));
+        card.addEventListener('click', () => switchView(it.kind === 'invoice' ? 'invoices' : 'bills'));
         grid.appendChild(card);
     });
 }
-
-/* =======================================================================
-   35. QUICKBOOKS-STYLE MODALS — EXPENSE / BANK DEPOSIT / JOURNAL ENTRY
-   ======================================================================= */
 
 function setupQbModalsEventListeners() {
     $('close-expense-modal').addEventListener('click', () => $('expense-modal').classList.add('hidden'));
@@ -3077,7 +2882,6 @@ function setupQbModalsEventListeners() {
     $('expense-form').addEventListener('submit', onSubmitExpenseForm);
     $('exp-add-line-btn').addEventListener('click', () => { addExpenseLine(); });
     $('exp-clear-lines-btn').addEventListener('click', () => { $('exp-lines-body').innerHTML = ''; addExpenseLine(); addExpenseLine(); updateExpenseTotals(); });
-    $('exp-amount-display'); // header amount is display-only, driven by updateExpenseTotals
 
     $('close-deposit-modal').addEventListener('click', () => $('deposit-modal').classList.add('hidden'));
     $('deposit-modal').addEventListener('click', (e) => { if (e.target === $('deposit-modal')) $('deposit-modal').classList.add('hidden'); });
@@ -3098,7 +2902,6 @@ function renumberLines(tbodyId) {
     qsa('tr', tbody).forEach((tr, i) => { const firstTd = tr.querySelector('td'); if (firstTd) firstTd.textContent = i + 1; });
 }
 
-/* ---------- EXPENSE MODAL ---------- */
 function addExpenseLine() {
     const tbody = $('exp-lines-body');
     const tr = document.createElement('tr');
@@ -3121,10 +2924,7 @@ function addExpenseLine() {
     tbody.appendChild(tr);
 }
 
-function updateExpenseHeaderBalance(bank) {
-    // no-op placeholder kept for symmetry with deposit; balance already
-    // shown inline next to the account combobox via banksDb lookups.
-}
+function updateExpenseHeaderBalance(bank) {}
 
 function updateExpenseTotals() {
     const rows = qsa('#exp-lines-body tr');
@@ -3173,7 +2973,7 @@ async function onSubmitExpenseForm(e) {
     const total = lines.reduce((s, l) => s + l.amount, 0);
     if (!lines.length || total <= 0) { showToast('error', 'Add at least one line with a category and an amount.'); return; }
 
-    const scope = isSuper()
+    const scope = hasFullScope()
         ? { department: currentScope.department !== 'ALL' ? currentScope.department : (lines[0].class ? Object.keys(EPR_STRUCTURE).find(d => EPR_STRUCTURE[d].includes(lines[0].class)) : 'ALL') || 'ALL', subsection: lines[0].class || 'ALL', presbytery: $('exp-location-id').value || currentScope.presbytery }
         : { department: currentUser.department, subsection: currentUser.subsection, presbytery: currentUser.presbytery };
 
@@ -3200,7 +3000,6 @@ async function onSubmitExpenseForm(e) {
     finally { btn.disabled = false; }
 }
 
-/* ---------- BANK DEPOSIT MODAL ---------- */
 function addDepositLine() {
     const tbody = $('deposit-lines-body');
     const tr = document.createElement('tr');
@@ -3225,7 +3024,7 @@ function addDepositLine() {
     tbody.appendChild(tr);
 }
 
-function updateDepositHeaderBalance(bank) { /* balance already shown next to combobox via banksDb */ }
+function updateDepositHeaderBalance(bank) {}
 
 function updateDepositTotals() {
     const rows = qsa('#deposit-lines-body tr');
@@ -3268,7 +3067,7 @@ async function onSubmitDepositForm(e) {
     const total = lines.reduce((s, l) => s + l.amount, 0);
     if (!lines.length || total <= 0) { showToast('error', 'Add at least one funds line with an amount.'); return; }
 
-    const scope = isSuper()
+    const scope = hasFullScope()
         ? { department: currentScope.department !== 'ALL' ? currentScope.department : 'ALL', subsection: lines[0].class || 'ALL', presbytery: currentScope.presbytery }
         : { department: currentUser.department, subsection: currentUser.subsection, presbytery: currentUser.presbytery };
 
@@ -3291,7 +3090,6 @@ async function onSubmitDepositForm(e) {
     finally { btn.disabled = false; }
 }
 
-/* ---------- JOURNAL ENTRY MODAL ---------- */
 function getJournalAccountOptions() {
     const list = ['Accounts Receivable (A/R)', 'Accounts Payable (A/P)'];
     banksDb.forEach(b => list.push(`${b.name} — ${b.account}`));
@@ -3375,8 +3173,8 @@ async function onSubmitJournalForm(e, keepOpen) {
         journalNo: $('journal-no').value.trim(),
         lines: JSON.stringify(lines),
         totalDebit, totalCredit,
-        department: isSuper() ? currentScope.department : currentUser.department,
-        presbytery: isSuper() ? currentScope.presbytery : currentUser.presbytery
+        department: hasFullScope() ? currentScope.department : currentUser.department,
+        presbytery: hasFullScope() ? currentScope.presbytery : currentUser.presbytery
     });
 
     const btn = keepOpen ? $('journal-save-new-btn') : $('journal-submit-btn');
