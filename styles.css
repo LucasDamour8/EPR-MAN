@@ -1,15 +1,9 @@
 /* ======================================================================
    SAS — STANDARD ACCOUNTING SOFTWARE SYSTEM
    Stylesheet — QuickBooks-style green theme
-   Every selector below is referenced by app.js / index.html as-is;
-   this pass only refines tokens, spacing, typography and a handful of
-   presentational details (combobox rows, the New Account side-panel,
-   status pills, tables) to read as a clean, professional replica of
-   the reference product rather than a generic admin dashboard.
 ====================================================================== */
 
 :root {
-    /* ---- Core palette (QuickBooks-style green, teal accent) ---- */
     --primary: #2ca01c;
     --primary-dark: #178000;
     --primary-darker: #0e5c00;
@@ -31,7 +25,6 @@
     --warning-bg: #fdf3dc;
     --warning-dark: #92600a;
 
-    /* ---- Neutrals ---- */
     --bg: #f5f6f7;
     --surface: #ffffff;
     --surface-alt: #fafbfa;
@@ -41,7 +34,6 @@
     --text-muted: #64695f;
     --text-faint: #9aa094;
 
-    /* ---- Shape / motion ---- */
     --radius-sm: 6px;
     --radius: 8px;
     --radius-lg: 14px;
@@ -82,7 +74,6 @@ a { color: var(--primary-dark); }
     border-radius: 4px;
 }
 
-/* ---------- Boot screen ---------- */
 .boot-screen {
     height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 16px; background: var(--primary-darker); color: #eafbe6;
@@ -95,7 +86,6 @@ a { color: var(--primary-dark); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- Auth / Setup ---------- */
 .auth-screen {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
     background:
@@ -141,7 +131,6 @@ a { color: var(--primary-dark); }
 }
 .pw-toggle-btn:hover { color: var(--text); background: var(--bg); }
 
-/* ---------- Buttons ---------- */
 .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     padding: 10px 20px; border-radius: 22px; border: 1px solid transparent; font-weight: 700; font-size: 0.86rem;
@@ -170,7 +159,6 @@ a { color: var(--primary-dark); }
 .error-msg { color: var(--danger); font-size: 0.82rem; margin-top: 14px; min-height: 18px; text-align: center; }
 .auth-footnote { text-align: center; color: var(--text-muted); font-size: 0.8rem; margin-top: 18px; }
 
-/* ---------- App layout ---------- */
 .app-layout { display: flex; min-height: 100vh; width: 100%; }
 
 .sidebar-overlay {
@@ -178,7 +166,6 @@ a { color: var(--primary-dark); }
 }
 .sidebar-overlay.show { display: block; }
 
-/* Slim QuickBooks-style icon rail */
 .sidebar {
     width: var(--rail-width); flex-shrink: 0; background: #ffffff; color: #4b4f56;
     display: flex; flex-direction: column; height: 100vh; position: sticky; top: 0;
@@ -224,7 +211,6 @@ a { color: var(--primary-dark); }
 
 .sidebar-footer { margin-top: auto; padding: 10px 4px; font-size: 0.54rem; text-align: center; color: var(--text-faint); border-top: 1px solid var(--border); }
 
-/* Hover flyout — shows a rail item's sub-links, QuickBooks-style */
 .rail-flyout {
     position: fixed; left: var(--rail-width); top: 0; z-index: 65;
     background: #fff; border: 1px solid var(--border); border-radius: 12px;
@@ -249,7 +235,6 @@ a { color: var(--primary-dark); }
 .rail-flyout-content .rf-divider { height: 1px; background: var(--border); margin: 6px 0; }
 .rail-flyout-content .rf-empty { padding: 12px 16px; font-size: .8rem; color: var(--text-muted); }
 
-/* All-modules launcher panel (QuickBooks "All apps" grid equivalent) */
 .apps-panel {
     position: fixed; top: 0; left: 0; bottom: 0; width: 340px; max-width: 88vw; background: #fff;
     box-shadow: var(--shadow-lg); z-index: 60; overflow-y: auto; transform: translateX(-110%);
@@ -272,7 +257,6 @@ a { color: var(--primary-dark); }
 .apps-panel-assignment .ab-row i { width:14px; color: var(--primary-dark); }
 .apps-panel-assignment .ab-note { font-size:.72rem; color: var(--text-muted); margin-top:8px; line-height:1.45; }
 
-/* ---------- Main wrapper / topbar ---------- */
 .main-wrapper { flex: 1; min-width: 0; width: 100%; display: flex; flex-direction: column; }
 
 .topbar {
@@ -343,7 +327,6 @@ a { color: var(--primary-dark); }
 }
 .pd-logout:hover { background: var(--danger-bg); }
 
-/* ---------- Badges & status pills ---------- */
 .badge {
     display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
     background: var(--bg); color: var(--text-muted); text-transform: capitalize;
@@ -364,7 +347,6 @@ a { color: var(--primary-dark); }
 .status-approved { background: var(--success-bg); color: var(--primary-dark); }
 .status-rejected { background: var(--danger-bg); color: var(--danger); }
 
-/* ---------- Content body ---------- */
 .content-body {
     padding: 22px clamp(14px, 3vw, 40px) 60px;
     max-width: 1400px;
@@ -372,7 +354,6 @@ a { color: var(--primary-dark); }
     margin: 0 auto;
 }
 
-/* ---------- Dashboard greeting header (QuickBooks-style) ---------- */
 .greeting-header { display:flex; align-items:flex-start; justify-content:space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .greeting-header h1 { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; }
 .greeting-links { display:flex; gap: 18px; align-items:center; padding-top: 8px; }
@@ -452,10 +433,8 @@ a { color: var(--primary-dark); }
 
 .locked-note { font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
 
-/* ---------- Who-did-it audit caption on table rows ---------- */
 .row-who { font-size: 0.7rem; color: var(--text-faint); font-weight: 500; margin-top: 3px; }
 
-/* ---------- Portal stat row (Sales Portal / Expense Portal top cards) ---------- */
 .portal-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .portal-stat-card {
     background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px;
@@ -467,7 +446,6 @@ a { color: var(--primary-dark); }
 .psc-value { display: block; font-size: 1.3rem; font-weight: 800; color: var(--text); }
 .psc-sub { display: block; font-size: 0.75rem; color: var(--text-faint); margin-top: 4px; }
 
-/* ---------- Stat cards ---------- */
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 22px; }
 .card-item {
     background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px;
@@ -503,7 +481,6 @@ a { color: var(--primary-dark); }
 .dc-row { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 4px; color: var(--text-muted); }
 .dc-net { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 800; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
 
-/* ---------- Extended module grids & cards ---------- */
 .ext-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; width: 100%; }
 .ext-grid-wide { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; width: 100%; }
 
@@ -524,8 +501,6 @@ a { color: var(--primary-dark); }
 .chart-box-title { font-size: 0.88rem; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; color: var(--text); }
 .chart-box-title i { color: var(--primary-dark); }
 
-/* Wrapper for Chart.js canvases. Actual pixel sizing is done in JS
-   (sizeCanvasExplicitly) so this just needs to lay out normally. */
 .chart-canvas-wrap { width: 100%; min-height: 260px; overflow: hidden; }
 .chart-canvas-wrap canvas { display: block; max-width: 100%; }
 
@@ -535,7 +510,6 @@ a { color: var(--primary-dark); }
 .row-actions-wrap { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .row-actions-wrap .icon-action-btn, .row-actions-wrap button { flex-shrink: 0; }
 
-/* ---------- Quick date-range filter bars (Reports + Chart of Accounts) ---------- */
 .range-bar-wrap {
     background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
     padding: 14px 16px; margin-bottom: 16px; box-shadow: var(--shadow);
@@ -555,7 +529,6 @@ a { color: var(--primary-dark); }
 }
 .custom-range-fields .btn { padding: 7px 16px; font-size: 0.8rem; }
 
-/* ---------- Bank statement mini-cards (Chart of Accounts) ---------- */
 .stmt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .stmt-mini {
     background: var(--surface-alt); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
@@ -566,8 +539,6 @@ a { color: var(--primary-dark); }
 .stmt-mini strong.pos { color: var(--primary-dark); }
 .stmt-mini strong.neg { color: var(--blue); }
 
-/* ---------- Searchable ("ajax-style") combobox: bank/cash accounts,
-   Chart-of-Accounts category picker, static-list pickers ---------- */
 .acct-combo { position: relative; }
 .acct-combo input[type="text"] {
     width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
@@ -594,7 +565,6 @@ a { color: var(--primary-dark); }
 .adi-bal { font-size: 0.8rem; font-weight: 800; color: var(--primary-dark); flex-shrink: 0; }
 .acct-empty { padding: 14px; font-size: 0.82rem; color: var(--text-muted); text-align: center; }
 
-/* "+ Add new" row pinned to the top of the line-item Category combobox */
 .acct-dropdown-item.acct-add-new { background: var(--surface-alt); border-top: none; border-bottom: 1px solid var(--border); }
 .acct-dropdown-item.acct-add-new .adi-name { color: var(--primary-dark); font-weight: 800; display: flex; align-items: center; gap: 8px; }
 .acct-dropdown-item.acct-add-new .adi-name i {
@@ -603,7 +573,6 @@ a { color: var(--primary-dark); }
 }
 .acct-dropdown-item.acct-add-new:hover { background: var(--primary-light); }
 
-/* ---------- Filter toolbar ---------- */
 .filter-toolbar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid var(--border);
     border-radius: var(--radius-lg); padding: 12px 14px; margin-bottom: 16px; box-shadow: var(--shadow);
@@ -618,7 +587,6 @@ a { color: var(--primary-dark); }
 .ft-reset { background: none; border: 1px solid var(--border); border-radius: 999px; padding: 7px 12px; font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .ft-reset:hover { background: var(--bg); color: var(--text); }
 
-/* ---------- Tables ---------- */
 .table-wrap { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow-x: auto; box-shadow: var(--shadow); }
 .ext-scroll-x { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .data-table { width: 100%; border-collapse: collapse; min-width: 640px; }
@@ -645,7 +613,6 @@ a { color: var(--primary-dark); }
 .icon-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .icon-action-btn.danger-hover:hover { background: var(--danger-bg); color: var(--danger); border-color: #f3cfc6; }
 
-/* ---------- Financial statement ---------- */
 .financial-statement-card {
     background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px;
     max-width: 640px; margin: 0 auto; box-shadow: var(--shadow);
@@ -653,8 +620,6 @@ a { color: var(--primary-dark); }
 .statement-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; font-size: 0.9rem; border-bottom: 1px dashed var(--border); position: relative; gap: 10px; }
 .statement-row.highlight { font-weight: 800; font-size: 1rem; color: var(--primary-dark); border-bottom: none; padding-top: 12px; }
 
-/* Clickable financial-statement rows (Reports view) jump to the underlying
-   records when clicked — a small "open" icon fades in on hover as the cue. */
 .statement-row.clickable { cursor: pointer; padding-right: 26px; border-radius: 6px; transition: background .12s var(--ease); }
 .statement-row.clickable:hover { background: var(--primary-light); }
 .statement-row.clickable .stmt-go {
@@ -663,7 +628,6 @@ a { color: var(--primary-dark); }
 }
 .statement-row.clickable:hover .stmt-go { opacity: 1; color: var(--primary-dark); }
 
-/* ---------- Reports hub (QuickBooks-style) ---------- */
 .reports-layout { display: grid; grid-template-columns: 230px 1fr; gap: 20px; align-items: start; }
 .reports-side { background:#fff; border:1px solid var(--border); border-radius: var(--radius-lg); padding: 10px; box-shadow: var(--shadow); }
 .reports-side-item { display:block; width:100%; text-align:left; background:none; border:none; padding: 10px 12px; border-radius: 8px; font-size:.85rem; font-weight:700; color: var(--text); }
@@ -673,7 +637,6 @@ a { color: var(--primary-dark); }
 .reports-fav-row:hover { background: var(--bg); cursor:pointer; }
 .reports-fav-row i.fa-star { color: var(--warning); }
 
-/* ---------- Org chart ---------- */
 .org-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
 .org-tab-btn {
     background: #fff; border: 1px solid var(--border); padding: 9px 18px; border-radius: 999px;
@@ -701,18 +664,14 @@ a { color: var(--primary-dark); }
 .pc-name { font-weight: 700; font-size: 0.85rem; }
 .pc-count { font-size: 0.75rem; color: var(--text-faint); margin-top: 4px; }
 
-/* ---------- Admin / user management ---------- */
 .admin-grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
 .form-card, .table-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); }
 .form-card h3, .table-card h3 { font-size: 0.95rem; margin-bottom: 16px; }
 
-/* ---------- "Assign By" radio row + sub-project checklist (User Admin) ---------- */
 .radio-row { display: flex; flex-wrap: wrap; gap: 20px; padding: 4px 0; }
 .radio-row label { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 600; color: var(--text); cursor: pointer; }
 .radio-row input[type="radio"] { width: 15px; height: 15px; accent-color: var(--primary-dark); flex-shrink: 0; }
 
-/* Container the JS fills with one .checklist-group-title per department,
-   each followed by its .checklist-item rows (a checkbox + label). */
 .checklist-grid {
     border: 1px solid var(--border); border-radius: 10px; background: #fff;
     max-height: 280px; overflow-y: auto; padding: 6px 0;
@@ -728,8 +687,6 @@ a { color: var(--primary-dark); }
 .checklist-item:hover { background: var(--primary-light); }
 .checklist-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary-dark); flex-shrink: 0; }
 
-/* ---------- Modals (QuickBooks-style: light header bar, wide multi-column
-   body, bottom action bar with Cancel + Save) ---------- */
 .modal { position: fixed; inset: 0; background: rgba(12,18,10,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; animation: modalBgIn .12s var(--ease); }
 @keyframes modalBgIn { from { opacity: 0; } to { opacity: 1; } }
 .modal-content {
@@ -743,10 +700,6 @@ a { color: var(--primary-dark); }
 .close-btn { background: none; border: none; font-size: 1.3rem; color: var(--text-muted); line-height: 1; border-radius: 6px; padding: 4px; }
 .close-btn:hover { color: var(--text); background: var(--bg); }
 
-/* Wide, multi-column form body — fields flow left-to-right and wrap into as
-   many columns as fit, instead of stacking one-per-row. Fields that need
-   room (description, memo, address, the account search box) span the full
-   width via .span-full; two-across fields use .span-2. */
 .modal-body {
     padding: 22px 24px;
     display: grid;
@@ -773,31 +726,94 @@ a { color: var(--primary-dark); }
     .modal-footer-actions .btn { width: 100%; }
 }
 
-/* The small "Are you sure?" confirm dialog should stay compact, not adopt
-   the wide multi-column form layout used by data-entry modals. */
 #confirm-modal .modal-content { max-width: 420px; }
 #confirm-modal .modal-body { display: block; padding: 20px; }
 
 /* ======================================================================
-   ACCOUNT (Chart-of-Accounts) MODAL — presented as a right-hand slide-over
-   panel, QuickBooks-style, so it can sit alongside the Expense/Deposit/
-   Journal form it was launched from instead of stacking as a second
-   centred dialog.
+   PAGE-MODAL (full-page forms) — used by every data-entry form: Expense,
+   Deposit, Journal Entry, Transaction, Invoice, Bill, Supplier, Customer,
+   Project, Budget, Bank and Chart-of-Accounts entries. Instead of a
+   centered popup with a dimmed backdrop, these forms open covering the
+   whole viewport like a dedicated page, with a "← Back" control (top
+   left) that returns to wherever the user was, including via the
+   browser's own Back button / gesture.
+   NOTE: #confirm-modal intentionally keeps the old small-popup style —
+   it's a yes/no confirmation, not a data-entry page.
 ====================================================================== */
-#account-modal { justify-content: flex-end; padding: 0; background: rgba(12,18,10,0.38); }
-#account-modal .modal-content {
-    max-width: 460px; width: 100%; height: 100vh; max-height: 100vh;
-    border-radius: 0; margin: 0; box-shadow: var(--shadow-lg);
-    display: flex; flex-direction: column;
-    animation: drawerIn .22s var(--ease);
+.page-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #fff;
+    padding: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    animation: none;
 }
-@keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-#account-modal .modal-header { border-radius: 0; flex: none; }
-#account-modal .modal-body { flex: 1 1 auto; overflow-y: auto; grid-template-columns: 1fr 1fr; }
-#account-modal .modal-footer { flex: none; }
-@media (max-width: 560px) {
-    #account-modal .modal-content { max-width: 100%; }
+.page-modal.hidden { display: none !important; }
+.page-modal .modal-content {
+    width: 100%;
+    max-width: 100% !important;
+    height: 100%;
+    max-height: 100%;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    animation: pageFadeIn .15s var(--ease);
 }
+.page-modal .modal-header,
+.page-modal .qb-modal-topbar {
+    border-radius: 0;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    flex: none;
+}
+.page-modal .modal-body { flex: 1 1 auto; overflow-y: auto; }
+.page-modal .qb-body-scroll { flex: 1 1 auto; }
+.page-modal .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    z-index: 3;
+    flex: none;
+}
+@keyframes pageFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* The close "×" button inside a page-modal is re-labelled at runtime (see
+   enhancePageModalsAsPages() in app.js) into a proper "← Back" pill. */
+.page-back-btn {
+    font-size: .85rem !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 7px 14px !important;
+    border-radius: 20px !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    background: var(--bg) !important;
+    color: var(--text) !important;
+}
+.page-back-btn:hover { background: var(--primary-light) !important; color: var(--primary-darker) !important; }
+
+/* Journal balance indicator pill states, driven live from app.js */
+#journal-balance-indicator.status-approved { background: var(--success-bg); color: var(--primary-dark); }
+#journal-balance-indicator.status-pending_approval { background: var(--warning-bg); color: var(--warning-dark); }
+
+@media (max-width: 720px) {
+    .page-modal .modal-content.modal-wide { width: 100%; }
+}
+
+/* ======================================================================
+   ACCOUNT (Chart-of-Accounts) FORM — a page-modal like the rest, so the
+   old right-hand slide-over treatment is removed; it now behaves exactly
+   like Expense/Deposit/Journal etc: a full page with a Back control.
+====================================================================== */
+#account-modal .modal-body { grid-template-columns: 1fr 1fr; }
 
 /* ======================================================================
    QUICKBOOKS-STYLE FULL MODALS
@@ -812,7 +828,12 @@ a { color: var(--primary-dark); }
     display: flex;
     flex-direction: column;
     max-height: 92vh;
-    overflow: hidden; /* only .qb-body-scroll scrolls internally */
+    overflow: hidden;
+}
+.page-modal.qb-modal .modal-content.modal-wide {
+    max-width: 100% !important;
+    width: 100%;
+    max-height: 100%;
 }
 
 .qb-modal-topbar {
@@ -826,8 +847,6 @@ a { color: var(--primary-dark); }
 .qb-topbar-icons span:hover { color: var(--primary-dark); }
 .qb-topbar-icons .close-btn { font-size: 1.3rem; }
 
-/* Header field grid sits directly under the topbar (not wrapped in
-   .modal-body, since these modals scroll only their line-items area). */
 .qb-header-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -838,13 +857,10 @@ a { color: var(--primary-dark); }
 }
 .qb-header-grid .form-group { margin-bottom: 0; }
 
-/* Amount is the first field in the Expense/Deposit header grids — give it
-   its own full-width right-aligned row, QuickBooks-style, above the rest. */
 .qb-amount-huge { grid-column: 1 / -1; text-align: right; margin-bottom: 4px; }
 .qb-amount-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
 .qb-amount-value { font-size: 2.1rem; font-weight: 800; color: var(--text); line-height: 1.2; letter-spacing: -0.01em; }
 
-/* Scrollable middle section: category/line tables, deposit picker, journal grid */
 .qb-body-scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -859,7 +875,6 @@ a { color: var(--primary-dark); }
 .qb-section-title:first-child { margin-top: 0; }
 .qb-section-title i { color: var(--primary-dark); }
 
-/* The editable line-item table used by Expense / Deposit / Journal */
 .qb-line-table { width: 100%; border-collapse: collapse; min-width: 900px; }
 .qb-line-table thead th {
     background: var(--surface-alt); text-align: left; font-size: 0.65rem; text-transform: uppercase; letter-spacing: .04em;
@@ -900,7 +915,6 @@ a { color: var(--primary-dark); }
 .qb-total-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 700; }
 .qb-totals-row span:last-child { font-size: 1.05rem; font-weight: 800; color: var(--text); }
 
-/* Bank Deposit: "show payments for this location" radio row + empty state */
 .deposit-locations-radio { display: flex; flex-wrap: wrap; gap: 22px; margin-bottom: 16px; }
 .deposit-locations-radio label { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 600; color: var(--text); cursor: pointer; }
 .deposit-locations-radio input[type="radio"] { width: 15px; height: 15px; accent-color: var(--primary-dark); }
@@ -917,11 +931,10 @@ a { color: var(--primary-dark); }
 @media (max-width: 600px) {
     .qb-modal-topbar { padding: 14px 16px; }
     .qb-modal-topbar h3 { font-size: 1rem; }
-    .qb-topbar-icons span:not(:last-child) { display: none; } /* hide "Give feedback"/"Copy" text labels, keep close */
+    .qb-topbar-icons span:not(:last-child) { display: none; }
     .qb-amount-value { font-size: 1.6rem; }
 }
 
-/* ---------- Toasts ---------- */
 #toast-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 200; }
 .toast {
     background: #16211a; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 0.85rem;
@@ -932,9 +945,6 @@ a { color: var(--primary-dark); }
 .toast.success { background: var(--primary-dark); }
 .toast.error { background: var(--danger); }
 
-/* ======================================================================
-   RESPONSIVE
-====================================================================== */
 @media (min-width: 1600px) {
     .content-body { max-width: 1560px; }
 }
@@ -957,7 +967,7 @@ a { color: var(--primary-dark); }
 @media (max-width: 720px) {
     .ext-grid, .ext-grid-wide, .glance-grid, .portal-stat-row { grid-template-columns: 1fr; }
     .modal-content { width: 95vw !important; max-width: 95vw !important; }
-    #account-modal .modal-content { width: 100% !important; }
+    .page-modal .modal-content { width: 100% !important; }
     .financial-statement-card, .form-card, .table-card { padding: 14px !important; }
     .grid-cards { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
     .metrics-row { grid-template-columns: 1fr; }
@@ -976,7 +986,6 @@ a { color: var(--primary-dark); }
     .financial-statement-card { padding: 18px; }
 }
 
-/* ---------- Print ---------- */
 @media print {
     .sidebar, .topbar, .scope-bar, #toast-container, .filter-toolbar, .greeting-header, .pill-nav, .create-actions-row, .range-bar-wrap { display: none !important; }
     body { background: #fff; }
