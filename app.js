@@ -165,6 +165,7 @@ function enhancePageModalsAsPages() {
     PAGE_MODAL_IDS.forEach(id => {
         const modal = $(id);
         if (!modal) return;
+        if (modal.classList.contains('drawer-modal')) return;
         const btn = modal.querySelector('.close-btn');
         if (btn && !btn.classList.contains('page-back-btn')) {
             btn.classList.add('page-back-btn');
@@ -188,10 +189,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     ACCOUNT_LINKED_PREFIXES.forEach(setupAccountCombobox);
     setupStaticListCombobox('exp-location', () => PRESBYTERIES);
     setupStaticListCombobox('exp-payee', () => [...new Set([...suppliersDb.map(s => s.name), ...customersDb.map(c => c.name)])]);
-    setupRangeBar('report-range-bar', (r) => { reportRange = r; renderReportPanel(); });
+    setupRangeBar('report-range-bar', (r) => {
+        reportRange = r;
+        renderReportPanel();
+        if (!$('custom-report-results').classList.contains('hidden')) renderCustomReport();
+    });
     setupRangeBar('coa-range-bar', (r) => { coaRange = r; renderCoaCharts(); });
     populateUserProjectsChecklist();
     setupAccountModal();
+    setupCustomReports();
     enhancePageModalsAsPages();
     await checkFirstRun();
 });
@@ -524,8 +530,25 @@ function setupAccountCombobox(prefix) {
         const t = (term || '').toLowerCase().trim();
         dropdown.innerHTML = '';
 
+        const addRow = document.createElement('div');
+        addRow.className = 'acct-dropdown-item acct-add-new';
+        addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new bank account</span><span class="adi-acct">Open the account form</span></div>';
+        addRow.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dropdown.classList.add('hidden');
+            openBankModal(null, { onCreated: bank => {
+                hidden.value = bank.id;
+                input.value = `${bank.name} — ${bank.account}`;
+                if (prefix === 'exp') updateExpenseHeaderBalance(bank);
+            }});
+        });
+        dropdown.appendChild(addRow);
+
         if (banksDb.length === 0) {
-            dropdown.innerHTML = `<div class="acct-empty">No bank/cash accounts exist yet. Use "+ Add new" from a line item, or add one under Bank Management.</div>`;
+            const empty = document.createElement('div');
+            empty.className = 'acct-empty';
+            empty.textContent = 'No bank/cash accounts exist yet. Use “Add new bank account” above.';
+            dropdown.appendChild(empty);
             dropdown.classList.remove('hidden');
             return;
         }
@@ -538,7 +561,10 @@ function setupAccountCombobox(prefix) {
         ).slice(0, 40);
 
         if (matches.length === 0) {
-            dropdown.innerHTML = `<div class="acct-empty">No accounts match "${escapeHtml(term)}".</div>`;
+            const empty = document.createElement('div');
+            empty.className = 'acct-empty';
+            empty.textContent = `No accounts match “${term}”. You can add a new account above.`;
+            dropdown.appendChild(empty);
         } else {
             matches.forEach(b => {
                 const row = document.createElement('div');
@@ -552,6 +578,7 @@ function setupAccountCombobox(prefix) {
                     input.value = `${b.name} — ${b.account}`;
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
+                    if (prefix === 'exp') updateExpenseHeaderBalance(b);
                 });
                 dropdown.appendChild(row);
             });
@@ -1837,17 +1864,20 @@ function renderSearchDropdown() {
 }
 
 function exportReportToExcel() {
-    const list = getReportTransactions();
+    const customMode = !$('custom-report-results').classList.contains('hidden');
+    const customRows = customMode ? getCustomReportRecords() : [];
+    const list = customMode ? customRows : getReportTransactions();
     if (list.length === 0) { showToast('error', 'Nothing to export for the selected range/scope.'); return; }
-    const data = list.map(item => ({
-        Date: item.date, Type: item.type, Description: item.desc, Department: item.department,
-        Section: item.subsection, Presbytery: item.presbytery, Account: item.bankName || '',
-        Amount: item.amount, RecordedBy: item.createdByName || item.createdBy || ''
-    }));
+    const data = customMode ? customRows.map(item => ({
+        Date: item.date, Module: REPORT_SOURCE_LABELS[item.source] || item.source, Name: item.name,
+        Reference: item.reference, Status: item.status, Amount: item.amount, Details: JSON.stringify(item.raw)
+    })) : list.map(item => ({ Date: item.date, Type: item.type, Description: item.desc, Department: item.department,
+        Section: item.subsection, Presbytery: item.presbytery, Account: item.bankName || '', Amount: item.amount,
+        RecordedBy: item.createdByName || item.createdBy || '' }));
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "SAS Report");
-    XLSX.writeFile(workbook, "SAS_Financial_Report.xlsx");
+    XLSX.utils.book_append_sheet(workbook, worksheet, customMode ? "Custom Report" : "Financial Report");
+    XLSX.writeFile(workbook, customMode ? "SAS_Custom_System_Report.xlsx" : "SAS_Financial_Report.xlsx");
     showToast('success', `Exported ${list.length} records to Excel.`);
 }
 
@@ -1902,6 +1932,9 @@ function setupExtModulesEventListeners() {
     $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) closeModal('bank-modal'); });
     $('bank-form').addEventListener('submit', onSubmitBankForm);
     $('banks-table-body').addEventListener('click', onBanksTableClick);
+    $('bank-subaccount-toggle').addEventListener('change', () => {
+        $('bank-parent-group').classList.toggle('hidden', !$('bank-subaccount-toggle').checked);
+    });
 
     $('open-account-modal-btn').addEventListener('click', () => openAccountModal());
     $('accounts-table-body').addEventListener('click', onAccountsTableClick);
@@ -2593,6 +2626,13 @@ function openBankModal(edit, target) {
         $('bank-branch').value = edit.branch || '';
         $('bank-account').value = edit.account;
         $('bank-currency').value = edit.currency || 'RWF';
+        $('bank-account-type').value = ['Cash and cash equivalents', 'Current assets', 'Credit card', 'Current liabilities'].includes(edit.accountType)
+            ? edit.accountType : 'Cash and cash equivalents';
+        $('bank-detail-type').value = edit.detailType || 'Bank';
+        $('bank-vat').value = edit.vat || '';
+        $('bank-asof').value = edit.asOfDate || new Date().toISOString().split('T')[0];
+        $('bank-subaccount-toggle').checked = !!edit.parentId;
+        $('bank-parent-group').classList.toggle('hidden', !edit.parentId);
         $('bank-balance').value = edit.balance || 0;
         $('bank-notes').value = edit.notes || '';
     } else {
@@ -2601,6 +2641,17 @@ function openBankModal(edit, target) {
         $('bank-form').reset();
         $('bank-edit-id').value = '';
         $('bank-currency').value = 'RWF';
+        $('bank-account-type').value = 'Cash and cash equivalents';
+        $('bank-detail-type').value = 'Bank';
+        $('bank-asof').value = new Date().toISOString().split('T')[0];
+        $('bank-subaccount-toggle').checked = false;
+        $('bank-parent-group').classList.add('hidden');
+    }
+    fillSimpleSelect($('bank-parent'), banksDb.filter(b => !edit || b.id !== edit.id).map(b => `${b.name} — ${b.account}`), true, '-- Select parent account --');
+    if (edit && edit.parentId) {
+        const parents = banksDb.filter(b => b.id !== edit.id);
+        const index = parents.findIndex(b => b.id === edit.parentId);
+        if (index >= 0) $('bank-parent').selectedIndex = index + 1;
     }
     openModal('bank-modal');
 }
@@ -2611,7 +2662,13 @@ async function onSubmitBankForm(e) {
     if (editId && !guardSuperadminAction()) return;
     const payload = sanitizePayload({
         name: $('bank-name').value.trim(), branch: $('bank-branch').value.trim(),
-        account: $('bank-account').value.trim(), currency: $('bank-currency').value.trim() || 'RWF',
+        account: $('bank-account').value.trim(), currency: $('bank-currency').value || 'RWF',
+        accountType: $('bank-account-type').value || 'Cash and cash equivalents',
+        detailType: $('bank-detail-type').value || 'Bank',
+        vat: $('bank-vat').value,
+        asOfDate: $('bank-asof').value || new Date().toISOString().split('T')[0],
+        parentId: $('bank-subaccount-toggle').checked && $('bank-parent').selectedIndex > 0
+            ? banksDb.filter(b => b.id !== editId)[$('bank-parent').selectedIndex - 1].id : '',
         balance: parseFloat($('bank-balance').value) || 0, notes: $('bank-notes').value.trim()
     });
     if (!payload.name || !payload.account) { showToast('error', 'Bank name and account number are required.'); return; }
@@ -2747,6 +2804,7 @@ function openAccountModal(edit, target) {
         $('account-opening-balance').value = edit.openingBalance || '';
         $('account-asof').value = edit.asOfDate || new Date().toISOString().split('T')[0];
         $('account-currency').value = edit.currency || 'RWF Rwanda Franc';
+        $('account-description').value = edit.description || '';
         if (edit.parentId) {
             $('account-subaccount-toggle').checked = true;
             $('account-parent-group').classList.remove('hidden');
@@ -2783,7 +2841,8 @@ async function onSubmitAccountForm(e) {
         openingBalance: parseFloat($('account-opening-balance').value) || 0,
         balance: parseFloat($('account-opening-balance').value) || 0,
         asOfDate: $('account-asof').value || new Date().toISOString().split('T')[0],
-        currency: $('account-currency').value
+        currency: $('account-currency').value,
+        description: $('account-description').value.trim()
     });
 
     const btn = $('account-submit-btn'); btn.disabled = true;
@@ -3239,7 +3298,7 @@ function renderReportPanel() {
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
 
     const list = getReportTransactions();
-    let income = 0, expense = 0, assets = 0, liabilities = 0;
+    let income = 0, expense = 0, assets = banksDb.reduce((sum, bank) => sum + computeBankBalance(bank), 0), liabilities = 0;
     list.forEach(tx => {
         if (tx.type === 'Income') income += tx.amount;
         if (tx.type === 'Expense') expense += tx.amount;
@@ -3258,6 +3317,110 @@ function renderReportPanel() {
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
+}
+
+// ---------------------------------------------------------------------
+// UNIVERSAL REPORT BUILDER — financial reports and every operational
+// collection in the system share one drill-down experience.
+// ---------------------------------------------------------------------
+const REPORT_SOURCE_LABELS = {
+    transactions: 'Transactions & expenses', invoices: 'Invoices', bills: 'Bills',
+    banks: 'Bank accounts', accounts: 'Chart of accounts', customers: 'Customers',
+    suppliers: 'Suppliers', projects: 'Projects', budgets: 'Budgets', journal: 'Journal entries',
+    users: 'Users & roles'
+};
+
+function normalizeReportRecord(source, item) {
+    const amount = Number(item.amount ?? item.balance ?? item.openingBalance ?? item.budget ?? item.totalDebit ?? 0);
+    const date = item.date || item.billDate || item.asOfDate || item.startDate || '';
+    const name = item.name || item.desc || item.number || item.journalNo || item.category || item.email || 'Record';
+    const reference = item.ref || item.number || item.account || item.journalNo || item.id || '';
+    const status = item.status || (item.active === false ? 'rejected' : 'approved');
+    return { source, id: item.id || '', date, name, reference, amount, status, raw: item };
+}
+
+function reportSourceRecords(source) {
+    const sources = {
+        transactions: getReportTransactions(), invoices: invoicesDb, bills: billsDb,
+        banks: getVisibleBanks(), accounts: accountsDb, customers: customersDb,
+        suppliers: suppliersDb, projects: projectsDb, budgets: budgetsDb,
+        journal: journalEntriesDb, users: usersDb
+    };
+    if (source === 'all') return Object.entries(sources).flatMap(([key, rows]) => rows.map(row => normalizeReportRecord(key, row)));
+    return (sources[source] || []).map(row => normalizeReportRecord(source, row));
+}
+
+function getCustomReportRecords() {
+    const source = $('custom-report-source').value;
+    const term = $('custom-report-search').value.trim().toLowerCase();
+    const status = $('custom-report-status').value;
+    const sort = $('custom-report-sort').value;
+    const range = reportRange.preset === 'all' ? { from: '', to: '' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to);
+    let rows = reportSourceRecords(source).filter(r => {
+        if (r.date && !dateInRange(r.date, range) && (range.from || range.to)) return false;
+        if (status !== 'ALL' && r.status !== status) return false;
+        if (!term) return true;
+        return JSON.stringify(r.raw).toLowerCase().includes(term) || r.name.toLowerCase().includes(term) || String(r.reference).toLowerCase().includes(term);
+    });
+    rows.sort((a, b) => {
+        if (sort === 'date-asc') return String(a.date).localeCompare(String(b.date));
+        if (sort === 'amount-desc') return b.amount - a.amount;
+        if (sort === 'amount-asc') return a.amount - b.amount;
+        if (sort === 'name') return a.name.localeCompare(b.name);
+        return String(b.date).localeCompare(String(a.date));
+    });
+    return rows;
+}
+
+function renderCustomReport() {
+    const rows = getCustomReportRecords();
+    const wrap = $('custom-report-results');
+    const source = $('custom-report-source').value;
+    const total = rows.reduce((sum, row) => sum + row.amount, 0);
+    wrap.innerHTML = `
+        <div class="custom-report-head">
+            <div><span class="eyebrow">SAS SYSTEM REPORT</span><h3>${escapeHtml(source === 'all' ? 'All system activity' : REPORT_SOURCE_LABELS[source])}</h3><p>${rows.length} record${rows.length === 1 ? '' : 's'} · Generated ${new Date().toLocaleString()}</p></div>
+            <div class="custom-report-total"><span>Total value</span><strong>${formatRF(total)}</strong></div>
+        </div>
+        <div class="table-wrap"><table class="report-results-table"><thead><tr><th>Date</th><th>Module</th><th>Name / Description</th><th>Reference</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+        ${rows.length ? rows.map((r, index) => `<tr class="report-record-row" data-report-index="${index}"><td>${escapeHtml(r.date || '—')}</td><td><span class="module-chip">${escapeHtml(REPORT_SOURCE_LABELS[r.source] || r.source)}</span></td><td><strong>${escapeHtml(r.name)}</strong></td><td>${escapeHtml(r.reference || '—')}</td><td>${statusPill(r.status)}</td><td class="num">${formatRF(r.amount)}</td><td><button type="button" class="icon-action-btn" title="View details"><i class="fa-solid fa-eye"></i></button></td></tr>`).join('') : '<tr class="table-empty-row"><td colspan="7">No records match your report choices.</td></tr>'}
+        </tbody></table></div>`;
+    wrap.classList.remove('hidden');
+    wrap.dataset.rows = 'ready';
+    qsa('.report-record-row', wrap).forEach(tr => tr.addEventListener('click', () => openRecordDetail(rows[Number(tr.dataset.reportIndex)])));
+}
+
+function openRecordDetail(record) {
+    if (!record) return;
+    $('record-detail-title').textContent = record.name;
+    const ignored = new Set(['id', 'createdAt', 'updatedAt']);
+    const fields = Object.entries(record.raw).filter(([key, value]) => !ignored.has(key) && value !== undefined && value !== null && value !== '');
+    $('record-detail-body').innerHTML = `<div class="record-summary"><span class="module-chip">${escapeHtml(REPORT_SOURCE_LABELS[record.source] || record.source)}</span><strong>${formatRF(record.amount)}</strong></div><div class="detail-grid">${fields.map(([key, value]) => `<div class="detail-field"><span>${escapeHtml(key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()))}</span><strong>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</strong></div>`).join('')}</div>`;
+    openModal('record-detail-modal');
+}
+
+function setReportMode(mode) {
+    qsa('.reports-side-item[data-report-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.reportMode === mode));
+    const custom = mode !== 'financial';
+    $('custom-report-builder').classList.toggle('hidden', !custom);
+    $('printable-report').classList.toggle('hidden', custom);
+    qsa('#view-reports .ext-grid-wide').forEach(el => el.classList.toggle('hidden', custom));
+    if (custom) {
+        if (mode === 'activity') $('custom-report-source').value = 'all';
+        if (mode === 'management') $('custom-report-source').value = 'projects';
+        renderCustomReport();
+    } else $('custom-report-results').classList.add('hidden');
+}
+
+function setupCustomReports() {
+    qsa('.reports-side-item[data-report-mode]').forEach(btn => btn.addEventListener('click', () => setReportMode(btn.dataset.reportMode)));
+    $('run-custom-report').addEventListener('click', renderCustomReport);
+    ['custom-report-source', 'custom-report-sort', 'custom-report-status'].forEach(id => $(id).addEventListener('change', renderCustomReport));
+    $('custom-report-search').addEventListener('input', renderCustomReport);
+    $('close-record-detail').addEventListener('click', () => closeModal('record-detail-modal'));
+    $('done-record-detail').addEventListener('click', () => closeModal('record-detail-modal'));
+    $('record-detail-modal').addEventListener('click', e => { if (e.target === $('record-detail-modal')) closeModal('record-detail-modal'); });
+    $('print-record-detail').addEventListener('click', () => window.print());
 }
 
 function renderPendingApprovals() {
@@ -3349,7 +3512,11 @@ function addExpenseLine() {
 
 function updateExpenseHeaderBalance(bank) {
     if (!bank) return;
-    $('exp-amount-display').dataset.bankBalance = computeBankBalance(bank);
+    const current = computeBankBalance(bank);
+    $('exp-amount-display').dataset.bankBalance = current;
+    $('exp-balance-preview').classList.remove('hidden');
+    $('exp-current-balance').textContent = formatRF(current);
+    updateExpenseTotals();
 }
 
 function updateExpenseTotals() {
@@ -3359,12 +3526,20 @@ function updateExpenseTotals() {
     $('exp-subtotal').textContent = formatRF(total);
     $('exp-total').textContent = formatRF(total);
     $('exp-amount-display').textContent = formatRF(total);
+    const current = Number($('exp-amount-display').dataset.bankBalance || 0);
+    const hasBank = !!$('exp-bank-id').value;
+    $('exp-balance-preview').classList.toggle('hidden', !hasBank);
+    $('exp-current-balance').textContent = formatRF(current);
+    $('exp-projected-balance').textContent = formatRF(current - total);
+    $('exp-projected-balance').classList.toggle('negative-balance', current - total < 0);
 }
 
 function openExpenseModal() {
     $('expense-form').reset();
     $('exp-date').value = new Date().toISOString().split('T')[0];
     resetAccountCombobox('exp');
+    delete $('exp-amount-display').dataset.bankBalance;
+    $('exp-balance-preview').classList.add('hidden');
     const payeeInput = $('exp-payee-search'), payeeHidden = $('exp-payee-id');
     if (payeeInput) payeeInput.value = '';
     if (payeeHidden) payeeHidden.value = '';
