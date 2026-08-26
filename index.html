@@ -741,7 +741,7 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Bank Management</h2>
-                            <p>Every bank account SAS uses. Superadmin only.</p>
+                            <p>Every bank account SAS uses. Any user can quick-add one while recording an expense or deposit; only a Superadmin can edit or delete one here.</p>
                         </div>
                         <button class="btn btn-primary" id="open-bank-modal-btn"><i class="fa-solid fa-plus"></i> New Bank</button>
                     </div>
@@ -820,8 +820,8 @@
         </main>
     </div>
 
-    <!-- ============ Modal: New / Edit Transaction ============ -->
-    <div id="tx-modal" class="modal hidden">
+    <!-- ============ Page-form: New / Edit Transaction ============ -->
+    <div id="tx-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header">
                 <h3 id="tx-modal-title"><i class="fa-solid fa-receipt"></i> Record Transaction</h3>
@@ -885,7 +885,7 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Confirm ============ -->
+    <!-- ============ Modal: Confirm (stays a small popup, not a full page) ============ -->
     <div id="confirm-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -902,8 +902,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Invoice ============ -->
-    <div id="invoice-modal" class="modal hidden">
+    <!-- ============ Page-form: Invoice ============ -->
+    <div id="invoice-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="invoice-modal-title"><i class="fa-solid fa-file-invoice"></i> Record Invoice</h3><button class="close-btn" id="close-invoice-modal">&times;</button></div>
             <form id="invoice-form" novalidate>
@@ -939,8 +939,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Bill ============ -->
-    <div id="bill-modal" class="modal hidden">
+    <!-- ============ Page-form: Bill ============ -->
+    <div id="bill-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="bill-modal-title"><i class="fa-solid fa-receipt"></i> Record Bill</h3><button class="close-btn" id="close-bill-modal">&times;</button></div>
             <form id="bill-form" novalidate>
@@ -976,8 +976,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Supplier ============ -->
-    <div id="supplier-modal" class="modal hidden">
+    <!-- ============ Page-form: Supplier ============ -->
+    <div id="supplier-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="supplier-modal-title"><i class="fa-solid fa-truck-field"></i> Add Supplier</h3><button class="close-btn" id="close-supplier-modal">&times;</button></div>
             <form id="supplier-form" novalidate>
@@ -1001,8 +1001,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Customer ============ -->
-    <div id="customer-modal" class="modal hidden">
+    <!-- ============ Page-form: Customer ============ -->
+    <div id="customer-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="customer-modal-title"><i class="fa-solid fa-address-book"></i> Add Customer</h3><button class="close-btn" id="close-customer-modal">&times;</button></div>
             <form id="customer-form" novalidate>
@@ -1026,8 +1026,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Project ============ -->
-    <div id="project-modal" class="modal hidden">
+    <!-- ============ Page-form: Project ============ -->
+    <div id="project-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="project-modal-title"><i class="fa-solid fa-diagram-project"></i> Add Project</h3><button class="close-btn" id="close-project-modal">&times;</button></div>
             <form id="project-form" novalidate>
@@ -1066,8 +1066,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Budget Line (superadmin only) ============ -->
-    <div id="budget-modal" class="modal hidden">
+    <!-- ============ Page-form: Budget Line (superadmin only) ============ -->
+    <div id="budget-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="budget-modal-title"><i class="fa-solid fa-scale-balanced"></i> Add Budget Line</h3><button class="close-btn" id="close-budget-modal">&times;</button></div>
             <form id="budget-form" novalidate>
@@ -1090,8 +1090,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Bank (superadmin only) ============ -->
-    <div id="bank-modal" class="modal hidden">
+    <!-- ============ Page-form: Bank ============ -->
+    <div id="bank-modal" class="modal page-modal hidden">
         <div class="modal-content modal-wide">
             <div class="modal-header"><h3 id="bank-modal-title"><i class="fa-solid fa-building-columns"></i> Add Bank</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
             <form id="bank-form" novalidate>
@@ -1114,8 +1114,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: New / Edit Chart-of-Accounts entry (QuickBooks-style replica) ============ -->
-    <div id="account-modal" class="modal hidden">
+    <!-- ============ Page-form: New / Edit Chart-of-Accounts entry ============ -->
+    <div id="account-modal" class="modal page-modal hidden">
         <div class="modal-content" style="max-width:560px;">
             <div class="modal-header">
                 <h3 id="account-modal-title">New account</h3>
@@ -1177,8 +1177,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Expense (QuickBooks-style replica) ============ -->
-    <div id="expense-modal" class="modal hidden qb-modal">
+    <!-- ============ Page-form: Expense (QuickBooks-style replica) ============ -->
+    <div id="expense-modal" class="modal page-modal hidden qb-modal">
         <div class="modal-content modal-wide">
             <div class="qb-modal-topbar">
                 <h3><i class="fa-solid fa-clock-rotate-left"></i> Expense</h3>
@@ -1205,6 +1205,7 @@
                             <input type="hidden" id="exp-bank-id">
                             <div class="acct-dropdown hidden" id="exp-bank-dropdown"></div>
                         </div>
+                        <div class="field-hint">This is the bank the expense total will be deducted from.</div>
                     </div>
                     <div class="qb-amount-huge">
                         <div class="qb-amount-label">Amount</div>
@@ -1238,11 +1239,11 @@
                 </div>
 
                 <div class="qb-body-scroll">
-                    <div class="qb-section-title"><i class="fa-solid fa-list"></i> Category details</div>
+                    <div class="qb-section-title"><i class="fa-solid fa-list"></i> Line details</div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="qb-line-table">
                             <thead><tr>
-                                <th>#</th><th>Category</th><th>Description</th><th>Amount (RF)</th><th>VAT</th><th>Billable</th><th>Customer / Project</th><th>Class</th><th></th>
+                                <th>#</th><th>Bank Account</th><th>Description</th><th>Amount (RF)</th><th>VAT</th><th>Billable</th><th>Customer / Project</th><th>Class</th><th></th>
                             </tr></thead>
                             <tbody id="exp-lines-body"></tbody>
                         </table>
@@ -1267,8 +1268,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Bank Deposit (QuickBooks-style replica) ============ -->
-    <div id="deposit-modal" class="modal hidden qb-modal">
+    <!-- ============ Page-form: Bank Deposit (QuickBooks-style replica) ============ -->
+    <div id="deposit-modal" class="modal page-modal hidden qb-modal">
         <div class="modal-content modal-wide">
             <div class="qb-modal-topbar">
                 <h3><i class="fa-solid fa-building-columns"></i> Bank Deposit</h3>
@@ -1315,7 +1316,7 @@
                     <div class="table-wrap ext-scroll-x">
                         <table class="qb-line-table">
                             <thead><tr>
-                                <th>#</th><th>Received from</th><th>Account</th><th>Description</th><th>Payment method</th><th>Ref no.</th><th>Amount (RF)</th><th>VAT</th><th>Class</th><th></th>
+                                <th>#</th><th>Received from</th><th>Bank Account</th><th>Description</th><th>Payment method</th><th>Ref no.</th><th>Amount (RF)</th><th>VAT</th><th>Class</th><th></th>
                             </tr></thead>
                             <tbody id="deposit-lines-body"></tbody>
                         </table>
@@ -1338,8 +1339,8 @@
         </div>
     </div>
 
-    <!-- ============ Modal: Journal Entry (double-entry, QuickBooks-style replica) ============ -->
-    <div id="journal-modal" class="modal hidden qb-modal">
+    <!-- ============ Page-form: Journal Entry (double-entry, QuickBooks-style replica) ============ -->
+    <div id="journal-modal" class="modal page-modal hidden qb-modal">
         <div class="modal-content modal-wide">
             <div class="qb-modal-topbar">
                 <h3 id="journal-modal-title"><i class="fa-solid fa-scale-balanced"></i> Journal Entry</h3>
@@ -1365,6 +1366,12 @@
                     </div>
                 </div>
                 <div class="qb-body-scroll">
+                    <div class="approval-note" style="margin-bottom:14px;">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Debits and Credits are optional and don't need to match to save — but for correct double-entry
+                        accounting we recommend keeping them equal. Any difference will be saved as an unbalanced entry
+                        and flagged below.
+                    </div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="qb-line-table">
                             <thead><tr>
@@ -1381,9 +1388,10 @@
                             </tfoot>
                         </table>
                     </div>
-                    <div class="qb-lines-actions">
+                    <div class="qb-lines-actions" style="align-items:center;">
                         <button type="button" class="btn btn-outline" id="journal-add-line-btn"><i class="fa-solid fa-plus"></i> Add lines</button>
                         <button type="button" class="btn btn-outline" id="journal-clear-lines-btn">Clear all lines</button>
+                        <span id="journal-balance-indicator" class="status-pill status-approved" style="margin-left:auto;">Balanced</span>
                     </div>
                 </div>
                 <div class="modal-footer">
