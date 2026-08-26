@@ -97,6 +97,7 @@ let coaDeptChart = null;
 let glanceExpenseChart = null;
 let reportDeptChart = null;
 let reportPieChart = null;
+let customReportChart = null;
 
 let reportRange = { preset: 'all', from: '', to: '' };
 let coaRange = { preset: 'all', from: '', to: '' };
@@ -457,10 +458,7 @@ function setupEventListeners() {
 
     qsa('#printable-report .statement-row.clickable').forEach(row => {
         row.addEventListener('click', () => {
-            const type = row.dataset.jump;
-            switchView('transactions');
-            setTxTypeFilter(type);
-            showToast('info', `Showing every ${type} record behind this figure.`);
+            openFinancialStatementDetail(row.dataset.jump);
         });
     });
 
@@ -540,6 +538,7 @@ function setupAccountCombobox(prefix) {
                 hidden.value = bank.id;
                 input.value = `${bank.name} — ${bank.account}`;
                 if (prefix === 'exp') updateExpenseHeaderBalance(bank);
+                if (prefix === 'deposit') updateDepositHeaderBalance(bank);
             }});
         });
         dropdown.appendChild(addRow);
@@ -579,6 +578,7 @@ function setupAccountCombobox(prefix) {
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
                     if (prefix === 'exp') updateExpenseHeaderBalance(b);
+                    if (prefix === 'deposit') updateDepositHeaderBalance(b);
                 });
                 dropdown.appendChild(row);
             });
@@ -3165,15 +3165,17 @@ function renderCoaCharts() {
     const inSeries = buckets.map(bkt => tx.filter(t => t.type === 'Income' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
     const outSeries = buckets.map(bkt => tx.filter(t => t.type === 'Expense' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
 
-    const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
     const deptSource = hasFullScope() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
+    const recordedDepartments = [...new Set(deptSource.map(t => t.department || 'ALL'))];
+    const depts = currentScope.department === 'ALL'
+        ? (recordedDepartments.length ? recordedDepartments : ['ALL'])
+        : [currentScope.department];
     const incomeByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
 
     requestAnimationFrame(() => {
         const bankCtx = $('coa-bank-chart');
         if (bankCtx && typeof Chart !== 'undefined') {
-            sizeCanvasExplicitly(bankCtx, 260);
             if (coaBankChart) coaBankChart.destroy();
             coaBankChart = new Chart(bankCtx.getContext('2d'), {
                 type: 'line',
@@ -3185,7 +3187,7 @@ function renderCoaCharts() {
                     ]
                 },
                 options: {
-                    responsive: false, maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
@@ -3197,19 +3199,18 @@ function renderCoaCharts() {
 
         const deptCtx = $('coa-dept-chart');
         if (deptCtx && typeof Chart !== 'undefined') {
-            sizeCanvasExplicitly(deptCtx, 260);
             if (coaDeptChart) coaDeptChart.destroy();
             coaDeptChart = new Chart(deptCtx.getContext('2d'), {
                 type: 'bar',
                 data: {
-                    labels: depts.map(shortDeptName),
+                    labels: depts.map(d => d === 'ALL' ? 'All / Unassigned' : shortDeptName(d)),
                     datasets: [
                         { label: 'Income', data: incomeByDept, backgroundColor: CHART_GREEN, borderRadius: 8, maxBarThickness: 34 },
                         { label: 'Expense', data: expenseByDept, backgroundColor: CHART_BLUE, borderRadius: 8, maxBarThickness: 34 }
                     ]
                 },
                 options: {
-                    responsive: false, maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
@@ -3236,30 +3237,32 @@ function getReportTransactions() {
 }
 
 function renderReportCharts(list) {
-    const depts = currentScope.department === 'ALL' ? Object.keys(EPR_STRUCTURE) : [currentScope.department];
+    const recordedDepartments = [...new Set(list.map(t => t.department || 'ALL'))];
+    const depts = currentScope.department === 'ALL'
+        ? (recordedDepartments.length ? recordedDepartments : ['ALL'])
+        : [currentScope.department];
     const incomeByDept = depts.map(d => list.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => list.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
 
-    const pieDepts = Object.keys(EPR_STRUCTURE);
+    const pieDepts = depts;
     const pieTotals = pieDepts.map(d => list.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0));
     const pieHasData = pieTotals.some(v => v > 0);
 
     requestAnimationFrame(() => {
         const barCtx = $('report-dept-chart');
         if (barCtx && typeof Chart !== 'undefined') {
-            sizeCanvasExplicitly(barCtx, 280);
             if (reportDeptChart) reportDeptChart.destroy();
             reportDeptChart = new Chart(barCtx.getContext('2d'), {
                 type: 'bar',
                 data: {
-                    labels: depts.map(shortDeptName),
+                    labels: depts.map(d => d === 'ALL' ? 'All / Unassigned' : shortDeptName(d)),
                     datasets: [
                         { label: 'Income', data: incomeByDept, backgroundColor: CHART_GREEN, borderRadius: 8, maxBarThickness: 34 },
                         { label: 'Expense', data: expenseByDept, backgroundColor: CHART_BLUE, borderRadius: 8, maxBarThickness: 34 }
                     ]
                 },
                 options: {
-                    responsive: false, maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
@@ -3271,17 +3274,15 @@ function renderReportCharts(list) {
 
         const pieCanvas = $('report-pie-chart');
         if (pieCanvas && typeof Chart !== 'undefined') {
-            pieCanvas.width = 260; pieCanvas.height = 260;
-            pieCanvas.style.width = '260px'; pieCanvas.style.height = '260px';
             if (reportPieChart) reportPieChart.destroy();
             reportPieChart = new Chart(pieCanvas.getContext('2d'), {
                 type: 'pie',
                 data: {
-                    labels: pieDepts.map(shortDeptName),
+                    labels: pieDepts.map(d => d === 'ALL' ? 'All / Unassigned' : shortDeptName(d)),
                     datasets: [{ data: pieHasData ? pieTotals : [1], backgroundColor: pieHasData ? pieDepts.map((_, i) => DEPT_CHART_COLORS[i % DEPT_CHART_COLORS.length]) : ['#e3e5e8'], borderWidth: 1, borderColor: '#fff' }]
                 },
                 options: {
-                    responsive: false, maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10.5 } } }, tooltip: { enabled: pieHasData } }
                 }
             });
@@ -3317,6 +3318,31 @@ function renderReportPanel() {
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
+}
+
+function openFinancialStatementDetail(type) {
+    const labels = {
+        Income: 'Revenue / Income details', Expense: 'Operating expense details',
+        Asset: 'Current asset and bank details', Liability: 'Liability details'
+    };
+    const txRows = getReportTransactions()
+        .filter(tx => tx.type === type)
+        .map(tx => normalizeReportRecord('transactions', tx));
+    const rows = type === 'Asset'
+        ? [...getVisibleBanks().map(bank => normalizeReportRecord('banks', { ...bank, balance: computeBankBalance(bank) })), ...txRows]
+        : txRows;
+    const total = rows.reduce((sum, row) => sum + row.amount, 0);
+    $('record-detail-title').textContent = labels[type] || `${type} details`;
+    $('record-detail-body').innerHTML = `
+        <div class="record-summary"><span class="module-chip">Financial statement</span><strong>${formatRF(total)}</strong></div>
+        <p class="detail-intro">${rows.length} record${rows.length === 1 ? '' : 's'} make up this financial statement figure. Click a row to view every field saved for that record.</p>
+        <div class="table-wrap"><table class="report-results-table"><thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Reference</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+        ${rows.length ? rows.map((row, index) => `<tr class="financial-detail-row" data-index="${index}"><td>${escapeHtml(row.date || '—')}</td><td><span class="module-chip">${escapeHtml(REPORT_SOURCE_LABELS[row.source] || row.source)}</span></td><td><strong>${escapeHtml(row.name)}</strong></td><td>${escapeHtml(row.reference || '—')}</td><td class="num">${formatRF(row.amount)}</td><td><i class="fa-solid fa-eye"></i></td></tr>`).join('') : '<tr class="table-empty-row"><td colspan="6">No records are available for this figure and period.</td></tr>'}
+        </tbody></table></div>`;
+    qsa('.financial-detail-row', $('record-detail-body')).forEach(tr => {
+        tr.addEventListener('click', () => openRecordDetail(rows[Number(tr.dataset.index)]));
+    });
+    openModal('record-detail-modal');
 }
 
 // ---------------------------------------------------------------------
@@ -3382,12 +3408,33 @@ function renderCustomReport() {
             <div><span class="eyebrow">SAS SYSTEM REPORT</span><h3>${escapeHtml(source === 'all' ? 'All system activity' : REPORT_SOURCE_LABELS[source])}</h3><p>${rows.length} record${rows.length === 1 ? '' : 's'} · Generated ${new Date().toLocaleString()}</p></div>
             <div class="custom-report-total"><span>Total value</span><strong>${formatRF(total)}</strong></div>
         </div>
+        <div class="custom-report-chart"><div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Report values overview</div><div class="chart-canvas-wrap"><canvas id="custom-report-chart"></canvas></div></div>
         <div class="table-wrap"><table class="report-results-table"><thead><tr><th>Date</th><th>Module</th><th>Name / Description</th><th>Reference</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead><tbody>
         ${rows.length ? rows.map((r, index) => `<tr class="report-record-row" data-report-index="${index}"><td>${escapeHtml(r.date || '—')}</td><td><span class="module-chip">${escapeHtml(REPORT_SOURCE_LABELS[r.source] || r.source)}</span></td><td><strong>${escapeHtml(r.name)}</strong></td><td>${escapeHtml(r.reference || '—')}</td><td>${statusPill(r.status)}</td><td class="num">${formatRF(r.amount)}</td><td><button type="button" class="icon-action-btn" title="View details"><i class="fa-solid fa-eye"></i></button></td></tr>`).join('') : '<tr class="table-empty-row"><td colspan="7">No records match your report choices.</td></tr>'}
         </tbody></table></div>`;
     wrap.classList.remove('hidden');
     wrap.dataset.rows = 'ready';
     qsa('.report-record-row', wrap).forEach(tr => tr.addEventListener('click', () => openRecordDetail(rows[Number(tr.dataset.reportIndex)])));
+    requestAnimationFrame(() => {
+        const canvas = $('custom-report-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        if (customReportChart) customReportChart.destroy();
+        const chartRows = [...rows].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 12);
+        customReportChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: chartRows.length ? chartRows.map(row => row.name.length > 28 ? row.name.slice(0, 28) + '…' : row.name) : ['No valued records'],
+                datasets: [{ label: 'Amount (RF)', data: chartRows.length ? chartRows.map(row => row.amount) : [0], backgroundColor: chartRows.map((_, i) => DEPT_CHART_COLORS[i % DEPT_CHART_COLORS.length]), borderRadius: 7, maxBarThickness: 34 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, indexAxis: chartRows.length > 6 ? 'y' : 'x',
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: context => formatRF(context.raw) } } },
+                scales: chartRows.length > 6
+                    ? { x: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: value => formatRF(value) } }, y: { grid: { display: false } } }
+                    : { y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: value => formatRF(value) } }, x: { grid: { display: false } } }
+            }
+        });
+    });
 }
 
 function openRecordDetail(record) {
@@ -3456,13 +3503,13 @@ function setupQbModalsEventListeners() {
     $('expense-modal').addEventListener('click', (e) => { if (e.target === $('expense-modal')) closeModal('expense-modal'); });
     $('expense-form').addEventListener('submit', onSubmitExpenseForm);
     $('exp-add-line-btn').addEventListener('click', () => { addExpenseLine(); });
-    $('exp-clear-lines-btn').addEventListener('click', () => { $('exp-lines-body').innerHTML = ''; addExpenseLine(); addExpenseLine(); updateExpenseTotals(); });
+    $('exp-clear-lines-btn').addEventListener('click', () => { $('exp-lines-body').innerHTML = ''; for (let i = 0; i < 4; i++) addExpenseLine(); updateExpenseTotals(); });
 
     $('close-deposit-modal').addEventListener('click', () => closeModal('deposit-modal'));
     $('deposit-modal').addEventListener('click', (e) => { if (e.target === $('deposit-modal')) closeModal('deposit-modal'); });
     $('deposit-form').addEventListener('submit', onSubmitDepositForm);
     $('deposit-add-line-btn').addEventListener('click', () => { addDepositLine(); });
-    $('deposit-clear-lines-btn').addEventListener('click', () => { $('deposit-lines-body').innerHTML = ''; addDepositLine(); addDepositLine(); updateDepositTotals(); });
+    $('deposit-clear-lines-btn').addEventListener('click', () => { $('deposit-lines-body').innerHTML = ''; for (let i = 0; i < 4; i++) addDepositLine(); updateDepositTotals(); });
 
     $('close-journal-modal').addEventListener('click', () => closeModal('journal-modal'));
     $('journal-modal').addEventListener('click', (e) => { if (e.target === $('journal-modal')) closeModal('journal-modal'); });
@@ -3547,7 +3594,7 @@ function openExpenseModal() {
     if (locInput) locInput.value = '';
     if (locHidden) locHidden.value = '';
     $('exp-lines-body').innerHTML = '';
-    addExpenseLine(); addExpenseLine();
+    for (let i = 0; i < 4; i++) addExpenseLine();
     updateExpenseTotals();
     openModal('expense-modal');
 }
@@ -3642,7 +3689,14 @@ function addDepositLine() {
     tbody.appendChild(tr);
 }
 
-function updateDepositHeaderBalance(bank) {}
+function updateDepositHeaderBalance(bank) {
+    if (!bank) return;
+    const current = computeBankBalance(bank);
+    $('deposit-amount-display').dataset.bankBalance = current;
+    $('deposit-balance-preview').classList.remove('hidden');
+    $('deposit-current-balance').textContent = formatRF(current);
+    updateDepositTotals();
+}
 
 function updateDepositTotals() {
     const rows = qsa('#deposit-lines-body tr');
@@ -3650,14 +3704,21 @@ function updateDepositTotals() {
     rows.forEach(tr => { const v = parseFloat(tr.querySelector('.line-amount').value); if (!isNaN(v)) total += v; });
     $('deposit-funds-total').textContent = formatRF(total);
     $('deposit-amount-display').textContent = formatRF(total);
+    const current = Number($('deposit-amount-display').dataset.bankBalance || 0);
+    const hasBank = !!$('deposit-bank-id').value;
+    $('deposit-balance-preview').classList.toggle('hidden', !hasBank);
+    $('deposit-current-balance').textContent = formatRF(current);
+    $('deposit-projected-balance').textContent = formatRF(current + total);
 }
 
 function openDepositModal() {
     $('deposit-form').reset();
     $('deposit-date').value = new Date().toISOString().split('T')[0];
     resetAccountCombobox('deposit');
+    delete $('deposit-amount-display').dataset.bankBalance;
+    $('deposit-balance-preview').classList.add('hidden');
     $('deposit-lines-body').innerHTML = '';
-    addDepositLine(); addDepositLine();
+    for (let i = 0; i < 4; i++) addDepositLine();
     updateDepositTotals();
     openModal('deposit-modal');
 }
@@ -3742,7 +3803,26 @@ function addJournalLine() {
         <td><select class="line-location"></select></td>
         <td><select class="line-class"></select></td>
         <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
-    fillSimpleSelect(tr.querySelector('.line-account'), getJournalAccountOptions(), true, '-- Account --');
+    const accountSelect = tr.querySelector('.line-account');
+    fillSimpleSelect(accountSelect, getJournalAccountOptions(), true, '-- Account --');
+    const addAccountOption = document.createElement('option');
+    addAccountOption.value = '__ADD_NEW_ACCOUNT__';
+    addAccountOption.textContent = '+ Add new account';
+    accountSelect.insertBefore(addAccountOption, accountSelect.options[1] || null);
+    accountSelect.addEventListener('change', () => {
+        if (accountSelect.value !== '__ADD_NEW_ACCOUNT__') return;
+        accountSelect.value = '';
+        openAccountModal(null, {
+            onCreated: account => {
+                const label = formatAccountLabel(account);
+                const option = document.createElement('option');
+                option.value = label;
+                option.textContent = label;
+                accountSelect.appendChild(option);
+                accountSelect.value = label;
+            }
+        });
+    });
     fillSimpleSelect(tr.querySelector('.line-name'), [...new Set([...customersDb.map(c => c.name), ...suppliersDb.map(s => s.name)])], true, '-- Name --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillSimpleSelect(tr.querySelector('.line-location'), PRESBYTERIES, true, '-- Location --');
