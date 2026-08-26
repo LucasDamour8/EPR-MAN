@@ -36,7 +36,10 @@ const PRESBYTERIES = [
     "EPR Presbytery Gitarama", "EPR Presbytery Rubengera", "EPR Presbytery Kirinda", "EPR Presbytery Gisenyi"
 ];
 
-const ROLE_LABELS = { superadmin: "Superadmin", manager: "Manager", finance: "Finance User", accountant: "Accountant", general_accountant: "General Accountant" };
+const ROLE_LABELS = {
+    superadmin: "Superadmin", manager: "Manager", finance: "Finance User",
+    accountant: "Accountant", general_accountant: "General Accountant"
+};
 const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
 const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'exp', 'deposit'];
@@ -50,8 +53,9 @@ const PAYMENT_METHODS = ["Cash", "Bank Transfer", "Mobile Money", "Cheque", "Car
 
 // ---------------------------------------------------------------------
 // Chart of Accounts — account type / detail type structure (QuickBooks
-// style). Used by the "New account" modal and by every place an account
-// needs to be picked (e.g. the Expense form's Category column).
+// style). Used by the "New account" page for the Chart of Accounts view.
+// NOTE: the Expense/Deposit line-item picker below intentionally uses
+// BANK ACCOUNTS, not this Chart of Accounts list — see setupLineBankCombobox.
 // ---------------------------------------------------------------------
 const CURRENCY_OPTIONS = [
     "RWF Rwanda Franc", "EUR Euro", "GBP British Pound Sterling", "USD United States Dollar",
@@ -60,22 +64,11 @@ const CURRENCY_OPTIONS = [
 ];
 
 const ACCOUNT_TYPE_STRUCTURE = {
-    "ASSET": [
-        "Cash and cash equivalents", "Accounts receivable (A/R)", "Current assets",
-        "Fixed assets", "Non-current assets"
-    ],
-    "LIABILITY": [
-        "Credit card", "Accounts payable (A/P)", "Current liabilities", "Non-current liabilities"
-    ],
-    "EQUITY": [
-        "Owner's equity", "Retained earnings", "Opening balance equity"
-    ],
-    "INCOME": [
-        "Sales of product income", "Service/fee income", "Discounts given", "Other income"
-    ],
-    "EXPENSE": [
-        "Operating expense", "Cost of goods sold", "Payroll expense", "Other expense"
-    ]
+    "ASSET": ["Cash and cash equivalents", "Accounts receivable (A/R)", "Current assets", "Fixed assets", "Non-current assets"],
+    "LIABILITY": ["Credit card", "Accounts payable (A/P)", "Current liabilities", "Non-current liabilities"],
+    "EQUITY": ["Owner's equity", "Retained earnings", "Opening balance equity"],
+    "INCOME": ["Sales of product income", "Service/fee income", "Discounts given", "Other income"],
+    "EXPENSE": ["Operating expense", "Cost of goods sold", "Payroll expense", "Other expense"]
 };
 
 let usersDb = [];
@@ -113,13 +106,80 @@ let unsubInvoices = null, unsubBills = null;
 let unsubSuppliers = null, unsubCustomers = null, unsubProjects = null;
 let unsubBudgets = null, unsubBanks = null, unsubAccounts = null;
 
-// Tracks which expense/deposit/journal table row last opened the "New
-// account" modal, so we know where to drop the newly-created account
-// once it's saved.
+// "+ Add new" from a Chart-of-Accounts line picker (still used elsewhere)
+// remembers which row/callback to return the newly created account to.
 let pendingAccountTarget = null;
+// "+ Add new" from a Bank-Account line picker (Expense/Deposit lines)
+// remembers which row/callback to return the newly created bank to.
+let pendingBankTarget = null;
 
 const $ = (id) => document.getElementById(id);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+// =======================================================================
+// PAGE-MODAL NAVIGATION
+// Every data-entry form (Expense, Deposit, Journal, Transaction, Invoice,
+// Bill, Supplier, Customer, Project, Budget, Bank, Chart-of-Accounts) opens
+// as a full covering page (class "page-modal" in CSS) instead of a small
+// centred popup. openModal()/closeModal() are the single choke point used
+// everywhere in this file to show/hide those pages, so that:
+//   - each newly opened page renders above any page already open (z-index
+//     bump) — this matters when the "+ Add new" bank shortcut opens the
+//     Bank page on top of the Expense page it was launched from;
+//   - opening a page pushes browser history so the device/browser Back
+//     gesture closes the topmost open page instead of leaving the app;
+//   - the confirm dialog (#confirm-modal) is NOT a page — it stays a small
+//     popup and is untouched by this mechanism.
+// =======================================================================
+const PAGE_MODAL_IDS = [
+    'tx-modal', 'invoice-modal', 'bill-modal', 'supplier-modal', 'customer-modal',
+    'project-modal', 'budget-modal', 'bank-modal', 'account-modal',
+    'expense-modal', 'deposit-modal', 'journal-modal'
+];
+let modalZCounter = 100;
+
+function openModal(id) {
+    const el = $(id);
+    if (!el) return;
+    modalZCounter += 1;
+    el.style.zIndex = String(modalZCounter);
+    el.classList.remove('hidden');
+    if (el.classList.contains('page-modal')) {
+        try { history.pushState({ pageModal: id }, '', '#' + id); } catch (e) { /* ignore */ }
+    }
+}
+function closeModal(id) {
+    const el = $(id);
+    if (!el) return;
+    el.classList.add('hidden');
+    el.style.zIndex = '';
+}
+function closeAllExtModals() {
+    ['invoice-modal', 'bill-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal',
+     'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal', 'account-modal']
+        .forEach(id => closeModal(id));
+}
+// Turns each page-modal's "×" close button into a proper "← Back" pill,
+// matching the .page-back-btn styling already defined in styles.css.
+function enhancePageModalsAsPages() {
+    PAGE_MODAL_IDS.forEach(id => {
+        const modal = $(id);
+        if (!modal) return;
+        const btn = modal.querySelector('.close-btn');
+        if (btn && !btn.classList.contains('page-back-btn')) {
+            btn.classList.add('page-back-btn');
+            btn.innerHTML = '<i class="fa-solid fa-arrow-left"></i> Back';
+        }
+    });
+}
+// Browser/device Back closes only the most recently opened page, not all of them.
+window.addEventListener('popstate', () => {
+    const openPages = PAGE_MODAL_IDS.map(id => $(id)).filter(el => el && !el.classList.contains('hidden'));
+    if (!openPages.length) return;
+    openPages.sort((a, b) => (parseInt(b.style.zIndex) || 0) - (parseInt(a.style.zIndex) || 0));
+    openPages[0].classList.add('hidden');
+    openPages[0].style.zIndex = '';
+});
 
 document.addEventListener('DOMContentLoaded', async () => {
     buildStaticSelectOptions();
@@ -132,6 +192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupRangeBar('coa-range-bar', (r) => { coaRange = r; renderCoaCharts(); });
     populateUserProjectsChecklist();
     setupAccountModal();
+    enhancePageModalsAsPages();
     await checkFirstRun();
 });
 
@@ -414,8 +475,7 @@ function setupEventListeners() {
 
     qsa('.modal-cancel-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const modal = $(btn.dataset.modal);
-            if (modal) modal.classList.add('hidden');
+            if (btn.dataset.modal) closeModal(btn.dataset.modal);
         });
     });
 }
@@ -448,6 +508,10 @@ function whoLine(rec) {
     return `${escapeHtml(name)}${role}`;
 }
 
+// ---------------------------------------------------------------------
+// Searchable header-level Bank/Cash account combobox — used by Transaction,
+// Invoice, Bill, Expense (Payment account) and Deposit (Account) headers.
+// ---------------------------------------------------------------------
 function setupAccountCombobox(prefix) {
     const input = $(`${prefix}-bank-search`);
     const hidden = $(`${prefix}-bank-id`);
@@ -461,7 +525,7 @@ function setupAccountCombobox(prefix) {
         dropdown.innerHTML = '';
 
         if (banksDb.length === 0) {
-            dropdown.innerHTML = `<div class="acct-empty">No bank/cash accounts exist yet. Ask your Superadmin to add one under Bank Management.</div>`;
+            dropdown.innerHTML = `<div class="acct-empty">No bank/cash accounts exist yet. Use "+ Add new" from a line item, or add one under Bank Management.</div>`;
             dropdown.classList.remove('hidden');
             return;
         }
@@ -481,15 +545,13 @@ function setupAccountCombobox(prefix) {
                 row.className = 'acct-dropdown-item';
                 row.innerHTML = `
                     <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-acct">${escapeHtml(b.account || '')}</span></div>
-                    <span class="adi-bal">${formatRF(b.balance)}</span>`;
+                    <span class="adi-bal">${formatRF(computeBankBalance(b))}</span>`;
                 row.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
                     input.value = `${b.name} — ${b.account}`;
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
-                    if (input.id === 'exp-bank-search') updateExpenseHeaderBalance(b);
-                    if (input.id === 'deposit-bank-search') updateDepositHeaderBalance(b);
                 });
                 dropdown.appendChild(row);
             });
@@ -669,10 +731,12 @@ function getFlyoutGroups(key) {
                     { icon: 'fa-address-book', label: 'New Customer', action: () => { switchView('customers'); openCustomerModal(); } },
                     { icon: 'fa-diagram-project', label: 'New Project', action: () => { switchView('projects'); openProjectModal(); } }
                 ] },
-                ...(superAdmin ? [{ title: 'Admin', items: [
-                    { icon: 'fa-scale-balanced', label: 'New Budget Line', action: () => { switchView('budget'); openBudgetModal(); } },
-                    { icon: 'fa-building-columns', label: 'New Bank', action: () => { switchView('banks'); openBankModal(); } },
+                { title: 'Bank & Accounts', items: [
+                    { icon: 'fa-building-columns', label: 'New Bank', action: () => openBankModal() },
                     { icon: 'fa-list', label: 'New Chart of Accounts entry', action: () => openAccountModal() }
+                ] },
+                ...(superAdmin ? [{ title: 'Admin', items: [
+                    { icon: 'fa-scale-balanced', label: 'New Budget Line', action: () => { switchView('budget'); openBudgetModal(); } }
                 ] }] : [])
             ];
         case 'bookmarks':
@@ -716,9 +780,11 @@ function getFlyoutGroups(key) {
                     { icon: 'fa-sitemap', label: 'Departments & Presbyteries', action: () => switchView('departments') },
                     { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') }
                 ] },
+                { title: 'Bank & Accounts', items: [
+                    { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') }
+                ] },
                 ...(superAdmin ? [{ title: 'Admin tools', items: [
                     { icon: 'fa-scale-balanced', label: 'Budget Management', action: () => switchView('budget') },
-                    { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') },
                     { icon: 'fa-users-gear', label: 'User Admin', action: () => switchView('users') }
                 ] }] : []),
                 { items: [{ icon: 'fa-grip', label: 'Open full module list', action: () => openAppsPanel() }] }
@@ -728,9 +794,9 @@ function getFlyoutGroups(key) {
                 { icon: 'fa-list-check', label: 'Transactions', action: () => switchView('transactions') },
                 { icon: 'fa-scale-balanced', label: 'New Journal Entry', action: () => openJournalModal() },
                 { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
+                { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') },
                 ...(superAdmin ? [
-                    { icon: 'fa-scale-balanced', label: 'Budget Management', action: () => switchView('budget') },
-                    { icon: 'fa-building-columns', label: 'Bank Management', action: () => switchView('banks') }
+                    { icon: 'fa-scale-balanced', label: 'Budget Management', action: () => switchView('budget') }
                 ] : [])
             ] }];
         case 'expenses':
@@ -1073,10 +1139,7 @@ function buildScopedQuery(collectionName) {
     if (!hasFullScope()) {
         clauses.push(where('department', '==', currentUser.department));
         clauses.push(where('presbytery', '==', currentUser.presbytery));
-    } else if (!isSuper()) {
-        if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
-        if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
-    } else {
+    } else if (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL') {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     }
@@ -1202,11 +1265,6 @@ function sanitizePayload(obj) {
     return clean;
 }
 
-function closeAllExtModals() {
-    ['invoice-modal', 'bill-modal', 'supplier-modal', 'customer-modal', 'project-modal', 'budget-modal', 'bank-modal', 'expense-modal', 'deposit-modal', 'journal-modal', 'account-modal']
-        .forEach(id => $(id) && $(id).classList.add('hidden'));
-}
-
 function openTxModal(editTx) {
     const superVisible = hasFullScope();
     $('tx-dept-group').style.display = superVisible ? 'block' : 'none';
@@ -1244,9 +1302,9 @@ function openTxModal(editTx) {
         resetAccountCombobox('tx');
         if (superVisible) { $('tx-dept').selectedIndex = 0; populateSubsections('tx-dept', 'tx-subsection'); $('tx-pres').selectedIndex = 0; }
     }
-    $('tx-modal').classList.remove('hidden');
+    openModal('tx-modal');
 }
-function closeTxModal() { $('tx-modal').classList.add('hidden'); }
+function closeTxModal() { closeModal('tx-modal'); }
 
 async function onSubmitTxForm(e) {
     e.preventDefault();
@@ -1572,6 +1630,7 @@ function refreshAllViews() {
 
     if ($('view-coa').classList.contains('active')) { renderCoaBankGrid(); renderCoaCharts(); }
     if ($('view-reports').classList.contains('active')) renderReportPanel();
+    if ($('view-banks').classList.contains('active')) renderBanksTable();
 }
 
 function renderDeptBreakdown(list, superVisible) {
@@ -1638,9 +1697,7 @@ function renderGlanceBanks() {
     if (!wrap) return;
     const visible = getVisibleBanks();
     if (!visible.length) {
-        wrap.innerHTML = hasFullScope()
-            ? `<p class="glance-sub">No banks added yet.</p>`
-            : `<p class="glance-sub">You haven't posted any transaction against a bank account yet.</p>`;
+        wrap.innerHTML = `<p class="glance-sub">No banks added yet. Use "+ Add new" while recording an expense, or add one under Bank Management.</p>`;
         return;
     }
     wrap.innerHTML = '';
@@ -1804,45 +1861,45 @@ function statusPill(status) {
 
 function setupExtModulesEventListeners() {
     $('open-invoice-modal-btn').addEventListener('click', () => openInvoiceModal());
-    $('close-invoice-modal').addEventListener('click', () => $('invoice-modal').classList.add('hidden'));
-    $('invoice-modal').addEventListener('click', (e) => { if (e.target === $('invoice-modal')) $('invoice-modal').classList.add('hidden'); });
+    $('close-invoice-modal').addEventListener('click', () => closeModal('invoice-modal'));
+    $('invoice-modal').addEventListener('click', (e) => { if (e.target === $('invoice-modal')) closeModal('invoice-modal'); });
     $('invoice-form').addEventListener('submit', onSubmitInvoiceForm);
     $('invoices-table-body').addEventListener('click', onInvoicesTableClick);
 
     $('open-bill-modal-btn').addEventListener('click', () => openBillModal());
-    $('close-bill-modal').addEventListener('click', () => $('bill-modal').classList.add('hidden'));
-    $('bill-modal').addEventListener('click', (e) => { if (e.target === $('bill-modal')) $('bill-modal').classList.add('hidden'); });
+    $('close-bill-modal').addEventListener('click', () => closeModal('bill-modal'));
+    $('bill-modal').addEventListener('click', (e) => { if (e.target === $('bill-modal')) closeModal('bill-modal'); });
     $('bill-form').addEventListener('submit', onSubmitBillForm);
     $('bills-table-body').addEventListener('click', onBillsTableClick);
 
     $('open-supplier-modal-btn').addEventListener('click', () => openSupplierModal());
-    $('close-supplier-modal').addEventListener('click', () => $('supplier-modal').classList.add('hidden'));
-    $('supplier-modal').addEventListener('click', (e) => { if (e.target === $('supplier-modal')) $('supplier-modal').classList.add('hidden'); });
+    $('close-supplier-modal').addEventListener('click', () => closeModal('supplier-modal'));
+    $('supplier-modal').addEventListener('click', (e) => { if (e.target === $('supplier-modal')) closeModal('supplier-modal'); });
     $('supplier-form').addEventListener('submit', onSubmitSupplierForm);
     $('suppliers-table-body').addEventListener('click', onSuppliersTableClick);
 
     $('open-customer-modal-btn').addEventListener('click', () => openCustomerModal());
-    $('close-customer-modal').addEventListener('click', () => $('customer-modal').classList.add('hidden'));
-    $('customer-modal').addEventListener('click', (e) => { if (e.target === $('customer-modal')) $('customer-modal').classList.add('hidden'); });
+    $('close-customer-modal').addEventListener('click', () => closeModal('customer-modal'));
+    $('customer-modal').addEventListener('click', (e) => { if (e.target === $('customer-modal')) closeModal('customer-modal'); });
     $('customer-form').addEventListener('submit', onSubmitCustomerForm);
     $('customers-table-body').addEventListener('click', onCustomersTableClick);
 
     $('open-project-modal-btn').addEventListener('click', () => openProjectModal());
-    $('close-project-modal').addEventListener('click', () => $('project-modal').classList.add('hidden'));
-    $('project-modal').addEventListener('click', (e) => { if (e.target === $('project-modal')) $('project-modal').classList.add('hidden'); });
+    $('close-project-modal').addEventListener('click', () => closeModal('project-modal'));
+    $('project-modal').addEventListener('click', (e) => { if (e.target === $('project-modal')) closeModal('project-modal'); });
     $('project-form').addEventListener('submit', onSubmitProjectForm);
     $('projects-table-body').addEventListener('click', onProjectsTableClick);
     $('project-progress').addEventListener('input', (e) => { $('project-progress-val').textContent = `${e.target.value}%`; });
 
     $('open-budget-modal-btn').addEventListener('click', () => openBudgetModal());
-    $('close-budget-modal').addEventListener('click', () => $('budget-modal').classList.add('hidden'));
-    $('budget-modal').addEventListener('click', (e) => { if (e.target === $('budget-modal')) $('budget-modal').classList.add('hidden'); });
+    $('close-budget-modal').addEventListener('click', () => closeModal('budget-modal'));
+    $('budget-modal').addEventListener('click', (e) => { if (e.target === $('budget-modal')) closeModal('budget-modal'); });
     $('budget-form').addEventListener('submit', onSubmitBudgetForm);
     $('budget-table-body').addEventListener('click', onBudgetTableClick);
 
     $('open-bank-modal-btn').addEventListener('click', () => openBankModal());
-    $('close-bank-modal').addEventListener('click', () => $('bank-modal').classList.add('hidden'));
-    $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) $('bank-modal').classList.add('hidden'); });
+    $('close-bank-modal').addEventListener('click', () => closeModal('bank-modal'));
+    $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) closeModal('bank-modal'); });
     $('bank-form').addEventListener('submit', onSubmitBankForm);
     $('banks-table-body').addEventListener('click', onBanksTableClick);
 
@@ -1894,7 +1951,7 @@ function openInvoiceModal(edit) {
         resetAccountCombobox('invoice');
         setupScopedModalFields('invoice', true, null);
     }
-    $('invoice-modal').classList.remove('hidden');
+    openModal('invoice-modal');
 }
 
 async function onSubmitInvoiceForm(e) {
@@ -1930,7 +1987,7 @@ async function onSubmitInvoiceForm(e) {
             await addDoc(collection(db, COLLECTIONS.INVOICES), sanitizePayload({ ...payload, status: 'pending_approval', ...actorMeta(), createdAt: serverTimestamp() }));
             showToast('success', 'Invoice submitted for Superadmin approval.');
         }
-        $('invoice-modal').classList.add('hidden');
+        closeModal('invoice-modal');
     } catch (err) { showToast('error', "Couldn't save invoice: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2053,7 +2110,7 @@ function openBillModal(edit) {
         resetAccountCombobox('bill');
         setupScopedModalFields('bill', true, null);
     }
-    $('bill-modal').classList.remove('hidden');
+    openModal('bill-modal');
 }
 
 async function onSubmitBillForm(e) {
@@ -2089,7 +2146,7 @@ async function onSubmitBillForm(e) {
             await addDoc(collection(db, COLLECTIONS.BILLS), sanitizePayload({ ...payload, status: 'pending_approval', ...actorMeta(), createdAt: serverTimestamp() }));
             showToast('success', 'Bill submitted for Superadmin approval.');
         }
-        $('bill-modal').classList.add('hidden');
+        closeModal('bill-modal');
     } catch (err) { showToast('error', "Couldn't save bill: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2175,7 +2232,7 @@ function openSupplierModal(edit) {
         $('supplier-edit-id').value = '';
         setupScopedModalFields('supplier', false, null);
     }
-    $('supplier-modal').classList.remove('hidden');
+    openModal('supplier-modal');
 }
 
 async function onSubmitSupplierForm(e) {
@@ -2193,7 +2250,7 @@ async function onSubmitSupplierForm(e) {
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.SUPPLIERS, editId), { ...payload, ...updateMeta() }); showToast('success', 'Supplier updated.'); }
         else { await addDoc(collection(db, COLLECTIONS.SUPPLIERS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() })); showToast('success', 'Supplier added.'); }
-        $('supplier-modal').classList.add('hidden');
+        closeModal('supplier-modal');
     } catch (err) { showToast('error', "Couldn't save supplier: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2258,7 +2315,7 @@ function openCustomerModal(edit) {
         $('customer-edit-id').value = '';
         setupScopedModalFields('customer', false, null);
     }
-    $('customer-modal').classList.remove('hidden');
+    openModal('customer-modal');
 }
 
 async function onSubmitCustomerForm(e) {
@@ -2276,7 +2333,7 @@ async function onSubmitCustomerForm(e) {
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.CUSTOMERS, editId), { ...payload, ...updateMeta() }); showToast('success', 'Customer updated.'); }
         else { await addDoc(collection(db, COLLECTIONS.CUSTOMERS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() })); showToast('success', 'Customer added.'); }
-        $('customer-modal').classList.add('hidden');
+        closeModal('customer-modal');
     } catch (err) { showToast('error', "Couldn't save customer: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2345,7 +2402,7 @@ function openProjectModal(edit) {
         $('project-progress-val').textContent = '0%';
         setupScopedModalFields('project', true, null);
     }
-    $('project-modal').classList.remove('hidden');
+    openModal('project-modal');
 }
 
 async function onSubmitProjectForm(e) {
@@ -2365,7 +2422,7 @@ async function onSubmitProjectForm(e) {
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.PROJECTS, editId), { ...payload, ...updateMeta() }); showToast('success', 'Project updated.'); }
         else { await addDoc(collection(db, COLLECTIONS.PROJECTS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() })); showToast('success', 'Project created.'); }
-        $('project-modal').classList.add('hidden');
+        closeModal('project-modal');
     } catch (err) { showToast('error', "Couldn't save project: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2436,7 +2493,7 @@ function openBudgetModal(edit) {
         $('budget-form').reset();
         $('budget-edit-id').value = '';
     }
-    $('budget-modal').classList.remove('hidden');
+    openModal('budget-modal');
 }
 
 function guardSuperadminAction() {
@@ -2460,7 +2517,7 @@ async function onSubmitBudgetForm(e) {
     try {
         if (editId) { await updateDoc(doc(db, COLLECTIONS.BUDGETS, editId), { ...payload, ...updateMeta() }); showToast('success', 'Budget line updated.'); }
         else { await addDoc(collection(db, COLLECTIONS.BUDGETS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() })); showToast('success', 'Budget line added.'); }
-        $('budget-modal').classList.add('hidden');
+        closeModal('budget-modal');
     } catch (err) { showToast('error', "Couldn't save budget line: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2499,6 +2556,12 @@ function onBudgetTableClick(e) {
     }
 }
 
+// =======================================================================
+// BANKS — every user can quick-add a bank while recording an Expense or
+// Deposit line ("+ Add new"); only a Superadmin can edit/delete a bank
+// from the dedicated Bank Management page. The list stays fully live via
+// onSnapshot, so every combobox across the app sees new banks instantly.
+// =======================================================================
 function subscribeBanks() {
     if (unsubBanks) unsubBanks();
     unsubBanks = onSnapshot(collection(db, COLLECTIONS.BANKS), (snap) => {
@@ -2511,8 +2574,17 @@ function subscribeBanks() {
     }, (err) => showToast('error', 'Banks feed error: ' + err.message));
 }
 
-function openBankModal(edit) {
-    if (!guardSuperadminAction()) return;
+// `target` (optional) is { onCreated(bank) } used by the Expense/Deposit
+// line "+ Add new" shortcut to drop the freshly created bank straight
+// back into that line without leaving the page it was launched from.
+function openBankModal(edit, target) {
+    pendingBankTarget = target || null;
+    // Editing or managing banks from the dedicated Bank Management page
+    // stays Superadmin-only; quick-adding a brand new bank from a line
+    // item (target is set) is available to any signed-in user.
+    if (!target && !edit && !guardSuperadminAction()) { pendingBankTarget = null; return; }
+    if (edit && !guardSuperadminAction()) { pendingBankTarget = null; return; }
+
     if (edit) {
         $('bank-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Bank';
         $('bank-submit-btn').textContent = 'Update Bank';
@@ -2530,13 +2602,13 @@ function openBankModal(edit) {
         $('bank-edit-id').value = '';
         $('bank-currency').value = 'RWF';
     }
-    $('bank-modal').classList.remove('hidden');
+    openModal('bank-modal');
 }
 
 async function onSubmitBankForm(e) {
     e.preventDefault();
-    if (!guardSuperadminAction()) return;
     const editId = $('bank-edit-id').value;
+    if (editId && !guardSuperadminAction()) return;
     const payload = sanitizePayload({
         name: $('bank-name').value.trim(), branch: $('bank-branch').value.trim(),
         account: $('bank-account').value.trim(), currency: $('bank-currency').value.trim() || 'RWF',
@@ -2545,9 +2617,20 @@ async function onSubmitBankForm(e) {
     if (!payload.name || !payload.account) { showToast('error', 'Bank name and account number are required.'); return; }
     const btn = $('bank-submit-btn'); btn.disabled = true;
     try {
-        if (editId) { await updateDoc(doc(db, COLLECTIONS.BANKS, editId), { ...payload, ...updateMeta() }); showToast('success', 'Bank updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.BANKS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() })); showToast('success', 'Bank added.'); }
-        $('bank-modal').classList.add('hidden');
+        let newId = editId;
+        if (editId) {
+            await updateDoc(doc(db, COLLECTIONS.BANKS, editId), { ...payload, ...updateMeta() });
+            showToast('success', 'Bank updated.');
+        } else {
+            const ref = await addDoc(collection(db, COLLECTIONS.BANKS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+            newId = ref.id;
+            showToast('success', `Bank "${payload.name}" added.`);
+        }
+        closeModal('bank-modal');
+        if (pendingBankTarget && pendingBankTarget.onCreated) {
+            pendingBankTarget.onCreated({ id: newId, ...payload });
+        }
+        pendingBankTarget = null;
     } catch (err) { showToast('error', "Couldn't save bank: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -2586,12 +2669,11 @@ function onBanksTableClick(e) {
 }
 
 // =======================================================================
-// CHART OF ACCOUNTS — "accounts" collection (QuickBooks-style New Account)
-// This is separate from the "banks" collection: banks are cash/bank
-// accounts used to pay from/into; "accounts" are the full ledger chart
-// used to *categorise* transactions (Asset/Liability/Equity/Income/Expense
-// with their detail types), and is what the Expense form's Category
-// column now picks from.
+// CHART OF ACCOUNTS — "accounts" collection (QuickBooks-style New Account
+// page). This remains separate from "banks": it's the full ledger chart
+// (Asset/Liability/Equity/Income/Expense with detail types) shown under
+// Chart of Accounts → Full Chart of Accounts. Expense/Deposit line items
+// now categorise against BANK ACCOUNTS instead (see setupLineBankCombobox).
 // =======================================================================
 function subscribeAccounts() {
     if (unsubAccounts) unsubAccounts();
@@ -2599,9 +2681,6 @@ function subscribeAccounts() {
         accountsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         accountsDb.sort((a, b) => (a.number || '').localeCompare(b.number || '', undefined, { numeric: true }) || (a.name || '').localeCompare(b.name || ''));
         renderAccountsTable();
-        qsa('.line-category-input').forEach(inp => {
-            // Keep any open category comboboxes in sync when the accounts list updates live
-        });
     }, (err) => showToast('error', 'Chart of Accounts feed error: ' + err.message));
 }
 
@@ -2647,8 +2726,6 @@ function refreshAccountParentOptions() {
 }
 
 function openAccountModal(edit, target) {
-    // `target` (optional) is the {row, callback} pair to return focus/selection to
-    // once the account is saved — used by the Expense line "+ Add new" flow.
     pendingAccountTarget = target || null;
     $('account-form').reset();
     $('account-edit-id').value = '';
@@ -2682,9 +2759,9 @@ function openAccountModal(edit, target) {
         $('account-type').selectedIndex = 0;
         populateDetailTypeSelect('', '');
     }
-    $('account-modal').classList.remove('hidden');
+    openModal('account-modal');
 }
-function closeAccountModal() { $('account-modal').classList.add('hidden'); pendingAccountTarget = null; }
+function closeAccountModal() { closeModal('account-modal'); pendingAccountTarget = null; }
 
 async function onSubmitAccountForm(e) {
     e.preventDefault();
@@ -2721,8 +2798,6 @@ async function onSubmitAccountForm(e) {
             showToast('success', `Account "${name}" created.`);
         }
         closeAccountModal();
-        // If this account was created from an expense/deposit/journal line's
-        // "+ Add new" shortcut, select it straight back into that line.
         if (pendingAccountTarget && pendingAccountTarget.onCreated) {
             pendingAccountTarget.onCreated({ id: newId, ...payload });
         }
@@ -2734,7 +2809,7 @@ async function onSubmitAccountForm(e) {
 function renderAccountsTable() {
     const tbody = $('accounts-table-body');
     if (!tbody) return;
-    if (accountsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No chart-of-accounts entries yet. Click "New" to add one.</td></tr>`; return; }
+    if (accountsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No chart-of-accounts entries yet. Click "New account" to add one.</td></tr>`; return; }
     tbody.innerHTML = '';
     accountsDb.forEach(a => {
         const tr = document.createElement('tr');
@@ -2768,14 +2843,16 @@ function onAccountsTableClick(e) {
 }
 
 // ---------------------------------------------------------------------
-// Searchable "Category" combobox used inside Expense line-item rows.
-// Lists every Chart-of-Accounts entry (all types), with a "+ Add new"
-// row pinned to the top that opens the New Account modal.
+// Searchable "Bank Account" combobox used inside Expense & Deposit
+// line-item rows. Lists every bank in Bank Management, with a "+ Add
+// new" row pinned to the top that opens the Bank page. Whichever bank a
+// line points to is the account that line's amount is deducted from
+// (Expense) or deposited into (Income) — see computeBankBalance().
 // ---------------------------------------------------------------------
-function setupLineCategoryCombobox(row) {
-    const input = row.querySelector('.line-category-input');
-    const hidden = row.querySelector('.line-category-id');
-    const dropdown = row.querySelector('.line-category-dropdown');
+function setupLineBankCombobox(row) {
+    const input = row.querySelector('.line-bank-input');
+    const hidden = row.querySelector('.line-bank-id');
+    const dropdown = row.querySelector('.line-bank-dropdown');
     if (!input || !hidden || !dropdown) return;
     let debounceTimer = null;
 
@@ -2785,47 +2862,47 @@ function setupLineCategoryCombobox(row) {
 
         const addNewRow = document.createElement('div');
         addNewRow.className = 'acct-dropdown-item acct-add-new';
-        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new</span></div>`;
+        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new bank</span></div>`;
         addNewRow.addEventListener('mousedown', (e) => {
             e.preventDefault();
             dropdown.classList.add('hidden');
-            openAccountModal(null, {
-                onCreated: (acct) => {
-                    hidden.value = acct.id;
-                    input.value = formatAccountLabel(acct);
+            openBankModal(null, {
+                onCreated: (bank) => {
+                    hidden.value = bank.id;
+                    input.value = formatBankLabel(bank);
                 }
             });
         });
         dropdown.appendChild(addNewRow);
 
-        const matches = accountsDb.filter(a =>
+        const matches = banksDb.filter(b =>
             !t ||
-            (a.name || '').toLowerCase().includes(t) ||
-            (a.number || '').toLowerCase().includes(t) ||
-            (a.type || '').toLowerCase().includes(t)
+            (b.name || '').toLowerCase().includes(t) ||
+            (b.account || '').toLowerCase().includes(t) ||
+            (b.branch || '').toLowerCase().includes(t)
         ).slice(0, 40);
 
-        if (accountsDb.length === 0) {
+        if (banksDb.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = 'No accounts in the Chart of Accounts yet — use "+ Add new" above to create one.';
+            empty.textContent = 'No banks yet — use "+ Add new bank" above to create one.';
             dropdown.appendChild(empty);
         } else if (matches.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = `No accounts match "${term}".`;
+            empty.textContent = `No banks match "${term}".`;
             dropdown.appendChild(empty);
         } else {
-            matches.forEach(a => {
+            matches.forEach(b => {
                 const rowEl = document.createElement('div');
                 rowEl.className = 'acct-dropdown-item';
                 rowEl.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(a.number ? a.number + ' ' : '')}${escapeHtml(a.name)} - ${escapeHtml((a.currency||'RWF').split(' ')[0])}</span></div>
-                    <span class="adi-acct" style="font-weight:700;">${escapeHtml(a.type || '')}</span>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-acct">${escapeHtml(b.account || '')}</span></div>
+                    <span class="adi-bal">${formatRF(computeBankBalance(b))}</span>`;
                 rowEl.addEventListener('mousedown', (e) => {
                     e.preventDefault();
-                    hidden.value = a.id;
-                    input.value = formatAccountLabel(a);
+                    hidden.value = b.id;
+                    input.value = formatBankLabel(b);
                     dropdown.classList.add('hidden');
                 });
                 dropdown.appendChild(rowEl);
@@ -2844,39 +2921,66 @@ function setupLineCategoryCombobox(row) {
     input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 160));
 }
 
-function formatAccountLabel(a) {
-    return `${a.number ? a.number + ' ' : ''}${a.name} - ${(a.currency || 'RWF Rwanda Franc').split(' ')[0]}`;
+function formatBankLabel(b) {
+    return `${b.name}${b.account ? ' — ' + b.account : ''}`;
 }
 
-function readLineCategory(row) {
-    const hidden = row.querySelector('.line-category-id');
+function readLineBank(row) {
+    const hidden = row.querySelector('.line-bank-id');
     const id = hidden ? hidden.value : '';
-    const acct = accountsDb.find(a => a.id === id);
-    return { accountId: id || '', accountName: acct ? acct.name : (row.querySelector('.line-category-input') || {}).value || '' };
+    const bank = banksDb.find(b => b.id === id);
+    return { bankId: id || '', bankName: bank ? bank.name : (row.querySelector('.line-bank-input') || {}).value || '' };
 }
 
 function getVisibleBanks() {
-    if (hasFullScope()) return banksDb;
-    if (!currentUser) return [];
-    const ownIds = new Set();
-    transactionsDb.forEach(t => { if (t.bankId && t.createdById === currentUser.id) ownIds.add(t.bankId); });
-    invoicesDb.forEach(i => { if (i.bankId && i.createdById === currentUser.id) ownIds.add(i.bankId); });
-    billsDb.forEach(bl => { if (bl.bankId && bl.createdById === currentUser.id) ownIds.add(bl.bankId); });
-    return banksDb.filter(b => ownIds.has(b.id));
+    // Every bank is visible to everyone once created — banks are shared,
+    // company-wide accounts, not scoped per user/department.
+    return banksDb;
 }
 
-function getBankActivity(bankId) {
-    const mine = (rec) => hasFullScope() || rec.createdById === currentUser.id;
-    return {
-        tx: transactionsDb.filter(t => t.bankId === bankId && mine(t))
-    };
+function parseLines(t) {
+    if (!t || !t.lines) return [];
+    try { const arr = JSON.parse(t.lines); return Array.isArray(arr) ? arr : []; } catch (e) { return []; }
 }
 
+// Computes a bank's live balance: opening balance, plus/minus every
+// transaction that touches it — either via that bank's own line-level
+// allocations (Expense/Deposit forms, which can split a single entry
+// across several banks) or, for simple Transactions with no lines, via
+// the transaction's single top-level bankId.
 function computeBankBalance(bank) {
-    const { tx } = getBankActivity(bank.id);
-    const inflow = tx.filter(t => t.type === 'Income').reduce((s, t) => s + (t.amount || 0), 0);
-    const outflow = tx.filter(t => t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0);
-    return (bank.balance || 0) + inflow - outflow;
+    let balance = bank.balance || 0;
+    transactionsDb.forEach(t => {
+        const lines = parseLines(t);
+        const lineHits = lines.filter(l => l.bankId === bank.id);
+        if (lineHits.length) {
+            const lineTotal = lineHits.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+            if (t.type === 'Income') balance += lineTotal;
+            if (t.type === 'Expense') balance -= lineTotal;
+        } else if (t.bankId === bank.id) {
+            if (t.type === 'Income') balance += (t.amount || 0);
+            if (t.type === 'Expense') balance -= (t.amount || 0);
+        }
+    });
+    return balance;
+}
+
+// Transactions that touched this bank (by line allocation or top-level
+// bankId), used for the Chart of Accounts bank statement / trend charts.
+function getBankActivity(bankId) {
+    const touches = (t) => {
+        const lines = parseLines(t);
+        if (lines.some(l => l.bankId === bankId)) return true;
+        return t.bankId === bankId;
+    };
+    const amountFor = (t) => {
+        const lines = parseLines(t);
+        const hits = lines.filter(l => l.bankId === bankId);
+        if (hits.length) return hits.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+        return t.amount || 0;
+    };
+    const tx = transactionsDb.filter(touches).map(t => ({ ...t, amount: amountFor(t) }));
+    return { tx };
 }
 
 function renderCoaBankGrid() {
@@ -2885,9 +2989,7 @@ function renderCoaBankGrid() {
     const charts = $('coa-charts');
     if (!grid || !empty || !charts) return;
 
-    $('coa-scope-note').textContent = hasFullScope()
-        ? 'Full access view — every bank account and everyone\'s activity against it.'
-        : 'Showing only bank accounts you\'ve personally posted a transaction against. Their totals reflect only your own records.';
+    $('coa-scope-note').textContent = 'Every bank account and its live balance — shared company-wide.';
 
     const visible = getVisibleBanks();
     grid.innerHTML = '';
@@ -2895,9 +2997,7 @@ function renderCoaBankGrid() {
     if (visible.length === 0) {
         empty.classList.remove('hidden');
         charts.classList.add('hidden');
-        empty.innerHTML = hasFullScope()
-            ? `<i class="fa-solid fa-building-columns"></i>Add a bank under Bank Management, then it will appear here.`
-            : `<i class="fa-solid fa-building-columns"></i>You haven't posted a transaction against any bank account yet. Record one and it will show up here.`;
+        empty.innerHTML = `<i class="fa-solid fa-building-columns"></i>No banks yet. Add one from the "New Bank" button here, or via "+ Add new bank" while recording an Expense/Deposit.`;
         coaSelectedBankId = null;
         return;
     }
@@ -3189,20 +3289,20 @@ function renderPendingApprovals() {
 }
 
 function setupQbModalsEventListeners() {
-    $('close-expense-modal').addEventListener('click', () => $('expense-modal').classList.add('hidden'));
-    $('expense-modal').addEventListener('click', (e) => { if (e.target === $('expense-modal')) $('expense-modal').classList.add('hidden'); });
+    $('close-expense-modal').addEventListener('click', () => closeModal('expense-modal'));
+    $('expense-modal').addEventListener('click', (e) => { if (e.target === $('expense-modal')) closeModal('expense-modal'); });
     $('expense-form').addEventListener('submit', onSubmitExpenseForm);
     $('exp-add-line-btn').addEventListener('click', () => { addExpenseLine(); });
     $('exp-clear-lines-btn').addEventListener('click', () => { $('exp-lines-body').innerHTML = ''; addExpenseLine(); addExpenseLine(); updateExpenseTotals(); });
 
-    $('close-deposit-modal').addEventListener('click', () => $('deposit-modal').classList.add('hidden'));
-    $('deposit-modal').addEventListener('click', (e) => { if (e.target === $('deposit-modal')) $('deposit-modal').classList.add('hidden'); });
+    $('close-deposit-modal').addEventListener('click', () => closeModal('deposit-modal'));
+    $('deposit-modal').addEventListener('click', (e) => { if (e.target === $('deposit-modal')) closeModal('deposit-modal'); });
     $('deposit-form').addEventListener('submit', onSubmitDepositForm);
     $('deposit-add-line-btn').addEventListener('click', () => { addDepositLine(); });
     $('deposit-clear-lines-btn').addEventListener('click', () => { $('deposit-lines-body').innerHTML = ''; addDepositLine(); addDepositLine(); updateDepositTotals(); });
 
-    $('close-journal-modal').addEventListener('click', () => $('journal-modal').classList.add('hidden'));
-    $('journal-modal').addEventListener('click', (e) => { if (e.target === $('journal-modal')) $('journal-modal').classList.add('hidden'); });
+    $('close-journal-modal').addEventListener('click', () => closeModal('journal-modal'));
+    $('journal-modal').addEventListener('click', (e) => { if (e.target === $('journal-modal')) closeModal('journal-modal'); });
     $('journal-form').addEventListener('submit', onSubmitJournalForm);
     $('journal-save-new-btn').addEventListener('click', async (e) => { await onSubmitJournalForm(e, true); });
     $('journal-add-line-btn').addEventListener('click', () => { addJournalLine(); });
@@ -3214,16 +3314,21 @@ function renumberLines(tbodyId) {
     qsa('tr', tbody).forEach((tr, i) => { const firstTd = tr.querySelector('td'); if (firstTd) firstTd.textContent = i + 1; });
 }
 
+// ---------------------------------------------------------------------
+// EXPENSE — each line now picks a Bank Account (not a Chart-of-Accounts
+// category). The line's amount is deducted from whichever bank that line
+// points to; a single Expense can therefore be split across several banks.
+// ---------------------------------------------------------------------
 function addExpenseLine() {
     const tbody = $('exp-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td>${tbody.children.length + 1}</td>
         <td>
-            <div class="acct-combo line-category-combo">
-                <input type="text" class="line-category-input" placeholder="-- Category --" autocomplete="off">
-                <input type="hidden" class="line-category-id">
-                <div class="acct-dropdown hidden line-category-dropdown"></div>
+            <div class="acct-combo line-bank-combo">
+                <input type="text" class="line-bank-input" placeholder="-- Bank account --" autocomplete="off">
+                <input type="hidden" class="line-bank-id">
+                <div class="acct-dropdown hidden line-bank-dropdown"></div>
             </div>
         </td>
         <td><input type="text" class="line-desc" placeholder="Description"></td>
@@ -3233,7 +3338,7 @@ function addExpenseLine() {
         <td><select class="line-customer"></select></td>
         <td><select class="line-class"></select></td>
         <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
-    setupLineCategoryCombobox(tr);
+    setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillSimpleSelect(tr.querySelector('.line-customer'), customersDb.map(c => c.name), true, '-- Customer/Project --');
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
@@ -3269,22 +3374,29 @@ function openExpenseModal() {
     $('exp-lines-body').innerHTML = '';
     addExpenseLine(); addExpenseLine();
     updateExpenseTotals();
-    $('expense-modal').classList.remove('hidden');
+    openModal('expense-modal');
 }
 
 async function onSubmitExpenseForm(e) {
     e.preventDefault();
-    if (!validateAccountCombobox('exp')) { showToast('error', 'Please choose the payment account for this expense.'); return; }
-    const acct = readAccountCombobox('exp');
+    // The header "Payment account" is the default/primary account shown on
+    // the record; if a line doesn't have its own bank chosen, its amount
+    // falls back to being deducted from this header account.
+    const headerAcct = readAccountCombobox('exp');
+    if (!headerAcct.bankId && !validateAccountCombobox('exp')) {
+        showToast('error', 'Please choose a payment account, or set a Bank account on each line.');
+        return;
+    }
 
     const lines = [];
     qsa('#exp-lines-body tr').forEach(tr => {
-        const cat = readLineCategory(tr);
+        const bank = readLineBank(tr);
         const desc = tr.querySelector('.line-desc').value.trim();
         const amount = parseFloat(tr.querySelector('.line-amount').value) || 0;
-        if (!cat.accountId && !desc && !amount) return;
+        if (!bank.bankId && !desc && !amount) return;
         lines.push({
-            accountId: cat.accountId, category: cat.accountName, description: desc, amount,
+            bankId: bank.bankId || headerAcct.bankId, bankName: bank.bankName || headerAcct.bankName,
+            description: desc, amount,
             vat: tr.querySelector('.line-vat').value,
             billable: tr.querySelector('.line-billable').checked,
             customerProject: tr.querySelector('.line-customer').value,
@@ -3292,7 +3404,7 @@ async function onSubmitExpenseForm(e) {
         });
     });
     const total = lines.reduce((s, l) => s + l.amount, 0);
-    if (!lines.length || total <= 0) { showToast('error', 'Add at least one line with a category and an amount.'); return; }
+    if (!lines.length || total <= 0) { showToast('error', 'Add at least one line with a bank account and an amount.'); return; }
 
     const scope = hasFullScope()
         ? { department: currentScope.department !== 'ALL' ? currentScope.department : (lines[0].class ? Object.keys(EPR_STRUCTURE).find(d => EPR_STRUCTURE[d].includes(lines[0].class)) : 'ALL') || 'ALL', subsection: lines[0].class || 'ALL', presbytery: $('exp-location-id').value || currentScope.presbytery }
@@ -3301,13 +3413,13 @@ async function onSubmitExpenseForm(e) {
     const payload = sanitizePayload({
         date: $('exp-date').value || new Date().toISOString().split('T')[0],
         type: 'Expense',
-        desc: lines[0].description || lines[0].category || 'Expense',
+        desc: lines[0].description || `Expense — ${lines[0].bankName || 'multiple accounts'}`,
         amount: total,
         payee: $('exp-payee-search').value || '',
         method: $('exp-method').value || '',
         ref: $('exp-ref').value.trim(),
         location: $('exp-location-search').value || '',
-        bankId: acct.bankId, bankName: acct.bankName,
+        bankId: headerAcct.bankId, bankName: headerAcct.bankName,
         lines: JSON.stringify(lines),
         ...scope
     });
@@ -3315,12 +3427,16 @@ async function onSubmitExpenseForm(e) {
     const btn = $('exp-submit-btn'); btn.disabled = true;
     try {
         await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
-        showToast('success', `Expense of ${formatRF(total)} saved.`);
-        $('expense-modal').classList.add('hidden');
+        showToast('success', `Expense of ${formatRF(total)} saved and deducted from the selected bank account${lines.length > 1 ? 's' : ''}.`);
+        closeModal('expense-modal');
     } catch (err) { showToast('error', "Couldn't save expense: " + err.message); }
     finally { btn.disabled = false; }
 }
 
+// ---------------------------------------------------------------------
+// BANK DEPOSIT — each line also picks the Bank Account the funds land in,
+// so a single deposit slip can fund several bank accounts at once.
+// ---------------------------------------------------------------------
 function addDepositLine() {
     const tbody = $('deposit-lines-body');
     const tr = document.createElement('tr');
@@ -3328,10 +3444,10 @@ function addDepositLine() {
         <td>${tbody.children.length + 1}</td>
         <td><select class="line-received"></select></td>
         <td>
-            <div class="acct-combo line-category-combo">
-                <input type="text" class="line-category-input" placeholder="-- Account --" autocomplete="off">
-                <input type="hidden" class="line-category-id">
-                <div class="acct-dropdown hidden line-category-dropdown"></div>
+            <div class="acct-combo line-bank-combo">
+                <input type="text" class="line-bank-input" placeholder="-- Bank account --" autocomplete="off">
+                <input type="hidden" class="line-bank-id">
+                <div class="acct-dropdown hidden line-bank-dropdown"></div>
             </div>
         </td>
         <td><input type="text" class="line-desc" placeholder="Description"></td>
@@ -3342,7 +3458,7 @@ function addDepositLine() {
         <td><select class="line-class"></select></td>
         <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
     fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
-    setupLineCategoryCombobox(tr);
+    setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
@@ -3368,23 +3484,27 @@ function openDepositModal() {
     $('deposit-lines-body').innerHTML = '';
     addDepositLine(); addDepositLine();
     updateDepositTotals();
-    $('deposit-modal').classList.remove('hidden');
+    openModal('deposit-modal');
 }
 
 async function onSubmitDepositForm(e) {
     e.preventDefault();
-    if (!validateAccountCombobox('deposit')) { showToast('error', 'Please choose which account this deposit goes into.'); return; }
-    const acct = readAccountCombobox('deposit');
+    const headerAcct = readAccountCombobox('deposit');
+    if (!headerAcct.bankId && !validateAccountCombobox('deposit')) {
+        showToast('error', 'Please choose an account, or set a Bank account on each line.');
+        return;
+    }
 
     const lines = [];
     qsa('#deposit-lines-body tr').forEach(tr => {
         const receivedFrom = tr.querySelector('.line-received').value;
-        const cat = readLineCategory(tr);
+        const bank = readLineBank(tr);
         const desc = tr.querySelector('.line-desc').value.trim();
         const amount = parseFloat(tr.querySelector('.line-amount').value) || 0;
-        if (!receivedFrom && !cat.accountId && !desc && !amount) return;
+        if (!receivedFrom && !bank.bankId && !desc && !amount) return;
         lines.push({
-            receivedFrom, accountId: cat.accountId, account: cat.accountName, description: desc,
+            receivedFrom, bankId: bank.bankId || headerAcct.bankId, bankName: bank.bankName || headerAcct.bankName,
+            description: desc,
             method: tr.querySelector('.line-method').value,
             ref: tr.querySelector('.line-ref').value.trim(),
             amount, vat: tr.querySelector('.line-vat').value,
@@ -3392,7 +3512,7 @@ async function onSubmitDepositForm(e) {
         });
     });
     const total = lines.reduce((s, l) => s + l.amount, 0);
-    if (!lines.length || total <= 0) { showToast('error', 'Add at least one funds line with an amount.'); return; }
+    if (!lines.length || total <= 0) { showToast('error', 'Add at least one funds line with a bank account and an amount.'); return; }
 
     const scope = hasFullScope()
         ? { department: currentScope.department !== 'ALL' ? currentScope.department : 'ALL', subsection: lines[0].class || 'ALL', presbytery: currentScope.presbytery }
@@ -3403,7 +3523,7 @@ async function onSubmitDepositForm(e) {
         type: 'Income',
         desc: lines[0].description || `Deposit from ${lines[0].receivedFrom || 'various'}`,
         amount: total,
-        bankId: acct.bankId, bankName: acct.bankName,
+        bankId: headerAcct.bankId, bankName: headerAcct.bankName,
         lines: JSON.stringify(lines),
         ...scope
     });
@@ -3411,18 +3531,26 @@ async function onSubmitDepositForm(e) {
     const btn = $('deposit-submit-btn'); btn.disabled = true;
     try {
         await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
-        showToast('success', `Deposit of ${formatRF(total)} saved.`);
-        $('deposit-modal').classList.add('hidden');
+        showToast('success', `Deposit of ${formatRF(total)} saved to the selected bank account${lines.length > 1 ? 's' : ''}.`);
+        closeModal('deposit-modal');
     } catch (err) { showToast('error', "Couldn't save deposit: " + err.message); }
     finally { btn.disabled = false; }
 }
 
+// ---------------------------------------------------------------------
+// JOURNAL ENTRY — double-entry lines. Debits and Credits are OPTIONAL and
+// do NOT need to match to save: a live pill shows whether the entry is
+// currently balanced, purely as a helpful indicator, never as a blocker.
+// ---------------------------------------------------------------------
 function getJournalAccountOptions() {
     const list = ['Accounts Receivable (A/R)', 'Accounts Payable (A/P)'];
     banksDb.forEach(b => list.push(`${b.name} — ${b.account}`));
     accountsDb.forEach(a => list.push(formatAccountLabel(a)));
     projectsDb.forEach(p => list.push(`${p.name} (Project)`));
     return list;
+}
+function formatAccountLabel(a) {
+    return `${a.number ? a.number + ' ' : ''}${a.name} - ${(a.currency || 'RWF Rwanda Franc').split(' ')[0]}`;
 }
 
 function addJournalLine() {
@@ -3459,6 +3587,18 @@ function updateJournalTotals() {
     });
     $('journal-total-debit').textContent = formatRF(debit);
     $('journal-total-credit').textContent = formatRF(credit);
+
+    const indicator = $('journal-balance-indicator');
+    if (indicator) {
+        const diff = Math.abs(debit - credit);
+        if (diff < 0.01) {
+            indicator.textContent = 'Balanced';
+            indicator.className = 'status-pill status-approved';
+        } else {
+            indicator.textContent = `Unbalanced by ${formatRF(diff)} (optional)`;
+            indicator.className = 'status-pill status-pending_approval';
+        }
+    }
 }
 
 async function openJournalModal() {
@@ -3471,7 +3611,7 @@ async function openJournalModal() {
         const snap = await getDocs(collection(db, COLLECTIONS.JOURNAL_ENTRIES));
         $('journal-no').value = String(snap.size + 1);
     } catch (err) { $('journal-no').value = ''; }
-    $('journal-modal').classList.remove('hidden');
+    openModal('journal-modal');
 }
 
 async function onSubmitJournalForm(e, keepOpen) {
@@ -3493,14 +3633,16 @@ async function onSubmitJournalForm(e, keepOpen) {
     });
     const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
     const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
-    if (!lines.length || totalDebit <= 0) { showToast('error', 'Add at least two lines with debit/credit amounts.'); return; }
-    if (Math.abs(totalDebit - totalCredit) > 0.01) { showToast('error', `Debits (${formatRF(totalDebit)}) must equal Credits (${formatRF(totalCredit)}) before saving.`); return; }
+    // Debits and Credits are optional and never required to match — this
+    // journal entry can be saved as-is, balanced or not.
+    if (!lines.length) { showToast('error', 'Add at least one line before saving.'); return; }
 
+    const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
     const payload = sanitizePayload({
         date: $('journal-date').value || new Date().toISOString().split('T')[0],
         journalNo: $('journal-no').value.trim(),
         lines: JSON.stringify(lines),
-        totalDebit, totalCredit,
+        totalDebit, totalCredit, isBalanced,
         department: hasFullScope() ? currentScope.department : currentUser.department,
         presbytery: hasFullScope() ? currentScope.presbytery : currentUser.presbytery
     });
@@ -3509,9 +3651,12 @@ async function onSubmitJournalForm(e, keepOpen) {
     if (btn) btn.disabled = true;
     try {
         await addDoc(collection(db, COLLECTIONS.JOURNAL_ENTRIES), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
-        showToast('success', `Journal entry #${payload.journalNo || ''} saved — balanced at ${formatRF(totalDebit)}.`);
+        const balanceNote = isBalanced
+            ? `balanced at ${formatRF(totalDebit)}`
+            : `saved as unbalanced — Debits ${formatRF(totalDebit)} vs Credits ${formatRF(totalCredit)}`;
+        showToast('success', `Journal entry #${payload.journalNo || ''} ${balanceNote}.`);
         if (keepOpen) { await openJournalModal(); }
-        else { $('journal-modal').classList.add('hidden'); }
+        else { closeModal('journal-modal'); }
     } catch (err) { showToast('error', "Couldn't save journal entry: " + err.message); }
     finally { if (btn) btn.disabled = false; }
 }
