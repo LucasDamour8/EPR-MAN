@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bethany — Hotel Management &amp; Accounting</title>
+    <title>SAS — Standard Accounting Software</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -14,16 +14,16 @@
     <!-- ============ Boot / connection status ============ -->
     <div id="boot-screen" class="boot-screen">
         <div class="boot-spinner"></div>
-        <p>Connecting to Bethany database…</p>
+        <p>Connecting to SAS database…</p>
     </div>
 
     <!-- ============ First-run Setup Screen ============ -->
     <div id="setup-container" class="auth-screen hidden">
         <div class="auth-card">
             <div class="brand-header">
-                <div class="logo">B</div>
+                <div class="logo">SAS</div>
                 <h2>Welcome — first-time setup</h2>
-                <p>No accounts exist yet. Create the Bethany Superadmin account to manage all locations and departments.</p>
+                <p>No accounts exist yet. Create the central SAS Superadmin account to manage all EPR locations and departments.</p>
             </div>
             <form id="setup-form" novalidate>
                 <div class="form-group">
@@ -51,9 +51,9 @@
     <div id="auth-container" class="auth-screen hidden">
         <div class="auth-card">
             <div class="brand-header">
-                <div class="logo">B</div>
-                <h2>Bethany Sign In</h2>
-                <p>Hotel Management &amp; Accounting System</p>
+                <div class="logo">SAS</div>
+                <h2>SAS Sign In</h2>
+                <p>Standard Accounting Software</p>
             </div>
             <form id="login-form" novalidate>
                 <div class="form-group">
@@ -71,7 +71,7 @@
             </form>
             <p id="auth-error" class="error-msg"></p>
             <p class="auth-footnote"><button type="button" id="forgot-password-btn" class="link-btn">Forgot your password?</button></p>
-            <p class="auth-footnote">Don't have an account? Contact your Bethany Superadmin.</p>
+            <p class="auth-footnote">Don't have an account? Contact your SAS Superadmin.</p>
         </div>
     </div>
 
@@ -83,7 +83,7 @@
         <!-- Slim icon-rail sidebar (QuickBooks style) -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="logo-box">B</div>
+                <div class="logo-box">SAS</div>
                 <button class="sidebar-close-btn" id="sidebar-close-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
@@ -110,13 +110,13 @@
                 <div id="rail-flyout-content" class="rail-flyout-content"></div>
             </div>
 
-            <div class="sidebar-footer">Bethany &copy; 2026 &middot; Live via Firestore</div>
+            <div class="sidebar-footer">SAS &copy; 2026 &middot; Live via Firestore</div>
         </aside>
 
         <!-- All-modules launcher panel -->
         <div id="apps-panel" class="apps-panel">
             <div class="apps-panel-head">
-                <h3><i class="fa-solid fa-grip"></i> All Bethany modules</h3>
+                <h3><i class="fa-solid fa-grip"></i> All SAS modules</h3>
                 <button class="close-btn" id="apps-panel-close">&times;</button>
             </div>
             <div class="apps-grid">
@@ -156,7 +156,7 @@
             <!-- Topbar -->
             <header class="topbar">
                 <button class="hamburger-btn" id="hamburger-btn"><i class="fa-solid fa-bars"></i></button>
-                <div class="topbar-brand"><div class="logo-box">B</div><span class="full">BETHANY HMS</span></div>
+                <div class="topbar-brand"><div class="logo-box">SAS</div><span class="full">STANDARD ACCOUNTING SOFTWARE</span></div>
 
                 <div class="search-wrap">
                     <div class="search-bar">
@@ -475,7 +475,7 @@
                             </div>
 
                             <div class="financial-statement-card" id="printable-report">
-                                <h3 style="text-align: center; font-size: 1.3rem;">BETHANY FINANCIAL STATEMENT</h3>
+                                <h3 style="text-align: center; font-size: 1.3rem;">SAS FINANCIAL STATEMENT</h3>
                                 <p style="text-align: center; color: var(--text-muted); margin-bottom: 6px;" id="statement-scope">System Wide Statement</p>
                                 <p style="text-align:center; color: var(--text-muted); font-size:.78rem; margin-bottom: 25px;" id="stmt-record-count"></p>
 
@@ -1114,9 +1114,14 @@
                     <div class="form-group"><label>Branch</label><input type="text" id="bank-branch"></div>
                     <div class="form-group"><label>Account Number <span class="req">*</span></label><input type="text" id="bank-account" required></div>
                     <div class="form-group"><label>Currency</label><select id="bank-currency"><option value="RWF">RWF — Rwanda Franc</option><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option><option value="GBP">GBP — British Pound</option><option value="KES">KES — Kenyan Shilling</option></select></div>
-                    <div class="form-group"><label>Account Type</label><select id="bank-account-type"><option>Bank</option><option>Cash on hand</option><option>Savings</option><option>Mobile Money</option><option>Credit card</option><option>Client trust account</option></select></div>
-                    <div class="form-group amount-field"><label>Opening Balance</label><input type="number" id="bank-balance" step="any" min="0" placeholder="0.00"></div>
-                    <div class="form-group span-full"><label>Notes</label><input type="text" id="bank-notes" placeholder="Optional"></div>
+                    <div class="form-group"><label>Account Type <span class="req">*</span></label><select id="bank-account-type" required><option>Cash and cash equivalents</option><option>Current assets</option><option>Credit card</option><option>Current liabilities</option></select></div>
+                    <div class="form-group"><label>Detail Type <span class="req">*</span></label><select id="bank-detail-type" required><option>Bank</option><option>Cash on hand</option><option>Savings</option><option>Mobile Money</option><option>Credit card</option><option>Client trust account</option></select></div>
+                    <div class="form-group span-full"><label class="checklist-item" style="border:none;padding:0;"><input type="checkbox" id="bank-subaccount-toggle"><span>Make this a subaccount</span></label></div>
+                    <div class="form-group span-full hidden" id="bank-parent-group"><label>Parent bank account</label><select id="bank-parent"></select></div>
+                    <div class="form-group span-full"><label>Default VAT Code</label><select id="bank-vat"><option value="">-- Select VAT --</option><option>Standard (15%)</option><option>Capital (15%)</option><option>Exempt (0%)</option><option>Zero Rated (0%)</option></select></div>
+                    <div class="form-group amount-field"><label>Opening Balance</label><input type="number" id="bank-balance" step="any" placeholder="0.00"></div>
+                    <div class="form-group"><label>As of</label><input type="date" id="bank-asof"></div>
+                    <div class="form-group span-full"><label>Description</label><textarea id="bank-notes" rows="3" placeholder="Purpose and notes for this bank account"></textarea></div>
                 </div>
                 <div class="modal-footer">
                     <div class="modal-footer-actions">
