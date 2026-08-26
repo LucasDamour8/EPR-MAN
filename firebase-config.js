@@ -16,6 +16,7 @@ export const firebaseConfig = {
     messagingSenderId: "516443213633",
     appId: "1:516443213633:web:f48a8b1b74708911225bc0"
 };
+
 // Firestore collection / doc names — change here once, used everywhere in app.js
 export const COLLECTIONS = {
     USERS: "users",
@@ -28,5 +29,7 @@ export const COLLECTIONS = {
     CUSTOMERS: "customers",
     PROJECTS: "projects",
     BUDGETS: "budgets",
-    BANKS: "banks"
+    BANKS: "banks",
+    ACCOUNTS: "accounts",
+    JOURNAL_ENTRIES: "journal_entries"
 };
