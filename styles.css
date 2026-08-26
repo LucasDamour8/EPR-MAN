@@ -501,8 +501,8 @@ a { color: var(--primary-dark); }
 .chart-box-title { font-size: 0.88rem; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; color: var(--text); }
 .chart-box-title i { color: var(--primary-dark); }
 
-.chart-canvas-wrap { width: 100%; min-height: 260px; overflow: hidden; }
-.chart-canvas-wrap canvas { display: block; max-width: 100%; }
+.chart-canvas-wrap { position:relative; width:100%; height:300px; min-height:260px; overflow:hidden; }
+.chart-canvas-wrap canvas { display:block; width:100% !important; height:100% !important; max-width:100%; }
 
 .module-empty { text-align: center; padding: 34px 12px; color: var(--text-muted); }
 .module-empty i { font-size: 1.6rem; margin-bottom: 8px; display: block; color: var(--text-faint); }
@@ -1030,6 +1030,7 @@ a { color: var(--primary-dark); }
 .builder-heading p, .custom-report-head p { color:var(--text-muted); font-size:.82rem; }
 .builder-grid { display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:14px; }
 .custom-report-results { overflow:hidden; }
+.custom-report-chart { padding:18px 22px; border-bottom:1px solid var(--border); }
 .custom-report-head { padding:20px 22px; border-bottom:1px solid var(--border); margin:0; background:linear-gradient(135deg,#f5fbf3,#fff); }
 .eyebrow { display:block; color:var(--primary-dark); font-size:.67rem; font-weight:900; letter-spacing:.1em; margin-bottom:4px; }
 .custom-report-total { text-align:right; }
@@ -1050,6 +1051,9 @@ a { color: var(--primary-dark); }
 .detail-field { background:#fff; padding:12px 14px; min-width:0; }
 .detail-field span { display:block; color:var(--text-muted); font-size:.69rem; font-weight:800; text-transform:uppercase; margin-bottom:3px; }
 .detail-field strong { display:block; overflow-wrap:anywhere; font-size:.82rem; }
+.detail-intro { margin:-4px 0 16px; color:var(--text-muted); font-size:.82rem; }
+.financial-detail-row { cursor:pointer; }
+.financial-detail-row:hover { background:var(--primary-lighter); }
 
 @media (max-width:900px) { .builder-grid { grid-template-columns:1fr 1fr; } }
 @media (max-width:600px) {
