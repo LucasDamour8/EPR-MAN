@@ -64,11 +64,21 @@ const CURRENCY_OPTIONS = [
 ];
 
 const ACCOUNT_TYPE_STRUCTURE = {
-    "ASSET": ["Cash and cash equivalents", "Accounts receivable (A/R)", "Current assets", "Fixed assets", "Non-current assets"],
-    "LIABILITY": ["Credit card", "Accounts payable (A/P)", "Current liabilities", "Non-current liabilities"],
-    "EQUITY": ["Owner's equity", "Retained earnings", "Opening balance equity"],
-    "INCOME": ["Sales of product income", "Service/fee income", "Discounts given", "Other income"],
-    "EXPENSE": ["Operating expense", "Cost of goods sold", "Payroll expense", "Other expense"]
+    "Cash and cash equivalents": ["Bank", "Cash and cash equivalents", "Cash on hand", "Client trust account", "Mobile Money", "Money Market", "Rents Held in Trust", "Savings"],
+    "Accounts receivable (A/R)": ["Accounts receivable (A/R)"],
+    "Current assets": ["Allowance for bad debts", "Development costs", "Employee cash advances", "Inventory", "Investment - other", "Loans to officers", "Loans to others", "Other current assets", "Prepaid expenses", "Retainage", "Undeposited funds"],
+    "Fixed assets": ["Accumulated depreciation", "Buildings", "Computer equipment", "Furniture and fixtures", "Land", "Leasehold improvements", "Machinery and equipment", "Vehicles", "Other fixed assets"],
+    "Non-current assets": ["Accumulated amortisation", "Goodwill", "Intangible assets", "Long-term investments", "Other non-current assets", "Security deposits"],
+    "Credit card": ["Credit card"],
+    "Accounts payable (A/P)": ["Accounts payable (A/P)"],
+    "Current liabilities": ["Accrued liabilities", "Current tax liability", "Current portion of long-term debt", "Payroll clearing", "Payroll liabilities", "Other current liabilities"],
+    "Non-current liabilities": ["Accrued holiday payable", "Accrued non-current liabilities", "Liabilities related to assets held for sale", "Long-term debt", "Notes Payable", "Other non-current liabilities", "Shareholder Notes Payable"],
+    "Owner's equity": ["Owner's equity", "Owner's pay and personal expenses", "Partner contributions", "Partner distributions", "Retained earnings", "Share capital", "Treasury shares"],
+    "Income": ["Discounts/Refunds Given", "Non-Profit Income", "Other Primary Income", "Revenue - General", "Sales - retail", "Sales - wholesale", "Sales of Product Income", "Service/Fee Income"],
+    "Other income": ["Dividend income", "Interest earned", "Loss on disposal of assets", "Other Investment Income", "Other Miscellaneous Income", "Other operating income", "Tax-Exempt Interest", "Unrealised loss on securities, net of tax"],
+    "Cost of sales": ["Cost of labour - COS", "Equipment rental - COS", "Freight and delivery - COS", "Other costs of sales - COS", "Supplies and materials - COS"],
+    "Expenses": ["Advertising/Promotional", "Amortisation expense", "Auto", "Bad debts", "Bank charges", "Charitable Contributions", "Commissions and fees", "Cost of Labour", "Depreciation", "Dues and subscriptions", "Entertainment", "Insurance", "Interest paid", "Legal and professional fees", "Meals", "Office expenses", "Payroll expenses", "Rent or lease", "Repairs and maintenance", "Taxes paid", "Travel", "Utilities"],
+    "Other expense": ["Other miscellaneous expense", "Penalties and settlements", "Exchange gain or loss", "Unrealised loss on securities"]
 };
 
 let usersDb = [];
@@ -1932,6 +1942,10 @@ function setupExtModulesEventListeners() {
     $('bank-modal').addEventListener('click', (e) => { if (e.target === $('bank-modal')) closeModal('bank-modal'); });
     $('bank-form').addEventListener('submit', onSubmitBankForm);
     $('banks-table-body').addEventListener('click', onBanksTableClick);
+    fillSimpleSelect($('bank-account-type'), Object.keys(ACCOUNT_TYPE_STRUCTURE), true, 'Select account type');
+    $('bank-account-type').addEventListener('change', () => {
+        populateDetailTypeSelect($('bank-account-type').value, '', 'bank-detail-type');
+    });
     $('bank-subaccount-toggle').addEventListener('change', () => {
         $('bank-parent-group').classList.toggle('hidden', !$('bank-subaccount-toggle').checked);
     });
@@ -2626,9 +2640,9 @@ function openBankModal(edit, target) {
         $('bank-branch').value = edit.branch || '';
         $('bank-account').value = edit.account;
         $('bank-currency').value = edit.currency || 'RWF';
-        $('bank-account-type').value = ['Cash and cash equivalents', 'Current assets', 'Credit card', 'Current liabilities'].includes(edit.accountType)
+        $('bank-account-type').value = ACCOUNT_TYPE_STRUCTURE[edit.accountType]
             ? edit.accountType : 'Cash and cash equivalents';
-        $('bank-detail-type').value = edit.detailType || 'Bank';
+        populateDetailTypeSelect($('bank-account-type').value, edit.detailType || 'Bank', 'bank-detail-type');
         $('bank-vat').value = edit.vat || '';
         $('bank-asof').value = edit.asOfDate || new Date().toISOString().split('T')[0];
         $('bank-subaccount-toggle').checked = !!edit.parentId;
@@ -2642,7 +2656,7 @@ function openBankModal(edit, target) {
         $('bank-edit-id').value = '';
         $('bank-currency').value = 'RWF';
         $('bank-account-type').value = 'Cash and cash equivalents';
-        $('bank-detail-type').value = 'Bank';
+        populateDetailTypeSelect('Cash and cash equivalents', 'Bank', 'bank-detail-type');
         $('bank-asof').value = new Date().toISOString().split('T')[0];
         $('bank-subaccount-toggle').checked = false;
         $('bank-parent-group').classList.add('hidden');
@@ -2741,21 +2755,28 @@ function subscribeAccounts() {
     }, (err) => showToast('error', 'Chart of Accounts feed error: ' + err.message));
 }
 
-function populateDetailTypeSelect(typeKey, selectedValue) {
-    const sel = $('account-detail-type');
+function populateDetailTypeSelect(typeKey, selectedValue, selectId = 'account-detail-type') {
+    const sel = $(selectId);
     if (!sel) return;
     const details = ACCOUNT_TYPE_STRUCTURE[typeKey] || [];
     sel.innerHTML = '';
+    sel.disabled = !details.length;
     if (!details.length) {
-        const o = document.createElement('option'); o.value = ''; o.textContent = '-- Select detail type --';
+        const o = document.createElement('option'); o.value = ''; o.textContent = 'Select an account type first';
         sel.appendChild(o);
         return;
     }
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select detail type';
+    placeholder.disabled = true;
+    placeholder.selected = !selectedValue;
+    sel.appendChild(placeholder);
     details.forEach(d => {
         const o = document.createElement('option'); o.value = d; o.textContent = d;
         sel.appendChild(o);
     });
-    if (selectedValue) sel.value = selectedValue;
+    if (selectedValue && details.includes(selectedValue)) sel.value = selectedValue;
 }
 
 function setupAccountModal() {
