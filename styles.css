@@ -503,6 +503,15 @@ a { color: var(--primary-dark); }
 
 .chart-canvas-wrap { position:relative; width:100%; height:300px; min-height:260px; overflow:hidden; }
 .chart-canvas-wrap canvas { display:block; width:100% !important; height:100% !important; max-width:100%; }
+.chart-empty-state { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:24px; text-align:center; color:var(--text-muted); background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(248,250,248,.98)); }
+.chart-empty-state i { font-size:2rem; color:var(--primary); opacity:.55; }
+.chart-empty-state strong { color:var(--text); font-size:.92rem; }
+.chart-empty-state span { max-width:330px; font-size:.78rem; line-height:1.5; }
+.acct-dropdown-item .adi-meta { display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+.account-meta-chip { display:inline-flex; align-items:center; padding:2px 7px; border-radius:999px; background:#eef5ed; color:var(--primary-darker); font-size:.68rem; font-weight:700; line-height:1.35; }
+.account-meta-chip.detail { background:#eef4ff; color:#285ea8; }
+.bank-card .bank-type-line { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 5px; }
+.linked-account-badge { display:inline-flex; align-items:center; gap:5px; color:var(--primary-dark); font-size:.72rem; font-weight:700; }
 
 .module-empty { text-align: center; padding: 34px 12px; color: var(--text-muted); }
 .module-empty i { font-size: 1.6rem; margin-bottom: 8px; display: block; color: var(--text-faint); }
@@ -562,7 +571,8 @@ a { color: var(--primary-dark); }
 .adi-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .adi-name { font-size: 0.84rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .adi-acct { font-size: 0.78rem; color: var(--text-muted); font-style: italic; font-weight: 500; flex-shrink: 0; white-space: nowrap; }
-.adi-bal { font-size: 0.8rem; font-weight: 800; color: var(--primary-dark); flex-shrink: 0; }
+.adi-bal { display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-size:0.8rem; font-weight:800; color:var(--primary-dark); flex-shrink:0; }
+.adi-bal small { color:var(--text-muted); font-size:.64rem; font-weight:600; }
 .acct-empty { padding: 14px; font-size: 0.82rem; color: var(--text-muted); text-align: center; }
 
 .acct-dropdown-item.acct-add-new { background: var(--surface-alt); border-top: none; border-bottom: 1px solid var(--border); }
