@@ -116,6 +116,7 @@ let unsubTx = null, unsubUsers = null, unsubOwnProfile = null;
 let unsubInvoices = null, unsubBills = null;
 let unsubSuppliers = null, unsubCustomers = null, unsubProjects = null;
 let unsubBudgets = null, unsubBanks = null, unsubAccounts = null;
+let banksLoaded = false, accountsLoaded = false, accountLinkSyncRunning = false;
 
 // "+ Add new" from a Chart-of-Accounts line picker (still used elsewhere)
 // remembers which row/callback to return the newly created account to.
@@ -546,7 +547,7 @@ function setupAccountCombobox(prefix) {
             dropdown.classList.add('hidden');
             openBankModal(null, { onCreated: bank => {
                 hidden.value = bank.id;
-                input.value = `${bank.name} — ${bank.account}`;
+                input.value = formatBankLabel(bank);
                 if (prefix === 'exp') updateExpenseHeaderBalance(bank);
                 if (prefix === 'deposit') updateDepositHeaderBalance(bank);
             }});
@@ -565,7 +566,8 @@ function setupAccountCombobox(prefix) {
         const matches = banksDb.filter(b =>
             !t ||
             (b.name || '').toLowerCase().includes(t) ||
-            (b.account || '').toLowerCase().includes(t) ||
+            (b.accountType || '').toLowerCase().includes(t) ||
+            (b.detailType || '').toLowerCase().includes(t) ||
             (b.branch || '').toLowerCase().includes(t)
         ).slice(0, 40);
 
@@ -579,12 +581,12 @@ function setupAccountCombobox(prefix) {
                 const row = document.createElement('div');
                 row.className = 'acct-dropdown-item';
                 row.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-acct">${escapeHtml(b.account || '')}</span></div>
-                    <span class="adi-bal">${formatRF(computeBankBalance(b))}</span>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></span></div>
+                    <span class="adi-bal"><small>Current balance</small>${formatRF(computeBankBalance(b))}</span>`;
                 row.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
-                    input.value = `${b.name} — ${b.account}`;
+                    input.value = formatBankLabel(b);
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
                     if (prefix === 'exp') updateExpenseHeaderBalance(b);
@@ -612,7 +614,7 @@ function prefillAccountCombobox(prefix, bankId) {
     if (!input || !hidden) return;
     const bank = banksDb.find(b => b.id === bankId);
     hidden.value = bankId || '';
-    input.value = bank ? `${bank.name} — ${bank.account}` : '';
+    input.value = bank ? formatBankLabel(bank) : '';
 }
 
 function resetAccountCombobox(prefix) {
@@ -2613,11 +2615,13 @@ function subscribeBanks() {
     if (unsubBanks) unsubBanks();
     unsubBanks = onSnapshot(collection(db, COLLECTIONS.BANKS), (snap) => {
         banksDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        banksLoaded = true;
         banksDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         renderBanksTable();
         $('nav-banks-count').textContent = banksDb.length;
         renderGlanceBanks();
         if ($('view-coa').classList.contains('active')) { renderCoaBankGrid(); renderCoaCharts(); }
+        reconcileExistingBankAccountLinks();
     }, (err) => showToast('error', 'Banks feed error: ' + err.message));
 }
 
@@ -2691,11 +2695,43 @@ async function onSubmitBankForm(e) {
         let newId = editId;
         if (editId) {
             await updateDoc(doc(db, COLLECTIONS.BANKS, editId), { ...payload, ...updateMeta() });
+            const existingBank = banksDb.find(b => b.id === editId);
+            if (existingBank && existingBank.linkedAccountId) {
+                await updateDoc(doc(db, COLLECTIONS.ACCOUNTS, existingBank.linkedAccountId), {
+                    name: payload.name,
+                    number: payload.account,
+                    type: payload.accountType,
+                    detailType: payload.detailType,
+                    openingBalance: payload.balance,
+                    balance: payload.balance,
+                    asOfDate: payload.asOfDate,
+                    currency: currencyLongName(payload.currency),
+                    vat: payload.vat,
+                    description: payload.notes,
+                    ...updateMeta()
+                });
+            }
             showToast('success', 'Bank updated.');
         } else {
             const ref = await addDoc(collection(db, COLLECTIONS.BANKS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
             newId = ref.id;
-            showToast('success', `Bank "${payload.name}" added.`);
+            const accountRef = await addDoc(collection(db, COLLECTIONS.ACCOUNTS), sanitizePayload({
+                name: payload.name,
+                number: payload.account,
+                type: payload.accountType,
+                detailType: payload.detailType,
+                parentId: '',
+                vat: payload.vat,
+                openingBalance: payload.balance,
+                balance: payload.balance,
+                asOfDate: payload.asOfDate,
+                currency: currencyLongName(payload.currency),
+                description: payload.notes,
+                linkedBankId: newId,
+                ...actorMeta(), createdAt: serverTimestamp()
+            }));
+            await updateDoc(doc(db, COLLECTIONS.BANKS, newId), { linkedAccountId: accountRef.id, ...updateMeta() });
+            showToast('success', `Bank "${payload.name}" added and linked to the Chart of Accounts.`);
         }
         closeModal('bank-modal');
         if (pendingBankTarget && pendingBankTarget.onCreated) {
@@ -2706,17 +2742,53 @@ async function onSubmitBankForm(e) {
     finally { btn.disabled = false; }
 }
 
+function currencyLongName(code) {
+    return CURRENCY_OPTIONS.find(item => item.startsWith(`${code || 'RWF'} `)) || 'RWF Rwanda Franc';
+}
+
+function isBankLinkedAccountType(type) {
+    return type === 'Cash and cash equivalents' || type === 'Credit card';
+}
+
+async function syncChartAccountToBank(accountId, payload, existingAccount) {
+    if (!isBankLinkedAccountType(payload.type)) return '';
+    const bankPayload = sanitizePayload({
+        name: payload.name,
+        branch: '',
+        account: payload.number || `COA-${accountId.slice(0, 8).toUpperCase()}`,
+        currency: (payload.currency || 'RWF Rwanda Franc').split(' ')[0],
+        accountType: payload.type,
+        detailType: payload.detailType,
+        vat: payload.vat,
+        asOfDate: payload.asOfDate,
+        parentId: '',
+        balance: payload.openingBalance || 0,
+        notes: payload.description,
+        linkedAccountId: accountId
+    });
+    const linkedBankId = (existingAccount && existingAccount.linkedBankId) || '';
+    if (linkedBankId) {
+        await updateDoc(doc(db, COLLECTIONS.BANKS, linkedBankId), { ...bankPayload, ...updateMeta() });
+        return linkedBankId;
+    }
+    const bankRef = await addDoc(collection(db, COLLECTIONS.BANKS), sanitizePayload({ ...bankPayload, ...actorMeta(), createdAt: serverTimestamp() }));
+    await updateDoc(doc(db, COLLECTIONS.ACCOUNTS, accountId), { linkedBankId: bankRef.id, ...updateMeta() });
+    return bankRef.id;
+}
+
 function renderBanksTable() {
     if (!guardSuperadminView('view-banks', 'Bank Management')) return;
     const tbody = $('banks-table-body');
     if (!tbody) return;
-    if (banksDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="6">No banks added yet.</td></tr>`; return; }
+    if (banksDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No banks added yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     banksDb.forEach(b => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>${escapeHtml(b.name)}</strong></td><td>${escapeHtml(b.branch||'—')}</td>
-            <td>${escapeHtml(b.account)}</td><td>${escapeHtml(b.currency||'RWF')}</td><td>${formatRF(computeBankBalance(b))}</td>
+            <td><strong>${escapeHtml(b.name)}</strong>${b.linkedAccountId ? '<div class="linked-account-badge"><i class="fa-solid fa-link"></i> Chart-linked</div>' : ''}</td>
+            <td><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span></td>
+            <td><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></td>
+            <td>${escapeHtml(b.branch||'—')}</td><td>${escapeHtml(b.currency||'RWF')}</td><td><strong>${formatRF(computeBankBalance(b))}</strong></td>
             <td><div class="row-actions">
                 <button class="icon-action-btn" data-edit="${b.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover" data-delete="${b.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
@@ -2750,9 +2822,71 @@ function subscribeAccounts() {
     if (unsubAccounts) unsubAccounts();
     unsubAccounts = onSnapshot(collection(db, COLLECTIONS.ACCOUNTS), (snap) => {
         accountsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        accountsLoaded = true;
         accountsDb.sort((a, b) => (a.number || '').localeCompare(b.number || '', undefined, { numeric: true }) || (a.name || '').localeCompare(b.name || ''));
         renderAccountsTable();
+        reconcileExistingBankAccountLinks();
     }, (err) => showToast('error', 'Chart of Accounts feed error: ' + err.message));
+}
+
+async function reconcileExistingBankAccountLinks() {
+    if (!banksLoaded || !accountsLoaded || accountLinkSyncRunning || !currentUser) return;
+    accountLinkSyncRunning = true;
+    let linkedCount = 0;
+    const norm = value => String(value || '').trim().toLowerCase();
+    try {
+        for (const bank of banksDb.filter(b => !b.linkedAccountId)) {
+            let account = accountsDb.find(a => a.linkedBankId === bank.id);
+            if (!account) {
+                account = accountsDb.find(a => isBankLinkedAccountType(a.type) && (
+                    (bank.account && norm(a.number) === norm(bank.account)) || norm(a.name) === norm(bank.name)
+                ));
+            }
+            if (account) {
+                await updateDoc(doc(db, COLLECTIONS.BANKS, bank.id), { linkedAccountId: account.id, ...updateMeta() });
+                if (account.linkedBankId !== bank.id) await updateDoc(doc(db, COLLECTIONS.ACCOUNTS, account.id), { linkedBankId: bank.id, ...updateMeta() });
+                linkedCount++;
+            } else {
+                const accountRef = await addDoc(collection(db, COLLECTIONS.ACCOUNTS), sanitizePayload({
+                    name: bank.name,
+                    number: bank.account || `BANK-${bank.id.slice(0, 8).toUpperCase()}`,
+                    type: bank.accountType || 'Cash and cash equivalents',
+                    detailType: bank.detailType || 'Bank',
+                    parentId: '', vat: bank.vat || '',
+                    openingBalance: Number(bank.balance || 0), balance: Number(bank.balance || 0),
+                    asOfDate: bank.asOfDate || new Date().toISOString().split('T')[0],
+                    currency: currencyLongName(bank.currency), description: bank.notes || '',
+                    linkedBankId: bank.id,
+                    ...actorMeta(), createdAt: serverTimestamp()
+                }));
+                await updateDoc(doc(db, COLLECTIONS.BANKS, bank.id), { linkedAccountId: accountRef.id, ...updateMeta() });
+                linkedCount++;
+            }
+        }
+
+        for (const account of accountsDb.filter(a => isBankLinkedAccountType(a.type) && !a.linkedBankId)) {
+            const matchingBank = banksDb.find(b =>
+                (account.number && norm(b.account) === norm(account.number)) || norm(b.name) === norm(account.name)
+            );
+            if (matchingBank) {
+                await updateDoc(doc(db, COLLECTIONS.ACCOUNTS, account.id), { linkedBankId: matchingBank.id, ...updateMeta() });
+                if (matchingBank.linkedAccountId !== account.id) await updateDoc(doc(db, COLLECTIONS.BANKS, matchingBank.id), { linkedAccountId: account.id, ...updateMeta() });
+            } else {
+                await syncChartAccountToBank(account.id, {
+                    name: account.name, number: account.number, type: account.type, detailType: account.detailType,
+                    vat: account.vat || '', openingBalance: Number(account.openingBalance ?? account.balance ?? 0),
+                    asOfDate: account.asOfDate || new Date().toISOString().split('T')[0],
+                    currency: account.currency || 'RWF Rwanda Franc', description: account.description || ''
+                }, account);
+            }
+            linkedCount++;
+        }
+        if (linkedCount) showToast('success', `${linkedCount} existing bank/cash account${linkedCount === 1 ? '' : 's'} synchronized.`);
+    } catch (err) {
+        console.warn('Bank/Chart account synchronization:', err);
+    } finally {
+        accountLinkSyncRunning = false;
+    }
 }
 
 function populateDetailTypeSelect(typeKey, selectedValue, selectId = 'account-detail-type') {
@@ -2869,13 +3003,18 @@ async function onSubmitAccountForm(e) {
     const btn = $('account-submit-btn'); btn.disabled = true;
     try {
         let newId = editId;
+        const existingAccount = editId ? accountsDb.find(a => a.id === editId) : null;
         if (editId) {
             await updateDoc(doc(db, COLLECTIONS.ACCOUNTS, editId), { ...payload, ...updateMeta() });
-            showToast('success', 'Account updated.');
+            const linkedBankId = await syncChartAccountToBank(editId, payload, existingAccount);
+            showToast('success', linkedBankId ? 'Account updated in both the Chart of Accounts and Bank Accounts.' : 'Ledger account updated in the Chart of Accounts.');
         } else {
             const ref = await addDoc(collection(db, COLLECTIONS.ACCOUNTS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
             newId = ref.id;
-            showToast('success', `Account "${name}" created.`);
+            const linkedBankId = await syncChartAccountToBank(newId, payload, null);
+            showToast('success', linkedBankId
+                ? `Account "${name}" created and added to Bank Accounts.`
+                : `Ledger account "${name}" created in the Chart of Accounts.`);
         }
         closeAccountModal();
         if (pendingAccountTarget && pendingAccountTarget.onCreated) {
@@ -2895,7 +3034,7 @@ function renderAccountsTable() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${escapeHtml(a.number || '—')}</td>
-            <td><strong>${escapeHtml(a.name)}</strong></td>
+            <td><strong>${escapeHtml(a.name)}</strong>${a.linkedBankId ? '<div class="linked-account-badge"><i class="fa-solid fa-building-columns"></i> Bank-linked</div>' : ''}</td>
             <td><span class="badge">${escapeHtml(a.type || '')}</span></td>
             <td>${escapeHtml(a.detailType || '—')}</td>
             <td>${escapeHtml(a.currency || 'RWF Rwanda Franc')}</td>
@@ -2958,7 +3097,8 @@ function setupLineBankCombobox(row) {
         const matches = banksDb.filter(b =>
             !t ||
             (b.name || '').toLowerCase().includes(t) ||
-            (b.account || '').toLowerCase().includes(t) ||
+            (b.accountType || '').toLowerCase().includes(t) ||
+            (b.detailType || '').toLowerCase().includes(t) ||
             (b.branch || '').toLowerCase().includes(t)
         ).slice(0, 40);
 
@@ -2977,8 +3117,8 @@ function setupLineBankCombobox(row) {
                 const rowEl = document.createElement('div');
                 rowEl.className = 'acct-dropdown-item';
                 rowEl.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-acct">${escapeHtml(b.account || '')}</span></div>
-                    <span class="adi-bal">${formatRF(computeBankBalance(b))}</span>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></span></div>
+                    <span class="adi-bal"><small>Balance</small>${formatRF(computeBankBalance(b))}</span>`;
                 rowEl.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
@@ -3002,7 +3142,7 @@ function setupLineBankCombobox(row) {
 }
 
 function formatBankLabel(b) {
-    return `${b.name}${b.account ? ' — ' + b.account : ''}`;
+    return `${b.name} · ${b.accountType || 'Cash and cash equivalents'} · ${b.detailType || 'Bank'} · ${formatRF(computeBankBalance(b))}`;
 }
 
 function readLineBank(row) {
@@ -3091,7 +3231,8 @@ function renderCoaBankGrid() {
         card.className = `ext-card bank-card${coaSelectedBankId === b.id ? ' selected' : ''}`;
         card.innerHTML = `
             <h4><i class="fa-solid fa-building-columns"></i> ${escapeHtml(b.name)}</h4>
-            <div class="ext-sub">${escapeHtml(b.branch||'')} · ${escapeHtml(b.account)}</div>
+            <div class="bank-type-line"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></div>
+            <div class="ext-sub">${escapeHtml(b.branch || 'No branch recorded')}${b.linkedAccountId ? ' · Linked to Chart of Accounts' : ''}</div>
             <div class="ext-row"><span>Current balance</span><strong>${formatRF(computeBankBalance(b))}</strong></div>
             <div class="ext-row"><span>Transactions posted</span><strong>${tx.length}</strong></div>
         `;
@@ -3130,7 +3271,7 @@ function renderCoaStatement(bank, range) {
     const label = $('coa-stmt-bank-label');
     if (!grid) return;
     if (!bank) { grid.innerHTML = ''; if (label) label.textContent = '—'; return; }
-    if (label) label.textContent = `${bank.name} (${bank.account})`;
+    if (label) label.textContent = `${bank.name} — ${bank.accountType || 'Cash and cash equivalents'} / ${bank.detailType || 'Bank'}`;
 
     const { tx } = getBankActivity(bank.id);
     const rangeTx = tx.filter(t => dateInRange(t.date, range) || (!range.from && !range.to));
@@ -3185,33 +3326,51 @@ function renderCoaCharts() {
     const { tx } = getBankActivity(bank.id);
     const inSeries = buckets.map(bkt => tx.filter(t => t.type === 'Income' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
     const outSeries = buckets.map(bkt => tx.filter(t => t.type === 'Expense' && bkt.match(t.date)).reduce((s, t) => s + t.amount, 0));
+    let runningBalance = Number(bank.balance || 0);
+    const balanceSeries = buckets.map((_, index) => {
+        runningBalance += (inSeries[index] || 0) - (outSeries[index] || 0);
+        return runningBalance;
+    });
 
-    const deptSource = hasFullScope() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
+    const scopedDeptSource = hasFullScope() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
+    const deptSource = scopedDeptSource.filter(t => dateInRange(t.date, range) || (!range.from && !range.to));
     const recordedDepartments = [...new Set(deptSource.map(t => t.department || 'ALL'))];
     const depts = currentScope.department === 'ALL'
         ? (recordedDepartments.length ? recordedDepartments : ['ALL'])
         : [currentScope.department];
     const incomeByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Income').reduce((s, t) => s + t.amount, 0));
     const expenseByDept = depts.map(d => deptSource.filter(t => t.department === d && t.type === 'Expense').reduce((s, t) => s + t.amount, 0));
+    const bankHasData = tx.length > 0 || Number(bank.balance || 0) !== 0;
+    const deptHasData = incomeByDept.some(v => v !== 0) || expenseByDept.some(v => v !== 0);
+    $('coa-bank-chart-empty').classList.toggle('hidden', bankHasData);
+    $('coa-dept-chart-empty').classList.toggle('hidden', deptHasData);
 
     requestAnimationFrame(() => {
         const bankCtx = $('coa-bank-chart');
         if (bankCtx && typeof Chart !== 'undefined') {
             if (coaBankChart) coaBankChart.destroy();
+            bankCtx.removeAttribute('width');
+            bankCtx.removeAttribute('height');
             coaBankChart = new Chart(bankCtx.getContext('2d'), {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: buckets.map(b => b.label),
                     datasets: [
-                        { label: 'Money in', data: inSeries, borderColor: CHART_GREEN, backgroundColor: CHART_GREEN_SOFT, fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: CHART_GREEN, borderWidth: 2.5 },
-                        { label: 'Money out', data: outSeries, borderColor: CHART_BLUE, backgroundColor: CHART_BLUE_SOFT, fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: CHART_BLUE, borderWidth: 2.5 }
+                        { type: 'line', label: 'Running balance', data: balanceSeries, borderColor: CHART_GREEN, backgroundColor: CHART_GREEN_SOFT, fill: true, tension: 0.28, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: '#fff', pointBorderColor: CHART_GREEN, pointBorderWidth: 2, borderWidth: 2.5, order: 0 },
+                        { label: 'Money in', data: inSeries, backgroundColor: 'rgba(44,160,28,.72)', borderRadius: 5, maxBarThickness: 24, order: 1 },
+                        { label: 'Money out', data: outSeries, backgroundColor: 'rgba(59,130,246,.72)', borderRadius: 5, maxBarThickness: 24, order: 2 }
                     ]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
+                    responsive: true, maintainAspectRatio: false, resizeDelay: 120,
+                    animation: { duration: 450 },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 16 } },
+                        tooltip: { callbacks: { label: context => `${context.dataset.label}: ${formatRF(context.parsed.y)}` } }
+                    },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
+                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { maxTicksLimit: 6, callback: v => formatRF(v) } },
                         x: { grid: { display: false } }
                     }
                 }
@@ -3221,6 +3380,8 @@ function renderCoaCharts() {
         const deptCtx = $('coa-dept-chart');
         if (deptCtx && typeof Chart !== 'undefined') {
             if (coaDeptChart) coaDeptChart.destroy();
+            deptCtx.removeAttribute('width');
+            deptCtx.removeAttribute('height');
             coaDeptChart = new Chart(deptCtx.getContext('2d'), {
                 type: 'bar',
                 data: {
@@ -3231,10 +3392,15 @@ function renderCoaCharts() {
                     ]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } },
+                    responsive: true, maintainAspectRatio: false, resizeDelay: 120,
+                    animation: { duration: 450 },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 16 } },
+                        tooltip: { callbacks: { label: context => `${context.dataset.label}: ${formatRF(context.parsed.y)}` } }
+                    },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { callback: v => formatRF(v) } },
+                        y: { beginAtZero: true, grid: { color: '#eef1ee' }, ticks: { maxTicksLimit: 6, callback: v => formatRF(v) } },
                         x: { grid: { display: false } }
                     }
                 }
@@ -3801,13 +3967,13 @@ async function onSubmitDepositForm(e) {
 // ---------------------------------------------------------------------
 function getJournalAccountOptions() {
     const list = ['Accounts Receivable (A/R)', 'Accounts Payable (A/P)'];
-    banksDb.forEach(b => list.push(`${b.name} — ${b.account}`));
+    banksDb.forEach(b => list.push(formatBankLabel(b)));
     accountsDb.forEach(a => list.push(formatAccountLabel(a)));
     projectsDb.forEach(p => list.push(`${p.name} (Project)`));
     return list;
 }
 function formatAccountLabel(a) {
-    return `${a.number ? a.number + ' ' : ''}${a.name} - ${(a.currency || 'RWF Rwanda Franc').split(' ')[0]}`;
+    return `${a.name} · ${a.type || 'Account'} · ${a.detailType || 'General'} · ${formatRF(a.balance || 0)}`;
 }
 
 function addJournalLine() {
