@@ -262,7 +262,7 @@
                         <button type="button" class="ca-btn show-all" id="qa-show-all">Show all</button>
                     </div>
 
-                    <div class="glance-title">institutional summary</div>
+                    <div class="glance-title">Business at a glance</div>
                     <div class="glance-grid">
                         <div class="glance-card">
                             <div class="glance-card-head"><h4>Profit &amp; Loss</h4><span>Current scope</span></div>
@@ -757,9 +757,9 @@
                         <button class="btn btn-primary" id="open-bank-modal-btn"><i class="fa-solid fa-plus"></i> New Bank</button>
                     </div>
                     <div class="table-wrap ext-scroll-x">
-                        <table class="data-table">
-                            <thead><tr><th>Bank Name</th><th>Branch</th><th>Account Number</th><th>Currency</th><th>Current Balance</th><th>Actions</th></tr></thead>
-                            <tbody id="banks-table-body"><tr class="table-empty-row"><td colspan="6">Loading banks…</td></tr></tbody>
+                            <table class="data-table">
+                                <thead><tr><th>Bank Name</th><th>Account Type</th><th>Detail Type</th><th>Branch</th><th>Currency</th><th>Current Balance</th><th>Actions</th></tr></thead>
+                                <tbody id="banks-table-body"><tr class="table-empty-row"><td colspan="7">Loading banks…</td></tr></tbody>
                         </table>
                     </div>
                 </section>
@@ -807,11 +807,11 @@
                         <div class="ext-grid-wide">
                             <div class="chart-box">
                                 <div class="chart-box-title"><i class="fa-solid fa-chart-line"></i> <span id="coa-selected-bank-label">Cash trend</span></div>
-                                <div class="chart-canvas-wrap"><canvas id="coa-bank-chart"></canvas></div>
+                                <div class="chart-canvas-wrap"><canvas id="coa-bank-chart"></canvas><div id="coa-bank-chart-empty" class="chart-empty-state hidden"><i class="fa-solid fa-chart-line"></i><strong>No cash activity yet</strong><span>Record a deposit or expense for this account to build its trend.</span></div></div>
                             </div>
                             <div class="chart-box">
                                 <div class="chart-box-title"><i class="fa-solid fa-chart-column"></i> Income vs Expense by department (current scope)</div>
-                                <div class="chart-canvas-wrap"><canvas id="coa-dept-chart"></canvas></div>
+                                <div class="chart-canvas-wrap"><canvas id="coa-dept-chart"></canvas><div id="coa-dept-chart-empty" class="chart-empty-state hidden"><i class="fa-solid fa-chart-column"></i><strong>No departmental activity yet</strong><span>Recorded income and expenses will appear here automatically.</span></div></div>
                             </div>
                         </div>
                     </div>
