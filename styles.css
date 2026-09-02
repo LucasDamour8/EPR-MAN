@@ -511,6 +511,8 @@ a { color: var(--primary-dark); }
 .qb-line-table td { padding:9px 7px; vertical-align:top; }
 .qb-line-table input:not([type="checkbox"]), .qb-line-table select { min-height:42px; min-width:150px; font-size:.84rem; }
 .qb-line-table .line-bank-combo { min-width:300px; }
+.qb-line-table .line-received { min-width:280px; width:100%; }
+.qb-line-table .line-bank-input { min-width:360px !important; width:100%; text-overflow:ellipsis; }
 .qb-line-table .line-desc { min-width:250px; }
 .qb-line-table .line-customer { min-width:220px; }
 .qb-line-table .line-class { min-width:210px; }
@@ -1108,4 +1110,20 @@ a { color: var(--primary-dark); }
     .custom-report-results { border:none; box-shadow:none; }
     #record-detail-modal { position:static; background:#fff; padding:0; }
     #record-detail-modal .modal-content { max-width:none; box-shadow:none; max-height:none; }
+}
+
+/* Bank Deposit: readable account selector with live balance at its right */
+.qb-header-grid .deposit-account-group { grid-column:span 2; min-width:0; }
+.deposit-account-row { display:grid; grid-template-columns:minmax(480px,1fr) minmax(210px,auto); align-items:stretch; gap:14px; }
+.deposit-account-row .acct-combo { min-width:0; }
+.deposit-account-row #deposit-bank-search { min-height:48px; font-size:1rem; white-space:nowrap; text-overflow:ellipsis; padding-right:16px; }
+.deposit-selected-balance { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:8px 14px; border:1px solid #b9ddb3; border-radius:var(--radius); background:var(--primary-lighter); white-space:nowrap; }
+.deposit-selected-balance span { color:var(--text-muted); font-size:.78rem; font-weight:700; }
+.deposit-selected-balance strong { color:var(--primary-darker); font-size:1rem; }
+.deposit-selected-balance.hidden { display:none; }
+
+@media (max-width:900px) {
+    .qb-header-grid .deposit-account-group { grid-column:1 / -1; }
+    .deposit-account-row { grid-template-columns:1fr; }
+    .deposit-selected-balance { justify-content:flex-start; }
 }
