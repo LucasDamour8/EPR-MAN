@@ -45,8 +45,7 @@ const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approve
 const ACCOUNT_LINKED_PREFIXES = ['tx', 'invoice', 'bill', 'exp', 'deposit'];
 
 const VAT_OPTIONS = [
-    "Capital Import (15%)", "Old Change In Use (14%)", "Standard (15%)", "Capital (15%)",
-    "Old Standard (14%)", "Exempt (0%)", "Old Capital Import (14%)", "Zero Rated (0%)"
+    "Exempted (0%)", "VAT (18%)", "Zero-rated (0%)"
 ];
 
 const PAYMENT_METHODS = ["Cash", "Bank Transfer", "Mobile Money", "Cheque", "Card"];
@@ -124,6 +123,7 @@ let pendingAccountTarget = null;
 // "+ Add new" from a Bank-Account line picker (Expense/Deposit lines)
 // remembers which row/callback to return the newly created bank to.
 let pendingBankTarget = null;
+let pendingCustomerTarget = null;
 
 const $ = (id) => document.getElementById(id);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -541,7 +541,7 @@ function setupAccountCombobox(prefix) {
 
         const addRow = document.createElement('div');
         addRow.className = 'acct-dropdown-item acct-add-new';
-        addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new bank account</span><span class="adi-acct">Open the account form</span></div>';
+        addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span><span class="adi-acct">Create an account without leaving this action</span></div>';
         addRow.addEventListener('mousedown', (e) => {
             e.preventDefault();
             dropdown.classList.add('hidden');
@@ -557,7 +557,7 @@ function setupAccountCombobox(prefix) {
         if (banksDb.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = 'No bank/cash accounts exist yet. Use “Add new bank account” above.';
+            empty.textContent = 'No accounts exist yet. Use “Add new account” above.';
             dropdown.appendChild(empty);
             dropdown.classList.remove('hidden');
             return;
@@ -582,7 +582,7 @@ function setupAccountCombobox(prefix) {
                 row.className = 'acct-dropdown-item';
                 row.innerHTML = `
                     <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></span></div>
-                    <span class="adi-bal"><small>Current balance</small>${formatRF(computeBankBalance(b))}</span>`;
+                    <span class="adi-bal"><small>Balance</small>${formatRF(computeBankBalance(b))}</span>`;
                 row.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
@@ -1362,7 +1362,9 @@ async function onSubmitTxForm(e) {
         desc: $('tx-desc').value.trim(),
         amount: parseFloat($('tx-amount').value),
         department: deptField, subsection: subsec, presbytery: pres,
-        bankId: acct.bankId, bankName: acct.bankName
+        bankId: acct.bankId, bankName: acct.bankName,
+        ref: editId ? (transactionsDb.find(t => t.id === editId)?.ref || nextSequentialReference('TXN')) : nextSequentialReference('TXN'),
+        entryForm: editId ? (transactionsDb.find(t => t.id === editId)?.entryForm || 'transaction') : 'transaction'
     });
 
     if (!payload.desc || isNaN(payload.amount) || payload.amount < 0) {
@@ -1380,6 +1382,7 @@ async function onSubmitTxForm(e) {
             await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
             showToast('success', 'Transaction saved.');
         }
+        markReferenceUsed(payload.ref);
         closeTxModal();
     } catch (err) {
         showToast('error', "Couldn't save the transaction: " + err.message);
@@ -1391,7 +1394,9 @@ function onTxTableClick(e) {
     const delBtn = e.target.closest('.tx-delete-btn');
     if (editBtn) {
         const tx = transactionsDb.find(t => String(t.id) === String(editBtn.dataset.id));
-        if (tx) openTxModal(tx);
+        if (tx?.entryForm === 'expense') openExpenseModal(tx);
+        else if (tx?.entryForm === 'deposit') openDepositModal(tx);
+        else if (tx) openTxModal(tx);
     } else if (delBtn) {
         const tx = transactionsDb.find(t => String(t.id) === String(delBtn.dataset.id));
         if (!tx) return;
@@ -1758,7 +1763,7 @@ function renderTransactionsTable(list) {
     $('ft-result-count').textContent = `${list.length} result${list.length === 1 ? '' : 's'}`;
 
     if (list.length === 0) {
-        tbody.innerHTML = `<tr class="table-empty-row"><td colspan="9"><i class="fa-solid fa-inbox empty-icon"></i>No records found in this scope. Try clearing filters or search.</td></tr>`;
+        tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10"><i class="fa-solid fa-inbox empty-icon"></i>No records found in this scope. Try clearing filters or search.</td></tr>`;
         $('tx-table-footer').textContent = '';
         return;
     }
@@ -1769,6 +1774,7 @@ function renderTransactionsTable(list) {
         const canEdit = superVisible || tx.createdById === currentUser.id;
         tr.innerHTML = `
             <td>${tx.date}</td>
+            <td><strong>${escapeHtml(tx.ref || '—')}</strong></td>
             <td><span class="badge type-${tx.type.toLowerCase()}">${tx.type}</span></td>
             <td class="wrap">${escapeHtml(tx.desc)}<div class="row-who">by ${whoLine(tx)}</div></td>
             <td>${shortDeptName(tx.department)}</td>
@@ -2346,7 +2352,8 @@ function subscribeCustomers() {
     }, (err) => showToast('error', 'Customers feed error: ' + err.message));
 }
 
-function openCustomerModal(edit) {
+function openCustomerModal(edit, target) {
+    pendingCustomerTarget = target || null;
     setupScopedModalFields('customer', false, edit);
     if (edit) {
         $('customer-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Customer';
@@ -2380,9 +2387,16 @@ async function onSubmitCustomerForm(e) {
     if (!payload.name) { showToast('error', 'Customer name is required.'); return; }
     const btn = $('customer-submit-btn'); btn.disabled = true;
     try {
+        let customerId = editId;
         if (editId) { await updateDoc(doc(db, COLLECTIONS.CUSTOMERS, editId), { ...payload, ...updateMeta() }); showToast('success', 'Customer updated.'); }
-        else { await addDoc(collection(db, COLLECTIONS.CUSTOMERS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() })); showToast('success', 'Customer added.'); }
+        else {
+            const customerRef = await addDoc(collection(db, COLLECTIONS.CUSTOMERS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+            customerId = customerRef.id;
+            showToast('success', 'Customer added.');
+        }
         closeModal('customer-modal');
+        if (pendingCustomerTarget && pendingCustomerTarget.onCreated) pendingCustomerTarget.onCreated({ id: customerId, ...payload });
+        pendingCustomerTarget = null;
     } catch (err) { showToast('error', "Couldn't save customer: " + err.message); }
     finally { btn.disabled = false; }
 }
@@ -3028,17 +3042,13 @@ async function onSubmitAccountForm(e) {
 function renderAccountsTable() {
     const tbody = $('accounts-table-body');
     if (!tbody) return;
-    if (accountsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No chart-of-accounts entries yet. Click "New account" to add one.</td></tr>`; return; }
+    if (accountsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="3">No chart-of-accounts entries yet. Click "New account" to add one.</td></tr>`; return; }
     tbody.innerHTML = '';
     accountsDb.forEach(a => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${escapeHtml(a.number || '—')}</td>
             <td><strong>${escapeHtml(a.name)}</strong>${a.linkedBankId ? '<div class="linked-account-badge"><i class="fa-solid fa-building-columns"></i> Bank-linked</div>' : ''}</td>
             <td><span class="badge">${escapeHtml(a.type || '')}</span></td>
-            <td>${escapeHtml(a.detailType || '—')}</td>
-            <td>${escapeHtml(a.currency || 'RWF Rwanda Franc')}</td>
-            <td>${formatRF(a.balance)}</td>
             <td><div class="row-actions">
                 <button class="icon-action-btn" data-edit="${a.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover" data-delete="${a.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
@@ -3081,7 +3091,7 @@ function setupLineBankCombobox(row) {
 
         const addNewRow = document.createElement('div');
         addNewRow.className = 'acct-dropdown-item acct-add-new';
-        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new bank</span></div>`;
+        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span></div>`;
         addNewRow.addEventListener('mousedown', (e) => {
             e.preventDefault();
             dropdown.classList.add('hidden');
@@ -3105,7 +3115,7 @@ function setupLineBankCombobox(row) {
         if (banksDb.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = 'No banks yet — use "+ Add new bank" above to create one.';
+            empty.textContent = 'No accounts yet — use "+ Add new account" above to create one.';
             dropdown.appendChild(empty);
         } else if (matches.length === 0) {
             const empty = document.createElement('div');
@@ -3486,38 +3496,60 @@ function renderReportPanel() {
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
 
     const list = getReportTransactions();
-    let income = 0, expense = 0, assets = banksDb.reduce((sum, bank) => sum + computeBankBalance(bank), 0), liabilities = 0;
+    let income = 0, expense = 0, transactionAssets = 0, transactionLiabilities = 0;
     list.forEach(tx => {
         if (tx.type === 'Income') income += tx.amount;
         if (tx.type === 'Expense') expense += tx.amount;
-        if (tx.type === 'Asset') assets += tx.amount;
-        if (tx.type === 'Liability') liabilities += tx.amount;
+        if (tx.type === 'Asset') transactionAssets += tx.amount;
+        if (tx.type === 'Liability') transactionLiabilities += tx.amount;
     });
+    const costOfSales = list.filter(isCostOfSalesTransaction).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const operatingExpenses = Math.max(0, expense - costOfSales);
+    const grossMargin = income - costOfSales;
     const netProfit = income - expense;
-    const netWorth = assets - liabilities;
+    const cashAssets = banksDb.filter(bank => bank.accountType !== 'Credit card').reduce((sum, bank) => sum + computeBankBalance(bank), 0);
+    const otherAssets = accountsDb.filter(account => !account.linkedBankId && ['Accounts receivable (A/R)', 'Current assets', 'Fixed assets', 'Non-current assets'].includes(account.type)).reduce((sum, account) => sum + Number(account.balance || account.openingBalance || 0), 0) + transactionAssets;
+    const assets = cashAssets + otherAssets;
+    const accountLiabilities = accountsDb.filter(account => ['Credit card', 'Accounts payable (A/P)', 'Current liabilities', 'Non-current liabilities'].includes(account.type)).reduce((sum, account) => sum + Math.abs(Number(account.balance || account.openingBalance || 0)), 0);
+    const liabilities = accountLiabilities + transactionLiabilities;
+    const equity = assets - liabilities;
 
     $('stmt-income').textContent = formatRF(income);
+    $('stmt-cost-sales').textContent = formatRF(costOfSales);
+    $('stmt-gross-margin').textContent = formatRF(grossMargin);
+    $('stmt-operating-expenses').textContent = formatRF(operatingExpenses);
     $('stmt-expenses').textContent = formatRF(expense);
     $('stmt-net').textContent = formatRF(netProfit);
+    $('stmt-cash-assets').textContent = formatRF(cashAssets);
+    $('stmt-other-assets').textContent = formatRF(otherAssets);
     $('stmt-assets').textContent = formatRF(assets);
     $('stmt-liabilities').textContent = formatRF(liabilities);
-    $('stmt-equity').textContent = formatRF(netWorth);
+    $('stmt-equity').textContent = formatRF(equity);
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
 }
 
+function isCostOfSalesTransaction(tx) {
+    if (!tx || tx.type !== 'Expense') return false;
+    const text = [tx.desc, tx.accountType, tx.detailType, tx.category, tx.lines].join(' ').toLowerCase();
+    return /cost of sales|cost of goods|\bcogs\b|direct labour|direct labor|freight|materials - cos|supplies - cos/.test(text);
+}
+
 function openFinancialStatementDetail(type) {
     const labels = {
         Income: 'Revenue / Income details', Expense: 'Operating expense details',
+        CostOfSales: 'Cost of sales details', OperatingExpense: 'Operating expense details',
         Asset: 'Current asset and bank details', Liability: 'Liability details'
     };
     const txRows = getReportTransactions()
-        .filter(tx => tx.type === type)
+        .filter(tx => type === 'CostOfSales' ? isCostOfSalesTransaction(tx) : type === 'OperatingExpense' ? tx.type === 'Expense' && !isCostOfSalesTransaction(tx) : tx.type === type)
         .map(tx => normalizeReportRecord('transactions', tx));
+    const assetAccounts = accountsDb.filter(account => !account.linkedBankId && ['Accounts receivable (A/R)', 'Current assets', 'Fixed assets', 'Non-current assets'].includes(account.type));
+    const liabilityAccounts = accountsDb.filter(account => ['Credit card', 'Accounts payable (A/P)', 'Current liabilities', 'Non-current liabilities'].includes(account.type));
     const rows = type === 'Asset'
-        ? [...getVisibleBanks().map(bank => normalizeReportRecord('banks', { ...bank, balance: computeBankBalance(bank) })), ...txRows]
-        : txRows;
+        ? [...getVisibleBanks().filter(bank => bank.accountType !== 'Credit card').map(bank => ({ ...normalizeReportRecord('banks', bank), amount: computeBankBalance(bank), raw: bank })), ...assetAccounts.map(account => normalizeReportRecord('accounts', account)), ...txRows]
+        : type === 'Liability' ? [...liabilityAccounts.map(account => normalizeReportRecord('accounts', account)), ...txRows] : txRows;
     const total = rows.reduce((sum, row) => sum + row.amount, 0);
     $('record-detail-title').textContent = labels[type] || `${type} details`;
     $('record-detail-body').innerHTML = `
@@ -3559,8 +3591,11 @@ function reportSourceRecords(source) {
         suppliers: suppliersDb, projects: projectsDb, budgets: budgetsDb,
         journal: journalEntriesDb, users: usersDb
     };
-    if (source === 'all') return Object.entries(sources).flatMap(([key, rows]) => rows.map(row => normalizeReportRecord(key, row)));
-    return (sources[source] || []).map(row => normalizeReportRecord(source, row));
+    const normalizeSourceRow = (key, row) => key === 'banks'
+        ? { ...normalizeReportRecord(key, row), amount: computeBankBalance(row), raw: row }
+        : normalizeReportRecord(key, row);
+    if (source === 'all') return Object.entries(sources).flatMap(([key, rows]) => rows.map(row => normalizeSourceRow(key, row)));
+    return (sources[source] || []).map(row => normalizeSourceRow(source, row));
 }
 
 function getCustomReportRecords() {
@@ -3624,13 +3659,37 @@ function renderCustomReport() {
     });
 }
 
+let activeReportDetailRecord = null;
+
 function openRecordDetail(record) {
     if (!record) return;
+    activeReportDetailRecord = record;
     $('record-detail-title').textContent = record.name;
     const ignored = new Set(['id', 'createdAt', 'updatedAt']);
     const fields = Object.entries(record.raw).filter(([key, value]) => !ignored.has(key) && value !== undefined && value !== null && value !== '');
     $('record-detail-body').innerHTML = `<div class="record-summary"><span class="module-chip">${escapeHtml(REPORT_SOURCE_LABELS[record.source] || record.source)}</span><strong>${formatRF(record.amount)}</strong></div><div class="detail-grid">${fields.map(([key, value]) => `<div class="detail-field"><span>${escapeHtml(key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()))}</span><strong>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</strong></div>`).join('')}</div>`;
     openModal('record-detail-modal');
+}
+
+function openAndManageReportRecord(record) {
+    if (!record) return;
+    closeModal('record-detail-modal');
+    const raw = record.raw || {};
+    if (record.source === 'transactions') {
+        switchView('transactions');
+        if (raw.entryForm === 'expense') openExpenseModal(raw);
+        else if (raw.entryForm === 'deposit') openDepositModal(raw);
+        else openTxModal(raw);
+    } else if (record.source === 'invoices') { switchView('invoices'); openInvoiceModal(raw); }
+    else if (record.source === 'bills') { switchView('bills'); openBillModal(raw); }
+    else if (record.source === 'banks') { switchView('banks'); openBankModal(raw); }
+    else if (record.source === 'accounts') { switchView('coa'); openAccountModal(raw); }
+    else if (record.source === 'customers') { switchView('customers'); openCustomerModal(raw); }
+    else if (record.source === 'suppliers') { switchView('suppliers'); openSupplierModal(raw); }
+    else if (record.source === 'projects') { switchView('projects'); openProjectModal(raw); }
+    else if (record.source === 'budgets') { switchView('budgets'); openBudgetModal(raw); }
+    else if (record.source === 'journal') { switchView('journal'); showToast('info', `Journal ${raw.journalNo || record.reference} is now visible in the journal list.`); }
+    else if (record.source === 'users') { switchView('users'); showToast('info', `${raw.name || record.name} is now visible in User Management.`); }
 }
 
 function setReportMode(mode) {
@@ -3653,6 +3712,7 @@ function setupCustomReports() {
     $('custom-report-search').addEventListener('input', renderCustomReport);
     $('close-record-detail').addEventListener('click', () => closeModal('record-detail-modal'));
     $('done-record-detail').addEventListener('click', () => closeModal('record-detail-modal'));
+    $('manage-record-detail').addEventListener('click', () => openAndManageReportRecord(activeReportDetailRecord));
     $('record-detail-modal').addEventListener('click', e => { if (e.target === $('record-detail-modal')) closeModal('record-detail-modal'); });
     $('print-record-detail').addEventListener('click', () => window.print());
 }
@@ -3689,12 +3749,18 @@ function setupQbModalsEventListeners() {
     $('close-expense-modal').addEventListener('click', () => closeModal('expense-modal'));
     $('expense-modal').addEventListener('click', (e) => { if (e.target === $('expense-modal')) closeModal('expense-modal'); });
     $('expense-form').addEventListener('submit', onSubmitExpenseForm);
+    $('exp-save-btn').addEventListener('click', () => { expenseSaveMode = 'stay'; $('expense-form').requestSubmit(); });
+    $('exp-save-new-btn').addEventListener('click', () => { expenseSaveMode = 'new'; $('expense-form').requestSubmit(); });
+    $('exp-submit-btn').addEventListener('click', () => { expenseSaveMode = 'close'; });
     $('exp-add-line-btn').addEventListener('click', () => { addExpenseLine(); });
     $('exp-clear-lines-btn').addEventListener('click', () => { $('exp-lines-body').innerHTML = ''; for (let i = 0; i < 4; i++) addExpenseLine(); updateExpenseTotals(); });
 
     $('close-deposit-modal').addEventListener('click', () => closeModal('deposit-modal'));
     $('deposit-modal').addEventListener('click', (e) => { if (e.target === $('deposit-modal')) closeModal('deposit-modal'); });
     $('deposit-form').addEventListener('submit', onSubmitDepositForm);
+    $('deposit-save-btn').addEventListener('click', () => { depositSaveMode = 'stay'; $('deposit-form').requestSubmit(); });
+    $('deposit-save-new-btn').addEventListener('click', () => { depositSaveMode = 'new'; $('deposit-form').requestSubmit(); });
+    $('deposit-submit-btn').addEventListener('click', () => { depositSaveMode = 'close'; });
     $('deposit-add-line-btn').addEventListener('click', () => { addDepositLine(); });
     $('deposit-clear-lines-btn').addEventListener('click', () => { $('deposit-lines-body').innerHTML = ''; for (let i = 0; i < 4; i++) addDepositLine(); updateDepositTotals(); });
 
@@ -3711,6 +3777,63 @@ function renumberLines(tbodyId) {
     qsa('tr', tbody).forEach((tr, i) => { const firstTd = tr.querySelector('td'); if (firstTd) firstTd.textContent = i + 1; });
 }
 
+const referenceSequenceFloor = {};
+
+function nextSequentialReference(prefix, records = transactionsDb) {
+    const matcher = new RegExp(`^${prefix}-(\\d+)$`, 'i');
+    const highest = records.reduce((max, record) => {
+        const candidates = [record.ref, record.reference, record.number, record.journalNo];
+        const found = candidates.map(value => String(value || '').match(matcher)).find(Boolean);
+        return found ? Math.max(max, Number(found[1]) || 0) : max;
+    }, Number(referenceSequenceFloor[prefix] || 0));
+    return `${prefix}-${String(highest + 1).padStart(6, '0')}`;
+}
+
+function markReferenceUsed(reference) {
+    const match = String(reference || '').match(/^([A-Z]+)-(\d+)/i);
+    if (!match) return;
+    const prefix = match[1].toUpperCase();
+    referenceSequenceFloor[prefix] = Math.max(Number(referenceSequenceFloor[prefix] || 0), Number(match[2]) || 0);
+}
+
+function setupCustomerProjectSelect(select, selectedValue = '') {
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Customer / Project --</option>';
+    const addOption = document.createElement('option');
+    addOption.value = '__ADD_NEW_CUSTOMER__';
+    addOption.textContent = '+ Add new customer';
+    select.appendChild(addOption);
+    customersDb.forEach(customer => {
+        const option = document.createElement('option');
+        option.value = customer.name;
+        option.textContent = customer.name;
+        select.appendChild(option);
+    });
+    projectsDb.forEach(project => {
+        const option = document.createElement('option');
+        option.value = project.name;
+        option.textContent = `${project.name} (Project)`;
+        select.appendChild(option);
+    });
+    if (selectedValue) select.value = selectedValue;
+    select.addEventListener('change', () => {
+        if (select.value !== '__ADD_NEW_CUSTOMER__') return;
+        select.value = '';
+        openCustomerModal(null, { onCreated: customer => {
+            const option = document.createElement('option');
+            option.value = customer.name;
+            option.textContent = customer.name;
+            select.appendChild(option);
+            select.value = customer.name;
+        }});
+    });
+}
+
+let activeExpenseEditId = '';
+let activeDepositEditId = '';
+let expenseSaveMode = 'close';
+let depositSaveMode = 'close';
+
 // ---------------------------------------------------------------------
 // EXPENSE — each line now picks a Bank Account (not a Chart-of-Accounts
 // category). The line's amount is deducted from whichever bank that line
@@ -3723,7 +3846,7 @@ function addExpenseLine() {
         <td>${tbody.children.length + 1}</td>
         <td>
             <div class="acct-combo line-bank-combo">
-                <input type="text" class="line-bank-input" placeholder="-- Bank account --" autocomplete="off">
+                <input type="text" class="line-bank-input" placeholder="-- Account name --" autocomplete="off">
                 <input type="hidden" class="line-bank-id">
                 <div class="acct-dropdown hidden line-bank-dropdown"></div>
             </div>
@@ -3734,14 +3857,16 @@ function addExpenseLine() {
         <td style="text-align:center;"><input type="checkbox" class="line-billable"></td>
         <td><select class="line-customer"></select></td>
         <td><select class="line-class"></select></td>
-        <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
-    fillSimpleSelect(tr.querySelector('.line-customer'), customersDb.map(c => c.name), true, '-- Customer/Project --');
+    setupCustomerProjectSelect(tr.querySelector('.line-customer'));
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
     tr.querySelector('.line-amount').addEventListener('input', updateExpenseTotals);
+    tr.querySelector('.line-edit-btn').addEventListener('click', () => { tr.classList.add('line-editing'); tr.querySelector('.line-bank-input').focus(); });
     tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('exp-lines-body'); updateExpenseTotals(); });
     tbody.appendChild(tr);
+    return tr;
 }
 
 function updateExpenseHeaderBalance(bank) {
@@ -3768,9 +3893,11 @@ function updateExpenseTotals() {
     $('exp-projected-balance').classList.toggle('negative-balance', current - total < 0);
 }
 
-function openExpenseModal() {
+function openExpenseModal(editRecord) {
     $('expense-form').reset();
-    $('exp-date').value = new Date().toISOString().split('T')[0];
+    activeExpenseEditId = editRecord ? editRecord.id : '';
+    expenseSaveMode = 'close';
+    $('exp-date').value = editRecord?.date || new Date().toISOString().split('T')[0];
     resetAccountCombobox('exp');
     delete $('exp-amount-display').dataset.bankBalance;
     $('exp-balance-preview').classList.add('hidden');
@@ -3781,7 +3908,32 @@ function openExpenseModal() {
     if (locInput) locInput.value = '';
     if (locHidden) locHidden.value = '';
     $('exp-lines-body').innerHTML = '';
-    for (let i = 0; i < 4; i++) addExpenseLine();
+    $('exp-ref').value = editRecord?.ref || nextSequentialReference('EXP');
+    $('exp-method').value = editRecord?.method || '';
+    if (editRecord?.bankId) {
+        prefillAccountCombobox('exp', editRecord.bankId);
+        const bank = banksDb.find(b => b.id === editRecord.bankId);
+        if (bank) updateExpenseHeaderBalance(bank);
+    }
+    if (editRecord?.payee) $('exp-payee-search').value = editRecord.payee;
+    if (editRecord?.location) $('exp-location-search').value = editRecord.location;
+    const savedLines = editRecord ? parseLines(editRecord) : [];
+    const rowCount = Math.max(4, savedLines.length);
+    for (let i = 0; i < rowCount; i++) {
+        const tr = addExpenseLine();
+        const line = savedLines[i];
+        if (!line) continue;
+        const bank = banksDb.find(b => b.id === line.bankId);
+        tr.querySelector('.line-bank-id').value = line.bankId || '';
+        tr.querySelector('.line-bank-input').value = bank ? formatBankLabel(bank) : (line.bankName || '');
+        tr.querySelector('.line-desc').value = line.description || '';
+        tr.querySelector('.line-amount').value = line.amount || '';
+        tr.querySelector('.line-vat').value = line.vat || '';
+        tr.querySelector('.line-billable').checked = !!line.billable;
+        setupCustomerProjectSelect(tr.querySelector('.line-customer'), line.customerProject || '');
+        tr.querySelector('.line-class').value = line.class || '';
+    }
+    $('exp-submit-btn').textContent = activeExpenseEditId ? 'Update and close' : 'Save and close';
     updateExpenseTotals();
     openModal('expense-modal');
 }
@@ -3827,19 +3979,32 @@ async function onSubmitExpenseForm(e) {
         payee: $('exp-payee-search').value || '',
         method: $('exp-method').value || '',
         ref: $('exp-ref').value.trim(),
+        entryForm: 'expense',
         location: $('exp-location-search').value || '',
         bankId: headerAcct.bankId, bankName: headerAcct.bankName,
         lines: JSON.stringify(lines),
         ...scope
     });
 
-    const btn = $('exp-submit-btn'); btn.disabled = true;
+    const expenseButtons = ['exp-save-btn', 'exp-save-new-btn', 'exp-submit-btn'].map(id => $(id));
+    expenseButtons.forEach(button => button.disabled = true);
     try {
-        await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
-        showToast('success', `Expense of ${formatRF(total)} saved and deducted from the selected bank account${lines.length > 1 ? 's' : ''}.`);
-        closeModal('expense-modal');
+        let savedId = activeExpenseEditId;
+        if (activeExpenseEditId) await updateDoc(doc(db, COLLECTIONS.TRANSACTIONS, activeExpenseEditId), { ...payload, ...updateMeta() });
+        else {
+            const savedRef = await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+            savedId = savedRef.id;
+        }
+        markReferenceUsed(payload.ref);
+        showToast('success', `Expense ${payload.ref} ${activeExpenseEditId ? 'updated' : 'saved'}.`);
+        if (expenseSaveMode === 'close') closeModal('expense-modal');
+        else if (expenseSaveMode === 'new') openExpenseModal();
+        else {
+            activeExpenseEditId = savedId;
+            $('exp-submit-btn').textContent = 'Update and close';
+        }
     } catch (err) { showToast('error', "Couldn't save expense: " + err.message); }
-    finally { btn.disabled = false; }
+    finally { expenseButtons.forEach(button => button.disabled = false); }
 }
 
 // ---------------------------------------------------------------------
@@ -3854,7 +4019,7 @@ function addDepositLine() {
         <td><select class="line-received"></select></td>
         <td>
             <div class="acct-combo line-bank-combo">
-                <input type="text" class="line-bank-input" placeholder="-- Bank account --" autocomplete="off">
+                <input type="text" class="line-bank-input" placeholder="-- Account name --" autocomplete="off">
                 <input type="hidden" class="line-bank-id">
                 <div class="acct-dropdown hidden line-bank-dropdown"></div>
             </div>
@@ -3865,15 +4030,17 @@ function addDepositLine() {
         <td><input type="number" class="line-amount" step="any" min="0" placeholder="0.00"></td>
         <td><select class="line-vat"></select></td>
         <td><select class="line-class"></select></td>
-        <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
     tr.querySelector('.line-amount').addEventListener('input', updateDepositTotals);
+    tr.querySelector('.line-edit-btn').addEventListener('click', () => { tr.classList.add('line-editing'); tr.querySelector('.line-bank-input').focus(); });
     tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('deposit-lines-body'); updateDepositTotals(); });
     tbody.appendChild(tr);
+    return tr;
 }
 
 function updateDepositHeaderBalance(bank) {
@@ -3898,14 +4065,40 @@ function updateDepositTotals() {
     $('deposit-projected-balance').textContent = formatRF(current + total);
 }
 
-function openDepositModal() {
+function openDepositModal(editRecord) {
     $('deposit-form').reset();
-    $('deposit-date').value = new Date().toISOString().split('T')[0];
+    activeDepositEditId = editRecord ? editRecord.id : '';
+    depositSaveMode = 'close';
+    $('deposit-date').value = editRecord?.date || new Date().toISOString().split('T')[0];
     resetAccountCombobox('deposit');
     delete $('deposit-amount-display').dataset.bankBalance;
     $('deposit-balance-preview').classList.add('hidden');
     $('deposit-lines-body').innerHTML = '';
-    for (let i = 0; i < 4; i++) addDepositLine();
+    if (editRecord?.bankId) {
+        prefillAccountCombobox('deposit', editRecord.bankId);
+        const bank = banksDb.find(b => b.id === editRecord.bankId);
+        if (bank) updateDepositHeaderBalance(bank);
+    }
+    const savedLines = editRecord ? parseLines(editRecord) : [];
+    const baseRef = editRecord?.ref || nextSequentialReference('DEP');
+    const rowCount = Math.max(4, savedLines.length);
+    for (let i = 0; i < rowCount; i++) {
+        const tr = addDepositLine();
+        const line = savedLines[i];
+        if (line) {
+            tr.querySelector('.line-received').value = line.receivedFrom || '';
+            const bank = banksDb.find(b => b.id === line.bankId);
+            tr.querySelector('.line-bank-id').value = line.bankId || '';
+            tr.querySelector('.line-bank-input').value = bank ? formatBankLabel(bank) : (line.bankName || '');
+            tr.querySelector('.line-desc').value = line.description || '';
+            tr.querySelector('.line-method').value = line.method || '';
+            tr.querySelector('.line-ref').value = line.ref || `${baseRef}-${String(i + 1).padStart(2, '0')}`;
+            tr.querySelector('.line-amount').value = line.amount || '';
+            tr.querySelector('.line-vat').value = line.vat || '';
+            tr.querySelector('.line-class').value = line.class || '';
+        } else tr.querySelector('.line-ref').value = `${baseRef}-${String(i + 1).padStart(2, '0')}`;
+    }
+    $('deposit-submit-btn').textContent = activeDepositEditId ? 'Update and close' : 'Save and close';
     updateDepositTotals();
     openModal('deposit-modal');
 }
@@ -3946,18 +4139,32 @@ async function onSubmitDepositForm(e) {
         type: 'Income',
         desc: lines[0].description || `Deposit from ${lines[0].receivedFrom || 'various'}`,
         amount: total,
+        ref: (lines[0]?.ref || '').replace(/-\d{2}$/, '') || nextSequentialReference('DEP'),
+        entryForm: 'deposit',
         bankId: headerAcct.bankId, bankName: headerAcct.bankName,
         lines: JSON.stringify(lines),
         ...scope
     });
 
-    const btn = $('deposit-submit-btn'); btn.disabled = true;
+    const depositButtons = ['deposit-save-btn', 'deposit-save-new-btn', 'deposit-submit-btn'].map(id => $(id));
+    depositButtons.forEach(button => button.disabled = true);
     try {
-        await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
-        showToast('success', `Deposit of ${formatRF(total)} saved to the selected bank account${lines.length > 1 ? 's' : ''}.`);
-        closeModal('deposit-modal');
+        let savedId = activeDepositEditId;
+        if (activeDepositEditId) await updateDoc(doc(db, COLLECTIONS.TRANSACTIONS, activeDepositEditId), { ...payload, ...updateMeta() });
+        else {
+            const savedRef = await addDoc(collection(db, COLLECTIONS.TRANSACTIONS), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+            savedId = savedRef.id;
+        }
+        markReferenceUsed(payload.ref);
+        showToast('success', `Deposit ${payload.ref} ${activeDepositEditId ? 'updated' : 'saved'}.`);
+        if (depositSaveMode === 'close') closeModal('deposit-modal');
+        else if (depositSaveMode === 'new') openDepositModal();
+        else {
+            activeDepositEditId = savedId;
+            $('deposit-submit-btn').textContent = 'Update and close';
+        }
     } catch (err) { showToast('error', "Couldn't save deposit: " + err.message); }
-    finally { btn.disabled = false; }
+    finally { depositButtons.forEach(button => button.disabled = false); }
 }
 
 // ---------------------------------------------------------------------
@@ -3989,7 +4196,7 @@ function addJournalLine() {
         <td><select class="line-vat"></select></td>
         <td><select class="line-location"></select></td>
         <td><select class="line-class"></select></td>
-        <td><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     const accountSelect = tr.querySelector('.line-account');
     fillSimpleSelect(accountSelect, getJournalAccountOptions(), true, '-- Account --');
     const addAccountOption = document.createElement('option');
@@ -4017,6 +4224,7 @@ function addJournalLine() {
     const debitInput = tr.querySelector('.line-debit'), creditInput = tr.querySelector('.line-credit');
     debitInput.addEventListener('input', () => { if (parseFloat(debitInput.value) > 0) creditInput.value = ''; updateJournalTotals(); });
     creditInput.addEventListener('input', () => { if (parseFloat(creditInput.value) > 0) debitInput.value = ''; updateJournalTotals(); });
+    tr.querySelector('.line-edit-btn').addEventListener('click', () => { tr.classList.add('line-editing'); accountSelect.focus(); });
     tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('journal-lines-body'); updateJournalTotals(); });
     tbody.appendChild(tr);
 }
@@ -4049,10 +4257,7 @@ async function openJournalModal() {
     $('journal-lines-body').innerHTML = '';
     for (let i = 0; i < 4; i++) addJournalLine();
     updateJournalTotals();
-    try {
-        const snap = await getDocs(collection(db, COLLECTIONS.JOURNAL_ENTRIES));
-        $('journal-no').value = String(snap.size + 1);
-    } catch (err) { $('journal-no').value = ''; }
+    $('journal-no').value = nextSequentialReference('JRN', journalEntriesDb);
     openModal('journal-modal');
 }
 
@@ -4093,6 +4298,7 @@ async function onSubmitJournalForm(e, keepOpen) {
     if (btn) btn.disabled = true;
     try {
         await addDoc(collection(db, COLLECTIONS.JOURNAL_ENTRIES), sanitizePayload({ ...payload, ...actorMeta(), createdAt: serverTimestamp() }));
+        markReferenceUsed(payload.journalNo);
         const balanceNote = isBalanced
             ? `balanced at ${formatRF(totalDebit)}`
             : `saved as unbalanced — Debits ${formatRF(totalDebit)} vs Credits ${formatRF(totalCredit)}`;
