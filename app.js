@@ -548,6 +548,7 @@ function setupAccountCombobox(prefix) {
             openBankModal(null, { onCreated: bank => {
                 hidden.value = bank.id;
                 input.value = formatBankLabel(bank);
+                input.classList.add('default-account-selected');
                 if (prefix === 'exp') updateExpenseHeaderBalance(bank);
                 if (prefix === 'deposit') updateDepositHeaderBalance(bank);
             }});
@@ -587,6 +588,7 @@ function setupAccountCombobox(prefix) {
                     e.preventDefault();
                     hidden.value = b.id;
                     input.value = formatBankLabel(b);
+                    input.classList.add('default-account-selected');
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
                     if (prefix === 'exp') updateExpenseHeaderBalance(b);
@@ -601,6 +603,7 @@ function setupAccountCombobox(prefix) {
     input.addEventListener('focus', () => renderList(''));
     input.addEventListener('input', () => {
         hidden.value = '';
+        input.classList.remove('default-account-selected');
         clearTimeout(debounceTimer);
         const term = input.value;
         debounceTimer = setTimeout(() => renderList(term), 180);
@@ -615,12 +618,14 @@ function prefillAccountCombobox(prefix, bankId) {
     const bank = banksDb.find(b => b.id === bankId);
     hidden.value = bankId || '';
     input.value = bank ? formatBankLabel(bank) : '';
+    input.classList.toggle('default-account-selected', !!bank);
 }
 
 function resetAccountCombobox(prefix) {
     const input = $(`${prefix}-bank-search`);
     const hidden = $(`${prefix}-bank-id`);
     if (input) input.value = '';
+    if (input) input.classList.remove('default-account-selected');
     if (hidden) hidden.value = '';
 }
 
@@ -3215,14 +3220,15 @@ function getBankActivity(bankId) {
 
 function renderCoaBankGrid() {
     const grid = $('coa-bank-grid');
+    const selector = $('coa-account-select');
     const empty = $('coa-empty');
     const charts = $('coa-charts');
-    if (!grid || !empty || !charts) return;
+    if (!grid || !selector || !empty || !charts) return;
 
-    $('coa-scope-note').textContent = 'Every bank account and its live balance — shared company-wide.';
+    $('coa-scope-note').textContent = 'Account name and account type only. Balances are available in statements and reports.';
 
     const visible = getVisibleBanks();
-    grid.innerHTML = '';
+    selector.innerHTML = '<option value="">Select an account for charts</option>';
 
     if (visible.length === 0) {
         empty.classList.remove('hidden');
@@ -3236,19 +3242,19 @@ function renderCoaBankGrid() {
     if (!coaSelectedBankId || !visible.find(b => b.id === coaSelectedBankId)) coaSelectedBankId = visible[0].id;
 
     visible.forEach(b => {
-        const { tx } = getBankActivity(b.id);
-        const card = document.createElement('div');
-        card.className = `ext-card bank-card${coaSelectedBankId === b.id ? ' selected' : ''}`;
-        card.innerHTML = `
-            <h4><i class="fa-solid fa-building-columns"></i> ${escapeHtml(b.name)}</h4>
-            <div class="bank-type-line"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></div>
-            <div class="ext-sub">${escapeHtml(b.branch || 'No branch recorded')}${b.linkedAccountId ? ' · Linked to Chart of Accounts' : ''}</div>
-            <div class="ext-row"><span>Current balance</span><strong>${formatRF(computeBankBalance(b))}</strong></div>
-            <div class="ext-row"><span>Transactions posted</span><strong>${tx.length}</strong></div>
-        `;
-        card.addEventListener('click', () => { coaSelectedBankId = b.id; renderCoaBankGrid(); renderCoaCharts(); });
-        grid.appendChild(card);
+        const option = document.createElement('option');
+        option.value = b.id;
+        option.textContent = `${b.name} — ${b.accountType || 'Cash and cash equivalents'}`;
+        option.selected = coaSelectedBankId === b.id;
+        selector.appendChild(option);
     });
+    if (!selector.dataset.bound) {
+        selector.addEventListener('change', () => {
+            coaSelectedBankId = selector.value || null;
+            renderCoaCharts();
+        });
+        selector.dataset.bound = 'true';
+    }
 }
 
 function buildTrendBuckets(range) {
@@ -3839,7 +3845,7 @@ let depositSaveMode = 'close';
 // category). The line's amount is deducted from whichever bank that line
 // points to; a single Expense can therefore be split across several banks.
 // ---------------------------------------------------------------------
-function addExpenseLine() {
+function addExpenseLine(afterRow = null) {
     const tbody = $('exp-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -3857,15 +3863,17 @@ function addExpenseLine() {
         <td style="text-align:center;"><input type="checkbox" class="line-billable"></td>
         <td><select class="line-customer"></select></td>
         <td><select class="line-class"></select></td>
-        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-insert-btn" title="Insert a new row below"><i class="fa-solid fa-plus"></i></button><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     setupCustomerProjectSelect(tr.querySelector('.line-customer'));
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
     tr.querySelector('.line-amount').addEventListener('input', updateExpenseTotals);
+    tr.querySelector('.line-insert-btn').addEventListener('click', () => addExpenseLine(tr));
     tr.querySelector('.line-edit-btn').addEventListener('click', () => { tr.classList.add('line-editing'); tr.querySelector('.line-bank-input').focus(); });
     tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('exp-lines-body'); updateExpenseTotals(); });
-    tbody.appendChild(tr);
+    if (afterRow && afterRow.parentNode === tbody) afterRow.insertAdjacentElement('afterend', tr); else tbody.appendChild(tr);
+    renumberLines('exp-lines-body');
     return tr;
 }
 
@@ -3901,6 +3909,10 @@ function openExpenseModal(editRecord) {
     resetAccountCombobox('exp');
     delete $('exp-amount-display').dataset.bankBalance;
     $('exp-balance-preview').classList.add('hidden');
+    if (!editRecord && banksDb.length) {
+        prefillAccountCombobox('exp', banksDb[0].id);
+        updateExpenseHeaderBalance(banksDb[0]);
+    }
     const payeeInput = $('exp-payee-search'), payeeHidden = $('exp-payee-id');
     if (payeeInput) payeeInput.value = '';
     if (payeeHidden) payeeHidden.value = '';
@@ -4011,7 +4023,7 @@ async function onSubmitExpenseForm(e) {
 // BANK DEPOSIT — each line also picks the Bank Account the funds land in,
 // so a single deposit slip can fund several bank accounts at once.
 // ---------------------------------------------------------------------
-function addDepositLine() {
+function addDepositLine(afterRow = null) {
     const tbody = $('deposit-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -4030,16 +4042,18 @@ function addDepositLine() {
         <td><input type="number" class="line-amount" step="any" min="0" placeholder="0.00"></td>
         <td><select class="line-vat"></select></td>
         <td><select class="line-class"></select></td>
-        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-insert-btn" title="Insert a new row below"><i class="fa-solid fa-plus"></i></button><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillOptGroupedSelect(tr.querySelector('.line-class'), getAllSubsectionsFlat(), true);
     tr.querySelector('.line-amount').addEventListener('input', updateDepositTotals);
+    tr.querySelector('.line-insert-btn').addEventListener('click', () => addDepositLine(tr));
     tr.querySelector('.line-edit-btn').addEventListener('click', () => { tr.classList.add('line-editing'); tr.querySelector('.line-bank-input').focus(); });
     tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('deposit-lines-body'); updateDepositTotals(); });
-    tbody.appendChild(tr);
+    if (afterRow && afterRow.parentNode === tbody) afterRow.insertAdjacentElement('afterend', tr); else tbody.appendChild(tr);
+    renumberLines('deposit-lines-body');
     return tr;
 }
 
@@ -4073,6 +4087,10 @@ function openDepositModal(editRecord) {
     resetAccountCombobox('deposit');
     delete $('deposit-amount-display').dataset.bankBalance;
     $('deposit-balance-preview').classList.add('hidden');
+    if (!editRecord && banksDb.length) {
+        prefillAccountCombobox('deposit', banksDb[0].id);
+        updateDepositHeaderBalance(banksDb[0]);
+    }
     $('deposit-lines-body').innerHTML = '';
     if (editRecord?.bankId) {
         prefillAccountCombobox('deposit', editRecord.bankId);
@@ -4183,7 +4201,7 @@ function formatAccountLabel(a) {
     return `${a.name} · ${a.type || 'Account'} · ${a.detailType || 'General'} · ${formatRF(a.balance || 0)}`;
 }
 
-function addJournalLine() {
+function addJournalLine(afterRow = null) {
     const tbody = $('journal-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -4196,7 +4214,7 @@ function addJournalLine() {
         <td><select class="line-vat"></select></td>
         <td><select class="line-location"></select></td>
         <td><select class="line-class"></select></td>
-        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-insert-btn" title="Insert a new row below"><i class="fa-solid fa-plus"></i></button><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     const accountSelect = tr.querySelector('.line-account');
     fillSimpleSelect(accountSelect, getJournalAccountOptions(), true, '-- Account --');
     const addAccountOption = document.createElement('option');
@@ -4224,9 +4242,12 @@ function addJournalLine() {
     const debitInput = tr.querySelector('.line-debit'), creditInput = tr.querySelector('.line-credit');
     debitInput.addEventListener('input', () => { if (parseFloat(debitInput.value) > 0) creditInput.value = ''; updateJournalTotals(); });
     creditInput.addEventListener('input', () => { if (parseFloat(creditInput.value) > 0) debitInput.value = ''; updateJournalTotals(); });
+    tr.querySelector('.line-insert-btn').addEventListener('click', () => addJournalLine(tr));
     tr.querySelector('.line-edit-btn').addEventListener('click', () => { tr.classList.add('line-editing'); accountSelect.focus(); });
     tr.querySelector('.line-delete-btn').addEventListener('click', () => { tr.remove(); renumberLines('journal-lines-body'); updateJournalTotals(); });
-    tbody.appendChild(tr);
+    if (afterRow && afterRow.parentNode === tbody) afterRow.insertAdjacentElement('afterend', tr); else tbody.appendChild(tr);
+    renumberLines('journal-lines-body');
+    return tr;
 }
 
 function updateJournalTotals() {
