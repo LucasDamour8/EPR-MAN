@@ -1314,19 +1314,21 @@
             </div>
             <form id="deposit-form" novalidate>
                 <div class="qb-header-grid">
-                    <div class="form-group">
+                    <div class="form-group deposit-account-group">
                         <label>Account name <span class="req">*</span></label>
-                        <div class="acct-combo">
-                            <input type="text" id="deposit-bank-search" placeholder="Search accounts…" autocomplete="off">
-                            <input type="hidden" id="deposit-bank-id">
-                            <div class="acct-dropdown hidden" id="deposit-bank-dropdown"></div>
+                        <div class="deposit-account-row">
+                            <div class="acct-combo">
+                                <input type="text" id="deposit-bank-search" placeholder="Search accounts by name or type…" autocomplete="off">
+                                <input type="hidden" id="deposit-bank-id">
+                                <div class="acct-dropdown hidden" id="deposit-bank-dropdown"></div>
+                            </div>
+                            <div id="deposit-balance-preview" class="deposit-selected-balance hidden">
+                                <span>Account balance</span>
+                                <strong id="deposit-current-balance">RF 0</strong>
+                            </div>
                         </div>
-                        <div class="field-hint">Search by account name or account type. The selected account balance is shown in the list.</div>
-                        <div id="deposit-balance-preview" class="balance-preview hidden account-balance-internal">
-                            <span>Current <strong id="deposit-current-balance">RF 0</strong></span>
-                            <i class="fa-solid fa-arrow-right"></i>
-                            <span>After deposit <strong id="deposit-projected-balance">RF 0</strong></span>
-                        </div>
+                        <input type="hidden" id="deposit-projected-balance" value="0">
+                        <div class="field-hint">Choose “Add new account” first, or search existing accounts by name, account type or detail type.</div>
                     </div>
                     <div class="qb-amount-huge">
                         <div class="qb-amount-label">Amount</div>
