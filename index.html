@@ -774,12 +774,15 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Chart of Accounts</h2>
-                            <p id="coa-scope-note">Pick a bank to see its cash trend, live statement and department performance.</p>
+                            <p id="coa-scope-note">All accounts are listed by account name and account type. Select an account below to view its charts.</p>
                         </div>
                         <button class="btn btn-primary" id="open-account-modal-btn"><i class="fa-solid fa-plus"></i> New account</button>
                     </div>
 
-                    <div class="ext-grid-wide" id="coa-bank-grid" style="margin-bottom:20px;"></div>
+                    <div class="coa-account-picker" id="coa-bank-grid">
+                        <label for="coa-account-select">Account for charts</label>
+                        <select id="coa-account-select"><option value="">Select an account</option></select>
+                    </div>
                     <div id="coa-empty" class="module-empty">
                         <i class="fa-solid fa-building-columns"></i>
                         Add a bank under Bank Management, then select it here to see its trend.
