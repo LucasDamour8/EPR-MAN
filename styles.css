@@ -52,7 +52,7 @@ html, body {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
-    font-size: 14.5px;
+    font-size: 17px;
     line-height: 1.45;
     width: 100%;
     overflow-x: hidden;
@@ -519,6 +519,16 @@ a { color: var(--primary-dark); }
 .qb-line-table tr.line-editing { box-shadow:inset 3px 0 0 var(--primary); }
 .coa-simple-table th:first-child { width:55%; }
 .coa-simple-table th:nth-child(2) { width:30%; }
+.coa-account-picker { display:grid; grid-template-columns:minmax(180px,260px) minmax(320px,1fr); align-items:center; gap:18px; margin:0 0 20px; padding:18px 20px; background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); }
+.coa-account-picker label { font-size:1rem; font-weight:800; }
+.coa-account-picker select { min-height:48px; padding:0 14px; font-size:1rem; border:1px solid var(--border-strong); border-radius:9px; background:#fff; }
+.default-account-selected { border:2px solid #d92d20 !important; background:#fff5f4 !important; color:#9f1c12 !important; font-weight:800 !important; box-shadow:0 0 0 3px rgba(217,45,32,.12); }
+.line-insert-btn { color:#fff !important; background:var(--primary-dark) !important; border-color:var(--primary-dark) !important; }
+.data-table th, .data-table td { font-size:.9rem; padding:13px 14px; }
+.view-header h2 { font-size:1.65rem; }
+.view-header p, .financial-statement-card, .statement-row { font-size:1rem; }
+.chart-box-title { font-size:1.05rem; }
+.chart-canvas-wrap { height:340px; min-height:300px; }
 .chart-empty-state { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:24px; text-align:center; color:var(--text-muted); background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(248,250,248,.98)); }
 .chart-empty-state i { font-size:2rem; color:var(--primary); opacity:.55; }
 .chart-empty-state strong { color:var(--text); font-size:.92rem; }
@@ -1003,7 +1013,7 @@ a { color: var(--primary-dark); }
     .chart-canvas-wrap { min-height: 220px; }
 }
 @media (max-width: 480px) {
-    html, body { font-size: 13.5px; }
+    html, body { font-size: 15px; }
     .content-body { padding: 12px 10px 44px; }
     .topbar { padding: 10px 12px; gap: 8px; }
     .u-name, .u-scope { display: none; }
