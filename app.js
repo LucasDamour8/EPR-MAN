@@ -3838,6 +3838,33 @@ function setupCustomerProjectSelect(select, selectedValue = '') {
     });
 }
 
+function setupCustomerOnlySelect(select, selectedValue = '') {
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Received from (Customer) --</option>';
+    const addOption = document.createElement('option');
+    addOption.value = '__ADD_NEW_CUSTOMER__';
+    addOption.textContent = '+ Add new customer';
+    select.appendChild(addOption);
+    customersDb.forEach(customer => {
+        const option = document.createElement('option');
+        option.value = customer.name;
+        option.textContent = customer.name;
+        select.appendChild(option);
+    });
+    if (selectedValue) select.value = selectedValue;
+    select.addEventListener('change', () => {
+        if (select.value !== '__ADD_NEW_CUSTOMER__') return;
+        select.value = '';
+        openCustomerModal(null, { onCreated: customer => {
+            const option = document.createElement('option');
+            option.value = customer.name;
+            option.textContent = customer.name;
+            select.appendChild(option);
+            select.value = customer.name;
+        }});
+    });
+}
+
 let activeExpenseEditId = '';
 let activeDepositEditId = '';
 let expenseSaveMode = 'close';
@@ -4046,7 +4073,7 @@ function addDepositLine(afterRow = null) {
         <td><select class="line-vat"></select></td>
         <td><select class="line-class"></select></td>
         <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
-    fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
+    setupCustomerOnlySelect(tr.querySelector('.line-received'));
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
@@ -4079,7 +4106,11 @@ function updateDepositTotals() {
     const hasBank = !!$('deposit-bank-id').value;
     $('deposit-balance-preview').classList.toggle('hidden', !hasBank);
     $('deposit-current-balance').textContent = formatRF(current);
-    $('deposit-projected-balance').textContent = formatRF(current + total);
+    const projected = $('deposit-projected-balance');
+    if (projected) {
+        if ('value' in projected) projected.value = String(current + total);
+        else projected.textContent = formatRF(current + total);
+    }
 }
 
 function openDepositModal(editRecord) {
