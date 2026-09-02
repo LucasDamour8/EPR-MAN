@@ -3780,7 +3780,10 @@ function setupQbModalsEventListeners() {
 
 function renumberLines(tbodyId) {
     const tbody = $(tbodyId);
-    qsa('tr', tbody).forEach((tr, i) => { const firstTd = tr.querySelector('td'); if (firstTd) firstTd.textContent = i + 1; });
+    qsa('tr', tbody).forEach((tr, i) => {
+        const number = tr.querySelector('.line-number');
+        if (number) number.textContent = i + 1;
+    });
 }
 
 const referenceSequenceFloor = {};
@@ -3849,7 +3852,7 @@ function addExpenseLine(afterRow = null) {
     const tbody = $('exp-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-        <td>${tbody.children.length + 1}</td>
+        <td class="line-sequence-cell"><div class="line-sequence-control"><button type="button" class="line-insert-btn" title="Insert a new row below" aria-label="Insert row below"><i class="fa-solid fa-plus"></i></button><span class="line-number">${tbody.children.length + 1}</span></div></td>
         <td>
             <div class="acct-combo line-bank-combo">
                 <input type="text" class="line-bank-input" placeholder="-- Account name --" autocomplete="off">
@@ -3863,7 +3866,7 @@ function addExpenseLine(afterRow = null) {
         <td style="text-align:center;"><input type="checkbox" class="line-billable"></td>
         <td><select class="line-customer"></select></td>
         <td><select class="line-class"></select></td>
-        <td><div class="row-actions"><button type="button" class="icon-action-btn line-insert-btn" title="Insert a new row below"><i class="fa-solid fa-plus"></i></button><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     setupCustomerProjectSelect(tr.querySelector('.line-customer'));
@@ -4027,7 +4030,7 @@ function addDepositLine(afterRow = null) {
     const tbody = $('deposit-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-        <td>${tbody.children.length + 1}</td>
+        <td class="line-sequence-cell"><div class="line-sequence-control"><button type="button" class="line-insert-btn" title="Insert a new row below" aria-label="Insert row below"><i class="fa-solid fa-plus"></i></button><span class="line-number">${tbody.children.length + 1}</span></div></td>
         <td><select class="line-received"></select></td>
         <td>
             <div class="acct-combo line-bank-combo">
@@ -4042,7 +4045,7 @@ function addDepositLine(afterRow = null) {
         <td><input type="number" class="line-amount" step="any" min="0" placeholder="0.00"></td>
         <td><select class="line-vat"></select></td>
         <td><select class="line-class"></select></td>
-        <td><div class="row-actions"><button type="button" class="icon-action-btn line-insert-btn" title="Insert a new row below"><i class="fa-solid fa-plus"></i></button><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     fillSimpleSelect(tr.querySelector('.line-received'), customersDb.map(c => c.name), true, '-- Received from (Customer) --');
     setupLineBankCombobox(tr);
     fillSimpleSelect(tr.querySelector('.line-method'), PAYMENT_METHODS, true, '-- Method --');
@@ -4205,7 +4208,7 @@ function addJournalLine(afterRow = null) {
     const tbody = $('journal-lines-body');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-        <td>${tbody.children.length + 1}</td>
+        <td class="line-sequence-cell"><div class="line-sequence-control"><button type="button" class="line-insert-btn" title="Insert a new row below" aria-label="Insert row below"><i class="fa-solid fa-plus"></i></button><span class="line-number">${tbody.children.length + 1}</span></div></td>
         <td><select class="line-account"></select></td>
         <td><input type="number" class="line-debit" step="any" min="0" placeholder="0.00"></td>
         <td><input type="number" class="line-credit" step="any" min="0" placeholder="0.00"></td>
@@ -4214,7 +4217,7 @@ function addJournalLine(afterRow = null) {
         <td><select class="line-vat"></select></td>
         <td><select class="line-location"></select></td>
         <td><select class="line-class"></select></td>
-        <td><div class="row-actions"><button type="button" class="icon-action-btn line-insert-btn" title="Insert a new row below"><i class="fa-solid fa-plus"></i></button><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
+        <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     const accountSelect = tr.querySelector('.line-account');
     fillSimpleSelect(accountSelect, getJournalAccountOptions(), true, '-- Account --');
     const addAccountOption = document.createElement('option');
