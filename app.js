@@ -623,7 +623,7 @@ function setupAccountCombobox(prefix) {
                 const row = document.createElement('div');
                 row.className = 'acct-dropdown-item';
                 row.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Account')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'General')}</span></span></div>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Account')}</span></span></div>`;
                 row.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
@@ -816,7 +816,7 @@ function getFlyoutGroups(key) {
                     { icon: 'fa-diagram-project', label: 'New Project', action: () => { switchView('projects'); openProjectModal(); } }
                 ] },
                 { title: 'Bank & Accounts', items: [
-                    { icon: 'fa-building-columns', label: 'New Bank', action: () => openBankModal() },
+                    { icon: 'fa-building-columns', label: 'Add new account', action: () => openBankModal() },
                     { icon: 'fa-list', label: 'New Chart of Accounts entry', action: () => openAccountModal() }
                 ] },
                 ...(superAdmin ? [{ title: 'Admin', items: [
@@ -2696,8 +2696,8 @@ function openBankModal(edit, target) {
     if (edit && !guardSuperadminAction()) { pendingBankTarget = null; return; }
 
     if (edit) {
-        $('bank-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit Bank';
-        $('bank-submit-btn').textContent = 'Update Bank';
+        $('bank-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit account';
+        $('bank-submit-btn').textContent = 'Update account';
         $('bank-edit-id').value = edit.id;
         $('bank-name').value = edit.name;
         $('bank-branch').value = edit.branch || '';
@@ -2713,8 +2713,8 @@ function openBankModal(edit, target) {
         $('bank-balance').value = edit.balance || 0;
         $('bank-notes').value = edit.notes || '';
     } else {
-        $('bank-modal-title').innerHTML = '<i class="fa-solid fa-building-columns"></i> Add Bank';
-        $('bank-submit-btn').textContent = 'Save Bank';
+        $('bank-modal-title').innerHTML = '<i class="fa-solid fa-building-columns"></i> Add new account';
+        $('bank-submit-btn').textContent = 'Save account';
         $('bank-form').reset();
         $('bank-edit-id').value = '';
         $('bank-currency').value = 'RWF';
@@ -3173,7 +3173,7 @@ function setupLineBankCombobox(row) {
                 const rowEl = document.createElement('div');
                 rowEl.className = 'acct-dropdown-item';
                 rowEl.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Account')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'General')}</span></span></div>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Account')}</span></span></div>`;
                 rowEl.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
@@ -3197,11 +3197,11 @@ function setupLineBankCombobox(row) {
 }
 
 function formatBankLabel(b) {
-    return `${b.name} · ${b.accountType || 'Account'} · ${b.detailType || 'General'}`;
+    return `${b.name} · ${b.accountType || 'Account'}`;
 }
 
 function formatHeaderBankLabel(b) {
-    return `${b.name} · ${b.accountType || 'Account'} · ${b.detailType || 'General'}`;
+    return `${b.name} · ${b.accountType || 'Account'}`;
 }
 
 function readLineBank(row) {
@@ -3277,7 +3277,7 @@ function renderCoaBankGrid() {
     if (visible.length === 0) {
         empty.classList.remove('hidden');
         charts.classList.add('hidden');
-        empty.innerHTML = `<i class="fa-solid fa-building-columns"></i>No banks yet. Add one from the "New Bank" button here, or via "+ Add new bank" while recording an Expense/Deposit.`;
+        empty.innerHTML = `<i class="fa-solid fa-building-columns"></i>No accounts yet. Use “Add new account” here or while recording an Expense or Bank Deposit.`;
         coaSelectedBankId = null;
         return;
     }
