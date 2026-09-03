@@ -4,11 +4,11 @@
 ====================================================================== */
 
 :root {
-    --primary: #111827;
-    --primary-dark: #111111;
-    --primary-darker: #000000;
-    --primary-light: #f3f4f6;
-    --primary-lighter: #f8fafc;
+    --primary: #16820d;
+    --primary-dark: #116b0a;
+    --primary-darker: #0b5207;
+    --primary-light: #eaf6e8;
+    --primary-lighter: #f5fbf4;
 
     --accent: #374151;
     --accent-dark: #111827;
@@ -30,8 +30,8 @@
     --surface-alt: #fafbfa;
     --border: #e1e4e0;
     --border-strong: #ccd1cb;
-    --text: #1c1f1c;
-    --text-muted: #64695f;
+    --text: #29312b;
+    --text-muted: #626a64;
     --text-faint: #9aa094;
 
     --radius-sm: 6px;
@@ -58,7 +58,7 @@ html, body {
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, h4, h5 { margin: 0 0 4px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+h1, h2, h3, h4, h5 { margin: 0 0 4px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
 p { margin: 0; }
 button { font-family: inherit; cursor: pointer; }
 a { color: #1d4ed8; }
@@ -76,7 +76,7 @@ a { color: #1d4ed8; }
 
 .boot-screen {
     height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 16px; background: var(--primary-darker); color: #eafbe6;
+    gap: 16px; background: linear-gradient(150deg, #16820d, #0b5207); color: #ffffff;
 }
 .boot-screen p { font-size: 0.88rem; color: #e5e7eb; }
 .boot-spinner {
@@ -102,7 +102,7 @@ a { color: #1d4ed8; }
 .logo {
     width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(155deg, #16820d, #0a5206);
     color: #fff; display: flex; align-items: center; justify-content: center;
-    font-weight: 800; letter-spacing: 0.5px; margin: 0 auto 14px; font-size: 15px;
+    font-weight: 600; letter-spacing: 0.5px; margin: 0 auto 14px; font-size: 15px;
     box-shadow: 0 6px 16px rgba(15,108,8,0.24);
 }
 .brand-header h2 { font-size: 1.28rem; margin-bottom: 6px; }
@@ -133,7 +133,7 @@ a { color: #1d4ed8; }
 
 .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 10px 20px; border-radius: 22px; border: 1px solid transparent; font-weight: 700; font-size: 0.86rem;
+    padding: 10px 20px; border-radius: 22px; border: 1px solid transparent; font-weight: 600; font-size: 0.86rem;
     transition: background .15s var(--ease), border-color .15s var(--ease), box-shadow .15s var(--ease), transform .05s var(--ease);
     white-space: nowrap;
 }
@@ -358,7 +358,7 @@ a { color: #1d4ed8; }
 }
 
 .greeting-header { display:flex; align-items:flex-start; justify-content:space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
-.greeting-header h1 { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; }
+.greeting-header h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em; }
 .greeting-links { display:flex; gap: 18px; align-items:center; padding-top: 8px; }
 .greeting-links button { background:none; border:none; color: var(--text-muted); font-size: .82rem; font-weight: 700; display:flex; align-items:center; gap:6px; }
 .greeting-links button:hover { color: var(--text); }
@@ -387,7 +387,7 @@ a { color: #1d4ed8; }
 .glance-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px; }
 .glance-card-head h4 { font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
 .glance-card-head span { font-size: .74rem; color: var(--text-faint); }
-.glance-big { font-size: 1.55rem; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.01em; }
+.glance-big { font-size: 1.55rem; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.01em; }
 .glance-sub { font-size: .78rem; color: var(--text-muted); margin-bottom: 12px; }
 .glance-up { color: var(--accent-dark); font-weight: 700; }
 .glance-bank-row { display:flex; align-items:center; gap:10px; padding: 9px 0; border-top: 1px dashed var(--border); }
@@ -905,7 +905,7 @@ a { color: #1d4ed8; }
 
 .qb-amount-huge { grid-column: 1 / -1; text-align: right; margin-bottom: 4px; }
 .qb-amount-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
-.qb-amount-value { font-size: 2.1rem; font-weight: 800; color: var(--text); line-height: 1.2; letter-spacing: -0.01em; }
+.qb-amount-value { font-size: 2.1rem; font-weight: 600; color: var(--text); line-height: 1.2; letter-spacing: -0.01em; }
 
 .qb-body-scroll {
     flex: 1 1 auto;
@@ -1081,7 +1081,7 @@ a { color: #1d4ed8; }
 .custom-report-results { overflow:hidden; }
 .custom-report-chart { padding:18px 22px; border-bottom:1px solid var(--border); }
 .custom-report-head { padding:20px 22px; border-bottom:1px solid var(--border); margin:0; background:linear-gradient(135deg,#f5fbf3,#fff); }
-.eyebrow { display:block; color:var(--primary-dark); font-size:.67rem; font-weight:900; letter-spacing:.1em; margin-bottom:4px; }
+.eyebrow { display:block; color:var(--primary-dark); font-size:.67rem; font-weight:600; letter-spacing:.1em; margin-bottom:4px; }
 .custom-report-total { text-align:right; }
 .custom-report-total span { display:block; color:var(--text-muted); font-size:.72rem; font-weight:700; }
 .custom-report-total strong { font-size:1.35rem; color:var(--primary-darker); }
@@ -1132,7 +1132,41 @@ a { color: #1d4ed8; }
 .account-selected-balance span,
 .deposit-selected-balance span { color:var(--text-muted); font-size:.78rem; font-weight:700; }
 .account-selected-balance strong,
-.deposit-selected-balance strong { color:#111827; font-size:.92rem; }
+.deposit-selected-balance strong { color:var(--text); font-size:.92rem; font-weight:600; }
+
+/* Balanced SAS typography: normal dark text with selective emphasis. */
+body { color:var(--text); font-weight:400; }
+strong, b { color:inherit; font-weight:600; }
+.topbar-brand,
+.nav-item.active,
+.create-actions-row .ca-label,
+.glance-title,
+.glance-card-head h4,
+.glance-bank-bal,
+.psc-label,
+.psc-value,
+.card-item h5,
+.card-item .value,
+.chart-box-title,
+.coa-account-picker label,
+.stmt-mini span,
+.stmt-mini strong,
+.acct-dropdown-item.acct-add-new .adi-name,
+.ft-label,
+.statement-row.highlight,
+.reports-side-item.active,
+.qb-amount-label,
+.qb-section-title,
+.qb-line-table th,
+.qb-totals-row span:last-child,
+.detail-field span { font-weight:600; }
+
+/* Green is the primary action/status accent; blue is reserved for links. */
+.btn-primary { background:var(--primary); border-color:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-dark); border-color:var(--primary-dark); }
+.link-btn,
+.sr-footer button,
+a { color:#2563eb; }
 .account-selected-balance.hidden,
 .deposit-selected-balance.hidden { display:none; }
 
