@@ -29,7 +29,7 @@ const DEPT_ICONS = {
     "Department of Health": "fa-notes-medical"
 };
 
-const DEPT_CHART_COLORS = ["#2ca01c", "#3b82f6", "#0e5c00", "#93c5fd", "#178000", "#1d4ed8"];
+const DEPT_CHART_COLORS = ["#111827", "#2563eb", "#6b7280", "#93c5fd", "#374151", "#1d4ed8"];
 
 const PRESBYTERIES = [
     "EPR Presbytery Zinga", "EPR Presbytery Kigali", "EPR Presbytery Remera",
@@ -528,6 +528,45 @@ function whoLine(rec) {
 // Searchable header-level Bank/Cash account combobox — used by Transaction,
 // Invoice, Bill, Expense (Payment account) and Deposit (Account) headers.
 // ---------------------------------------------------------------------
+function getSelectableActionAccounts() {
+    const result = [];
+    const seen = new Set();
+
+    accountsDb.forEach(account => {
+        const linkedBank = account.linkedBankId ? banksDb.find(bank => bank.id === account.linkedBankId) : null;
+        const id = linkedBank?.id || account.id;
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        result.push({
+            ...(linkedBank || {}),
+            id,
+            name: account.name || linkedBank?.name || 'Unnamed account',
+            accountType: account.type || linkedBank?.accountType || 'Account',
+            detailType: account.detailType || linkedBank?.detailType || 'General',
+            source: linkedBank ? 'bank' : 'account',
+            storedBalance: Number(account.balance || account.openingBalance || 0)
+        });
+    });
+
+    banksDb.forEach(bank => {
+        if (!bank.id || seen.has(bank.id)) return;
+        seen.add(bank.id);
+        result.push({ ...bank, source: 'bank' });
+    });
+
+    return result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+function findSelectableActionAccount(id) {
+    return getSelectableActionAccounts().find(account => account.id === id) || null;
+}
+
+function getActionAccountBalance(account) {
+    if (!account) return 0;
+    const bank = banksDb.find(item => item.id === account.id);
+    return bank ? computeBankBalance(bank) : Number(account.storedBalance || account.balance || account.openingBalance || 0);
+}
+
 function setupAccountCombobox(prefix) {
     const input = $(`${prefix}-bank-search`);
     const hidden = $(`${prefix}-bank-id`);
@@ -556,7 +595,8 @@ function setupAccountCombobox(prefix) {
         });
         dropdown.appendChild(addRow);
 
-        if (banksDb.length === 0) {
+        const availableAccounts = getSelectableActionAccounts();
+        if (availableAccounts.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
             empty.textContent = 'No accounts exist yet. Use “Add new account” above.';
@@ -565,7 +605,7 @@ function setupAccountCombobox(prefix) {
             return;
         }
 
-        const matches = banksDb.filter(b =>
+        const matches = availableAccounts.filter(b =>
             !t ||
             (b.name || '').toLowerCase().includes(t) ||
             (b.accountType || '').toLowerCase().includes(t) ||
@@ -583,8 +623,7 @@ function setupAccountCombobox(prefix) {
                 const row = document.createElement('div');
                 row.className = 'acct-dropdown-item';
                 row.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></span></div>
-                    <span class="adi-bal"><small>Balance</small>${formatRF(computeBankBalance(b))}</span>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Account')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'General')}</span></span></div>`;
                 row.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
@@ -616,7 +655,7 @@ function prefillAccountCombobox(prefix, bankId) {
     const input = $(`${prefix}-bank-search`);
     const hidden = $(`${prefix}-bank-id`);
     if (!input || !hidden) return;
-    const bank = banksDb.find(b => b.id === bankId);
+    const bank = findSelectableActionAccount(bankId);
     hidden.value = bankId || '';
     input.value = bank ? formatHeaderBankLabel(bank) : '';
     input.classList.toggle('default-account-selected', !!bank);
@@ -633,7 +672,7 @@ function resetAccountCombobox(prefix) {
 function readAccountCombobox(prefix) {
     const hidden = $(`${prefix}-bank-id`);
     const id = hidden ? hidden.value : '';
-    const bank = banksDb.find(b => b.id === id);
+    const bank = findSelectableActionAccount(id);
     return { bankId: id || '', bankName: bank ? bank.name : '' };
 }
 
@@ -3110,7 +3149,8 @@ function setupLineBankCombobox(row) {
         });
         dropdown.appendChild(addNewRow);
 
-        const matches = banksDb.filter(b =>
+        const availableAccounts = getSelectableActionAccounts();
+        const matches = availableAccounts.filter(b =>
             !t ||
             (b.name || '').toLowerCase().includes(t) ||
             (b.accountType || '').toLowerCase().includes(t) ||
@@ -3118,7 +3158,7 @@ function setupLineBankCombobox(row) {
             (b.branch || '').toLowerCase().includes(t)
         ).slice(0, 40);
 
-        if (banksDb.length === 0) {
+        if (availableAccounts.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
             empty.textContent = 'No accounts yet — use "+ Add new account" above to create one.';
@@ -3126,15 +3166,14 @@ function setupLineBankCombobox(row) {
         } else if (matches.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = `No banks match "${term}".`;
+            empty.textContent = `No accounts match "${term}".`;
             dropdown.appendChild(empty);
         } else {
             matches.forEach(b => {
                 const rowEl = document.createElement('div');
                 rowEl.className = 'acct-dropdown-item';
                 rowEl.innerHTML = `
-                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Cash and cash equivalents')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></span></div>
-                    <span class="adi-bal"><small>Balance</small>${formatRF(computeBankBalance(b))}</span>`;
+                    <div class="adi-main"><span class="adi-name">${escapeHtml(b.name)}</span><span class="adi-meta"><span class="account-meta-chip">${escapeHtml(b.accountType || 'Account')}</span><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'General')}</span></span></div>`;
                 rowEl.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
@@ -3158,17 +3197,17 @@ function setupLineBankCombobox(row) {
 }
 
 function formatBankLabel(b) {
-    return `${b.name} · ${b.accountType || 'Cash and cash equivalents'} · ${b.detailType || 'Bank'} · ${formatRF(computeBankBalance(b))}`;
+    return `${b.name} · ${b.accountType || 'Account'} · ${b.detailType || 'General'}`;
 }
 
 function formatHeaderBankLabel(b) {
-    return `${b.name} · ${b.accountType || 'Cash and cash equivalents'} · ${b.detailType || 'Bank'}`;
+    return `${b.name} · ${b.accountType || 'Account'} · ${b.detailType || 'General'}`;
 }
 
 function readLineBank(row) {
     const hidden = row.querySelector('.line-bank-id');
     const id = hidden ? hidden.value : '';
-    const bank = banksDb.find(b => b.id === id);
+    const bank = findSelectableActionAccount(id);
     return { bankId: id || '', bankName: bank ? bank.name : (row.querySelector('.line-bank-input') || {}).value || '' };
 }
 
@@ -3309,8 +3348,8 @@ function renderCoaStatement(bank, range) {
     `;
 }
 
-const CHART_GREEN = '#2ca01c';
-const CHART_GREEN_SOFT = 'rgba(44,160,28,0.14)';
+const CHART_GREEN = '#111827';
+const CHART_GREEN_SOFT = 'rgba(17,24,39,0.12)';
 const CHART_BLUE = '#3b82f6';
 const CHART_BLUE_SOFT = 'rgba(59,130,246,0.12)';
 
@@ -3378,7 +3417,7 @@ function renderCoaCharts() {
                     labels: buckets.map(b => b.label),
                     datasets: [
                         { type: 'line', label: 'Running balance', data: balanceSeries, borderColor: CHART_GREEN, backgroundColor: CHART_GREEN_SOFT, fill: true, tension: 0.28, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: '#fff', pointBorderColor: CHART_GREEN, pointBorderWidth: 2, borderWidth: 2.5, order: 0 },
-                        { label: 'Money in', data: inSeries, backgroundColor: 'rgba(44,160,28,.72)', borderRadius: 5, maxBarThickness: 24, order: 1 },
+                        { label: 'Money in', data: inSeries, backgroundColor: 'rgba(17,24,39,.78)', borderRadius: 5, maxBarThickness: 24, order: 1 },
                         { label: 'Money out', data: outSeries, backgroundColor: 'rgba(59,130,246,.72)', borderRadius: 5, maxBarThickness: 24, order: 2 }
                     ]
                 },
@@ -3914,7 +3953,7 @@ function addExpenseLine(afterRow = null) {
 
 function updateExpenseHeaderBalance(bank) {
     if (!bank) return;
-    const current = computeBankBalance(bank);
+    const current = getActionAccountBalance(bank);
     $('exp-amount-display').dataset.bankBalance = current;
     $('exp-balance-preview').classList.remove('hidden');
     $('exp-current-balance').textContent = formatRF(current);
@@ -3950,9 +3989,10 @@ function openExpenseModal(editRecord) {
     resetAccountCombobox('exp');
     delete $('exp-amount-display').dataset.bankBalance;
     $('exp-balance-preview').classList.add('hidden');
-    if (!editRecord && banksDb.length) {
-        prefillAccountCombobox('exp', banksDb[0].id);
-        updateExpenseHeaderBalance(banksDb[0]);
+    const defaultExpenseAccount = getSelectableActionAccounts()[0];
+    if (!editRecord && defaultExpenseAccount) {
+        prefillAccountCombobox('exp', defaultExpenseAccount.id);
+        updateExpenseHeaderBalance(defaultExpenseAccount);
     }
     const payeeInput = $('exp-payee-search'), payeeHidden = $('exp-payee-id');
     if (payeeInput) payeeInput.value = '';
@@ -3965,7 +4005,7 @@ function openExpenseModal(editRecord) {
     $('exp-method').value = editRecord?.method || '';
     if (editRecord?.bankId) {
         prefillAccountCombobox('exp', editRecord.bankId);
-        const bank = banksDb.find(b => b.id === editRecord.bankId);
+        const bank = findSelectableActionAccount(editRecord.bankId);
         if (bank) updateExpenseHeaderBalance(bank);
     }
     if (editRecord?.payee) $('exp-payee-search').value = editRecord.payee;
@@ -3976,7 +4016,7 @@ function openExpenseModal(editRecord) {
         const tr = addExpenseLine();
         const line = savedLines[i];
         if (!line) continue;
-        const bank = banksDb.find(b => b.id === line.bankId);
+        const bank = findSelectableActionAccount(line.bankId);
         tr.querySelector('.line-bank-id').value = line.bankId || '';
         tr.querySelector('.line-bank-input').value = bank ? formatBankLabel(bank) : (line.bankName || '');
         tr.querySelector('.line-desc').value = line.description || '';
@@ -4100,7 +4140,7 @@ function addDepositLine(afterRow = null) {
 
 function updateDepositHeaderBalance(bank) {
     if (!bank) return;
-    const current = computeBankBalance(bank);
+    const current = getActionAccountBalance(bank);
     $('deposit-amount-display').dataset.bankBalance = current;
     $('deposit-balance-preview').classList.remove('hidden');
     $('deposit-current-balance').textContent = formatRF(current);
@@ -4132,14 +4172,15 @@ function openDepositModal(editRecord) {
     resetAccountCombobox('deposit');
     delete $('deposit-amount-display').dataset.bankBalance;
     $('deposit-balance-preview').classList.add('hidden');
-    if (!editRecord && banksDb.length) {
-        prefillAccountCombobox('deposit', banksDb[0].id);
-        updateDepositHeaderBalance(banksDb[0]);
+    const defaultDepositAccount = getSelectableActionAccounts()[0];
+    if (!editRecord && defaultDepositAccount) {
+        prefillAccountCombobox('deposit', defaultDepositAccount.id);
+        updateDepositHeaderBalance(defaultDepositAccount);
     }
     $('deposit-lines-body').innerHTML = '';
     if (editRecord?.bankId) {
         prefillAccountCombobox('deposit', editRecord.bankId);
-        const bank = banksDb.find(b => b.id === editRecord.bankId);
+        const bank = findSelectableActionAccount(editRecord.bankId);
         if (bank) updateDepositHeaderBalance(bank);
     }
     const savedLines = editRecord ? parseLines(editRecord) : [];
@@ -4150,7 +4191,7 @@ function openDepositModal(editRecord) {
         const line = savedLines[i];
         if (line) {
             tr.querySelector('.line-received').value = line.receivedFrom || '';
-            const bank = banksDb.find(b => b.id === line.bankId);
+            const bank = findSelectableActionAccount(line.bankId);
             tr.querySelector('.line-bank-id').value = line.bankId || '';
             tr.querySelector('.line-bank-input').value = bank ? formatBankLabel(bank) : (line.bankName || '');
             tr.querySelector('.line-desc').value = line.description || '';
