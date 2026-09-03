@@ -17,8 +17,8 @@
     --blue: #3b82f6;
     --blue-light: #eaf1ff;
 
-    --success: #111827;
-    --success-bg: #f3f4f6;
+    --success: #16820d;
+    --success-bg: #edf8eb;
     --danger: #c02b0a;
     --danger-bg: #fbe9e6;
     --warning: #f2a900;
@@ -89,8 +89,8 @@ a { color: #1d4ed8; }
 .auth-screen {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
     background:
-        radial-gradient(900px 500px at 15% -10%, rgba(255,255,255,0.10), transparent 60%),
-        linear-gradient(160deg, var(--primary-darker) 0%, var(--primary-dark) 55%, var(--primary) 100%);
+        radial-gradient(850px 460px at 15% -10%, rgba(255,255,255,0.13), transparent 62%),
+        linear-gradient(150deg, #16820d 0%, #0f6c08 58%, #0a5206 100%);
     padding: 24px;
 }
 .auth-card {
@@ -100,10 +100,10 @@ a { color: #1d4ed8; }
 }
 .brand-header { text-align: center; margin-bottom: 24px; }
 .logo {
-    width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(155deg, var(--primary), var(--primary-darker));
+    width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(155deg, #16820d, #0a5206);
     color: #fff; display: flex; align-items: center; justify-content: center;
     font-weight: 800; letter-spacing: 0.5px; margin: 0 auto 14px; font-size: 15px;
-    box-shadow: 0 6px 16px rgba(29,78,216,0.28);
+    box-shadow: 0 6px 16px rgba(15,108,8,0.24);
 }
 .brand-header h2 { font-size: 1.28rem; margin-bottom: 6px; }
 .brand-header p { color: var(--text-muted); font-size: 0.88rem; line-height: 1.45; }
