@@ -567,12 +567,14 @@
                                         <select id="user-role" required>
                                             <option value="finance">Finance User (Staff)</option>
                                             <option value="accountant">Accountant (Staff)</option>
-                                            <option value="general_accountant">General Accountant (Staff)</option>
+                                            <option value="general_accountant">Senior Accountant (Staff)</option>
+                                            <option value="cashier">Cashier (Staff)</option>
+                                            <option value="moderator">Moderator (Staff)</option>
                                             <option value="manager">Department Manager (Staff)</option>
                                             <option value="superadmin">Superadmin (SAS Central)</option>
                                         </select>
                                     </div>
-                                    <div class="field-hint">Superadmins can view and manage every presbytery and department. Accountants and the General Accountant can record and post financial entries the same way Finance users can.</div>
+                                    <div class="field-hint">Superadmins manage the whole system. Senior Accountants, Accountants, Finance Users and Cashiers can record financial entries. Moderators oversee assigned records and content.</div>
                                 </div>
 
                                 <div class="form-group" id="user-full-access-group">
@@ -620,7 +622,9 @@
                                         <option value="manager">Manager</option>
                                         <option value="finance">Finance</option>
                                         <option value="accountant">Accountant</option>
-                                        <option value="general_accountant">General Accountant</option>
+                                        <option value="general_accountant">Senior Accountant</option>
+                                        <option value="cashier">Cashier</option>
+                                        <option value="moderator">Moderator</option>
                                     </select>
                                 </div>
                             </div>
@@ -1224,19 +1228,21 @@
                             <div class="acct-dropdown hidden" id="exp-payee-dropdown"></div>
                         </div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group expense-account-group">
                         <label>Account name <span class="req">*</span></label>
-                        <div class="acct-combo">
-                            <input type="text" id="exp-bank-search" placeholder="Search accounts…" autocomplete="off">
-                            <input type="hidden" id="exp-bank-id">
-                            <div class="acct-dropdown hidden" id="exp-bank-dropdown"></div>
+                        <div class="expense-account-row">
+                            <div class="acct-combo">
+                                <input type="text" id="exp-bank-search" placeholder="Search accounts by name or type…" autocomplete="off">
+                                <input type="hidden" id="exp-bank-id">
+                                <div class="acct-dropdown hidden" id="exp-bank-dropdown"></div>
+                            </div>
+                            <div id="exp-balance-preview" class="account-selected-balance hidden">
+                                <span>Account balance</span>
+                                <strong id="exp-current-balance">RF 0</strong>
+                            </div>
                         </div>
-                        <div class="field-hint">Search by account name or account type. The selected account balance is shown in the list.</div>
-                        <div id="exp-balance-preview" class="balance-preview hidden account-balance-internal">
-                            <span>Current <strong id="exp-current-balance">RF 0</strong></span>
-                            <i class="fa-solid fa-arrow-right"></i>
-                            <span>After expense <strong id="exp-projected-balance">RF 0</strong></span>
-                        </div>
+                        <input type="hidden" id="exp-projected-balance" value="0">
+                        <div class="field-hint">The selected account name and type remain visible; its live balance is shown on the right.</div>
                     </div>
                     <div class="qb-amount-huge">
                         <div class="qb-amount-label">Amount</div>
