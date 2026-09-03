@@ -1,14 +1,14 @@
 /* ======================================================================
    SAS — STANDARD ACCOUNTING SOFTWARE SYSTEM
-   Stylesheet — QuickBooks-style green theme
+   Stylesheet — professional blue and neutral theme
 ====================================================================== */
 
 :root {
-    --primary: #2ca01c;
-    --primary-dark: #178000;
-    --primary-darker: #0e5c00;
-    --primary-light: #e8f6e6;
-    --primary-lighter: #f3faf1;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --primary-darker: #1e3a8a;
+    --primary-light: #dbeafe;
+    --primary-lighter: #eff6ff;
 
     --accent: #ff8a3d;
     --accent-dark: #d96a1f;
@@ -17,8 +17,8 @@
     --blue: #3b82f6;
     --blue-light: #eaf1ff;
 
-    --success: #2ca01c;
-    --success-bg: #e8f6e6;
+    --success: #2563eb;
+    --success-bg: #dbeafe;
     --danger: #c02b0a;
     --danger-bg: #fbe9e6;
     --warning: #f2a900;
@@ -103,7 +103,7 @@ a { color: var(--primary-dark); }
     width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(155deg, var(--primary), var(--primary-darker));
     color: #fff; display: flex; align-items: center; justify-content: center;
     font-weight: 800; letter-spacing: 0.5px; margin: 0 auto 14px; font-size: 15px;
-    box-shadow: 0 6px 16px rgba(23,128,0,0.35);
+    box-shadow: 0 6px 16px rgba(29,78,216,0.28);
 }
 .brand-header h2 { font-size: 1.28rem; margin-bottom: 6px; }
 .brand-header p { color: var(--text-muted); font-size: 0.88rem; line-height: 1.45; }
@@ -118,7 +118,7 @@ a { color: var(--primary-dark); }
 }
 .form-group input::placeholder { color: var(--text-faint); }
 .form-group input:focus, .form-group select:focus {
-    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(44,160,28,0.14);
+    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.14);
 }
 .form-group input[type="range"] { padding: 0; height: 6px; accent-color: var(--primary); }
 .field-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 5px; line-height: 1.45; }
@@ -139,7 +139,7 @@ a { color: var(--primary-dark); }
 }
 .btn:active { transform: scale(0.98); }
 .btn-block { width: 100%; }
-.btn-primary { background: var(--primary-dark); color: #fff; box-shadow: 0 1px 2px rgba(14,92,0,.25); }
+.btn-primary { background: var(--primary-dark); color: #fff; box-shadow: 0 1px 2px rgba(30,58,138,.22); }
 .btn-primary:hover { background: var(--primary-darker); }
 .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
 .btn-outline { background: #fff; color: var(--text); border: 1px solid var(--border-strong); border-radius: 22px; }
@@ -272,7 +272,7 @@ a { color: var(--primary-dark); }
     display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border);
     border-radius: 22px; padding: 9px 16px; transition: border-color .15s var(--ease), background .15s var(--ease);
 }
-.search-bar:focus-within { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(44,160,28,0.12); }
+.search-bar:focus-within { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
 .search-bar i.fa-magnifying-glass { color: var(--text-faint); font-size: 0.85rem; }
 .search-bar input { flex: 1; border: none; background: none; outline: none; font-size: 0.87rem; color: var(--text); }
 .search-bar input::placeholder { color: var(--text-faint); }
@@ -334,6 +334,9 @@ a { color: var(--primary-dark); }
 .badge.role-superadmin { background: var(--warning-bg); color: var(--warning-dark); }
 .badge.role-manager { background: var(--blue-light); color: #2757c9; }
 .badge.role-finance { background: var(--success-bg); color: var(--primary-dark); }
+.badge.role-accountant, .badge.role-general_accountant { background:#e0e7ff; color:#3730a3; }
+.badge.role-cashier { background:#e0f2fe; color:#075985; }
+.badge.role-moderator { background:#f3e8ff; color:#6b21a8; }
 .badge.type-income, .badge.type-asset { background: var(--success-bg); color: var(--primary-dark); }
 .badge.type-expense, .badge.type-liability { background: var(--blue-light); color: #1d4ed8; }
 .badge.type-journal { background: #f3e8ff; color: #7c3aed; }
@@ -408,7 +411,7 @@ a { color: var(--primary-dark); }
     width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
     font-size: 0.85rem; color: var(--text); outline: none; transition: border-color .15s var(--ease);
 }
-.select-wrap select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(44,160,28,0.12); }
+.select-wrap select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
 .active-scope-chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .scope-chip {
     display: inline-flex; align-items: center; gap: 6px; background: var(--primary-dark); color: #fff;
@@ -494,7 +497,7 @@ a { color: var(--primary-dark); }
 
 .bank-card { cursor: pointer; border: 2px solid transparent; transition: border-color .15s var(--ease), transform .12s var(--ease); }
 .bank-card:hover { transform: translateY(-2px); }
-.bank-card.selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(44,160,28,0.12); }
+.bank-card.selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
 
 .chart-box { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; min-width: 0; box-shadow: var(--shadow); }
 .chart-box canvas { max-width: 100%; }
@@ -524,13 +527,13 @@ a { color: var(--primary-dark); }
 .coa-account-picker { display:grid; grid-template-columns:minmax(180px,260px) minmax(320px,1fr); align-items:center; gap:18px; margin:0 0 20px; padding:18px 20px; background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); }
 .coa-account-picker label { font-size:1rem; font-weight:800; }
 .coa-account-picker select { min-height:48px; padding:0 14px; font-size:1rem; border:1px solid var(--border-strong); border-radius:9px; background:#fff; }
-.default-account-selected { border:2px solid var(--primary-dark) !important; background:var(--primary-lighter) !important; color:var(--text) !important; font-weight:700 !important; box-shadow:0 0 0 3px rgba(44,160,28,.12); }
+.default-account-selected { border:2px solid var(--primary-dark) !important; background:var(--primary-lighter) !important; color:var(--text) !important; font-weight:700 !important; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
 .line-sequence-cell { width:82px !important; min-width:82px; padding:7px 8px !important; }
 .line-sequence-control { display:flex; align-items:center; justify-content:flex-start; gap:10px; min-height:36px; }
 .line-number { min-width:18px; color:var(--text-muted); font-weight:800; text-align:center; }
-.line-insert-btn { width:28px; height:28px; flex:0 0 28px; display:inline-flex; align-items:center; justify-content:center; padding:0; border:1px solid var(--primary-dark); border-radius:50%; color:#fff; background:var(--primary-dark); box-shadow:0 1px 3px rgba(14,92,0,.22); }
+.line-insert-btn { width:28px; height:28px; flex:0 0 28px; display:inline-flex; align-items:center; justify-content:center; padding:0; border:1px solid var(--primary-dark); border-radius:50%; color:#fff; background:var(--primary-dark); box-shadow:0 1px 3px rgba(30,58,138,.20); }
 .line-insert-btn:hover { background:var(--primary); border-color:var(--primary); transform:scale(1.05); }
-.line-insert-btn:focus-visible { outline:3px solid rgba(44,160,28,.22); outline-offset:2px; }
+.line-insert-btn:focus-visible { outline:3px solid rgba(37,99,235,.22); outline-offset:2px; }
 .data-table th, .data-table td { font-size:.9rem; padding:13px 14px; }
 .view-header h2 { font-size:1.65rem; }
 .view-header p, .financial-statement-card, .statement-row { font-size:1rem; }
@@ -587,7 +590,7 @@ a { color: var(--primary-dark); }
     font-size: 0.9rem; color: var(--text); background: #fff; outline: none; transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
 }
 .acct-combo input[type="text"]::placeholder { color: var(--text-faint); }
-.acct-combo input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(44,160,28,0.14); }
+.acct-combo input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.14); }
 .acct-combo input[type="text"].invalid { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(192,43,10,0.12); }
 .acct-dropdown {
     position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #fff;
@@ -602,10 +605,10 @@ a { color: var(--primary-dark); }
 .acct-dropdown-item:first-child { border-top: none; }
 .acct-dropdown-item:hover { background: var(--primary-light); }
 .adi-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.adi-name { font-size: 0.84rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.adi-acct { font-size: 0.78rem; color: var(--text-muted); font-style: italic; font-weight: 500; flex-shrink: 0; white-space: nowrap; }
-.adi-bal { display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-size:0.8rem; font-weight:800; color:var(--primary-dark); flex-shrink:0; }
-.adi-bal small { color:var(--text-muted); font-size:.64rem; font-weight:600; }
+.adi-name { font-size: 0.96rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adi-acct { font-size: 0.84rem; color: var(--text-muted); font-style: italic; font-weight: 500; flex-shrink: 0; white-space: nowrap; }
+.adi-bal { display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-size:0.94rem; font-weight:800; color:var(--primary-dark); flex-shrink:0; }
+.adi-bal small { color:var(--text-muted); font-size:.72rem; font-weight:700; }
 .acct-empty { padding: 14px; font-size: 0.82rem; color: var(--text-muted); text-align: center; }
 
 .acct-dropdown-item.acct-add-new { background: var(--surface-alt); border-top: none; border-bottom: 1px solid var(--border); }
@@ -939,7 +942,7 @@ a { color: var(--primary-dark); }
 .qb-line-table input::placeholder { color: var(--text-faint); }
 .qb-line-table input:hover, .qb-line-table select:hover { border-color: var(--border); }
 .qb-line-table input:focus, .qb-line-table select:focus {
-    border-color: var(--primary); background: #fff; box-shadow: 0 0 0 2px rgba(44,160,28,0.12);
+    border-color: var(--primary); background: #fff; box-shadow: 0 0 0 2px rgba(37,99,235,0.12);
 }
 .qb-line-table input[type="number"] { text-align: right; }
 .qb-line-table td:has(input[type="checkbox"]) { text-align: center; }
@@ -1053,7 +1056,7 @@ a { color: var(--primary-dark); }
 .acct-add-new .adi-name { color: var(--primary-darker); }
 .balance-preview {
     margin-top: 8px; padding: 9px 11px; border-radius: 8px; background: var(--primary-lighter);
-    border: 1px solid #cbe7c7; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px solid #bfdbfe; display: flex; align-items: center; justify-content: space-between; gap: 8px;
     font-size: .76rem; color: var(--text-muted);
 }
 .balance-preview strong { display:block; color: var(--primary-darker); margin-top:2px; }
@@ -1113,17 +1116,28 @@ a { color: var(--primary-dark); }
 }
 
 /* Bank Deposit: readable account selector with live balance at its right */
+.qb-header-grid .expense-account-group,
 .qb-header-grid .deposit-account-group { grid-column:span 2; min-width:0; }
+.expense-account-row,
 .deposit-account-row { display:grid; grid-template-columns:minmax(480px,1fr) minmax(210px,auto); align-items:stretch; gap:14px; }
+.expense-account-row .acct-combo,
 .deposit-account-row .acct-combo { min-width:0; }
+.expense-account-row #exp-bank-search,
 .deposit-account-row #deposit-bank-search { min-height:48px; font-size:1rem; white-space:nowrap; text-overflow:ellipsis; padding-right:16px; }
-.deposit-selected-balance { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:8px 14px; border:1px solid #b9ddb3; border-radius:var(--radius); background:var(--primary-lighter); white-space:nowrap; }
+.account-selected-balance,
+.deposit-selected-balance { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:8px 14px; border:1px solid #bfdbfe; border-radius:var(--radius); background:var(--primary-lighter); white-space:nowrap; }
+.account-selected-balance span,
 .deposit-selected-balance span { color:var(--text-muted); font-size:.78rem; font-weight:700; }
+.account-selected-balance strong,
 .deposit-selected-balance strong { color:var(--primary-darker); font-size:1rem; }
+.account-selected-balance.hidden,
 .deposit-selected-balance.hidden { display:none; }
 
 @media (max-width:900px) {
+    .qb-header-grid .expense-account-group,
     .qb-header-grid .deposit-account-group { grid-column:1 / -1; }
+    .expense-account-row,
     .deposit-account-row { grid-template-columns:1fr; }
+    .account-selected-balance,
     .deposit-selected-balance { justify-content:flex-start; }
 }
