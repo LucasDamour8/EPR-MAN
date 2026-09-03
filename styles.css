@@ -1,24 +1,24 @@
 /* ======================================================================
    SAS — STANDARD ACCOUNTING SOFTWARE SYSTEM
-   Stylesheet — professional blue and neutral theme
+   Stylesheet — professional black, white and neutral theme
 ====================================================================== */
 
 :root {
-    --primary: #2563eb;
-    --primary-dark: #1d4ed8;
-    --primary-darker: #1e3a8a;
-    --primary-light: #dbeafe;
-    --primary-lighter: #eff6ff;
+    --primary: #111827;
+    --primary-dark: #111111;
+    --primary-darker: #000000;
+    --primary-light: #f3f4f6;
+    --primary-lighter: #f8fafc;
 
-    --accent: #ff8a3d;
-    --accent-dark: #d96a1f;
-    --teal: #00817a;
-    --purple: #6c4bd6;
+    --accent: #374151;
+    --accent-dark: #111827;
+    --teal: #374151;
+    --purple: #4b5563;
     --blue: #3b82f6;
     --blue-light: #eaf1ff;
 
-    --success: #2563eb;
-    --success-bg: #dbeafe;
+    --success: #111827;
+    --success-bg: #f3f4f6;
     --danger: #c02b0a;
     --danger-bg: #fbe9e6;
     --warning: #f2a900;
@@ -61,7 +61,7 @@ html, body {
 h1, h2, h3, h4, h5 { margin: 0 0 4px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
 p { margin: 0; }
 button { font-family: inherit; cursor: pointer; }
-a { color: var(--primary-dark); }
+a { color: #1d4ed8; }
 .hidden { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -78,7 +78,7 @@ a { color: var(--primary-dark); }
     height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 16px; background: var(--primary-darker); color: #eafbe6;
 }
-.boot-screen p { font-size: 0.88rem; color: #cdeccb; }
+.boot-screen p { font-size: 0.88rem; color: #e5e7eb; }
 .boot-spinner {
     width: 36px; height: 36px; border-radius: 50%;
     border: 3px solid rgba(255,255,255,0.18); border-top-color: #fff;
@@ -544,8 +544,8 @@ a { color: var(--primary-dark); }
 .chart-empty-state strong { color:var(--text); font-size:.92rem; }
 .chart-empty-state span { max-width:330px; font-size:.78rem; line-height:1.5; }
 .acct-dropdown-item .adi-meta { display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
-.account-meta-chip { display:inline-flex; align-items:center; padding:2px 7px; border-radius:999px; background:#eef5ed; color:var(--primary-darker); font-size:.68rem; font-weight:700; line-height:1.35; }
-.account-meta-chip.detail { background:#eef4ff; color:#285ea8; }
+.account-meta-chip { display:inline-flex; align-items:center; padding:2px 7px; border-radius:999px; background:#f3f4f6; color:#111827; font-size:.68rem; font-weight:700; line-height:1.35; }
+.account-meta-chip.detail { background:#eef4ff; color:#1d4ed8; }
 .bank-card .bank-type-line { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 5px; }
 .linked-account-badge { display:inline-flex; align-items:center; gap:5px; color:var(--primary-dark); font-size:.72rem; font-weight:700; }
 
@@ -1048,6 +1048,9 @@ a { color: var(--primary-dark); }
 }
 .page-modal.drawer-modal .modal-header { padding: 18px 24px; }
 .page-modal.drawer-modal .modal-body { grid-template-columns: 1fr 1fr; padding: 24px; }
+.page-modal.drawer-modal .customer-drawer { width:min(560px,100vw) !important; max-width:560px !important; }
+.page-modal.drawer-modal .customer-drawer .modal-body { grid-template-columns:1fr; }
+.page-modal.drawer-modal .customer-drawer .modal-footer { margin-top:auto; }
 .page-modal.drawer-modal .page-back-btn { font-size: 0 !important; padding: 8px !important; background: transparent !important; }
 .page-modal.drawer-modal .page-back-btn i { font-size: 1rem; }
 @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
@@ -1056,7 +1059,7 @@ a { color: var(--primary-dark); }
 .acct-add-new .adi-name { color: var(--primary-darker); }
 .balance-preview {
     margin-top: 8px; padding: 9px 11px; border-radius: 8px; background: var(--primary-lighter);
-    border: 1px solid #bfdbfe; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px solid #d1d5db; display: flex; align-items: center; justify-content: space-between; gap: 8px;
     font-size: .76rem; color: var(--text-muted);
 }
 .balance-preview strong { display:block; color: var(--primary-darker); margin-top:2px; }
@@ -1119,17 +1122,17 @@ a { color: var(--primary-dark); }
 .qb-header-grid .expense-account-group,
 .qb-header-grid .deposit-account-group { grid-column:span 2; min-width:0; }
 .expense-account-row,
-.deposit-account-row { display:grid; grid-template-columns:minmax(480px,1fr) minmax(210px,auto); align-items:stretch; gap:14px; }
+.deposit-account-row { display:grid; grid-template-columns:minmax(320px,620px) minmax(112px,150px); align-items:stretch; gap:8px; }
 .expense-account-row .acct-combo,
 .deposit-account-row .acct-combo { min-width:0; }
 .expense-account-row #exp-bank-search,
-.deposit-account-row #deposit-bank-search { min-height:48px; font-size:1rem; white-space:nowrap; text-overflow:ellipsis; padding-right:16px; }
+.deposit-account-row #deposit-bank-search { min-height:40px; font-size:.9rem; white-space:nowrap; text-overflow:ellipsis; padding-right:12px; }
 .account-selected-balance,
-.deposit-selected-balance { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:8px 14px; border:1px solid #bfdbfe; border-radius:var(--radius); background:var(--primary-lighter); white-space:nowrap; }
+.deposit-selected-balance { min-height:40px; display:flex; align-items:center; justify-content:center; padding:6px 10px; border:1px solid #d1d5db; border-radius:var(--radius); background:#fff; white-space:nowrap; }
 .account-selected-balance span,
 .deposit-selected-balance span { color:var(--text-muted); font-size:.78rem; font-weight:700; }
 .account-selected-balance strong,
-.deposit-selected-balance strong { color:var(--primary-darker); font-size:1rem; }
+.deposit-selected-balance strong { color:#111827; font-size:.92rem; }
 .account-selected-balance.hidden,
 .deposit-selected-balance.hidden { display:none; }
 
