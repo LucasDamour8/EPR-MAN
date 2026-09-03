@@ -763,7 +763,7 @@
                             <h2>Bank Management</h2>
                             <p>Every bank account SAS uses. Any user can quick-add one while recording an expense or deposit; only a Superadmin can edit or delete one here.</p>
                         </div>
-                        <button class="btn btn-primary" id="open-bank-modal-btn"><i class="fa-solid fa-plus"></i> New Bank</button>
+                        <button class="btn btn-primary" id="open-bank-modal-btn"><i class="fa-solid fa-plus"></i> Add new account</button>
                     </div>
                     <div class="table-wrap ext-scroll-x">
                             <table class="data-table">
@@ -1116,18 +1116,18 @@
     <!-- ============ Page-form: Bank ============ -->
     <div id="bank-modal" class="modal page-modal drawer-modal hidden">
         <div class="modal-content account-drawer">
-            <div class="modal-header"><h3 id="bank-modal-title"><i class="fa-solid fa-building-columns"></i> Add Bank</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
+            <div class="modal-header"><h3 id="bank-modal-title"><i class="fa-solid fa-building-columns"></i> Add new account</h3><button class="close-btn" id="close-bank-modal">&times;</button></div>
             <form id="bank-form" novalidate>
                 <div class="modal-body">
                     <input type="hidden" id="bank-edit-id" value="">
-                    <div class="form-group"><label>Bank Name <span class="req">*</span></label><input type="text" id="bank-name" required placeholder="e.g. Bank of Kigali"></div>
+                    <div class="form-group"><label>Account name <span class="req">*</span></label><input type="text" id="bank-name" required placeholder="e.g. Bank of Kigali"></div>
                     <div class="form-group"><label>Branch</label><input type="text" id="bank-branch"></div>
                     <div class="form-group"><label>Account Number <span class="req">*</span></label><input type="text" id="bank-account" required></div>
                     <div class="form-group"><label>Currency</label><select id="bank-currency"><option value="RWF">RWF — Rwanda Franc</option><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option><option value="GBP">GBP — British Pound</option><option value="KES">KES — Kenyan Shilling</option></select></div>
                     <div class="form-group"><label>Account Type <span class="req">*</span></label><select id="bank-account-type" required></select></div>
                     <div class="form-group"><label>Detail Type <span class="req">*</span></label><select id="bank-detail-type" required disabled><option value="">Select an account type first</option></select></div>
                     <div class="form-group span-full"><label class="checklist-item" style="border:none;padding:0;"><input type="checkbox" id="bank-subaccount-toggle"><span>Make this a subaccount</span></label></div>
-                    <div class="form-group span-full hidden" id="bank-parent-group"><label>Parent bank account</label><select id="bank-parent"></select></div>
+                    <div class="form-group span-full hidden" id="bank-parent-group"><label>Parent account</label><select id="bank-parent"></select></div>
                     <div class="form-group span-full"><label>Default VAT Code</label><select id="bank-vat"><option value="">-- Select VAT --</option><option>Exempted (0%)</option><option>VAT (18%)</option><option>Zero-rated (0%)</option></select></div>
                     <div class="form-group amount-field"><label>Opening Balance</label><input type="number" id="bank-balance" step="any" placeholder="0.00"></div>
                     <div class="form-group"><label>As of</label><input type="date" id="bank-asof"></div>
@@ -1136,7 +1136,7 @@
                 <div class="modal-footer">
                     <div class="modal-footer-actions">
                         <button type="button" class="btn btn-outline modal-cancel-btn" data-modal="bank-modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="bank-submit-btn">Save Bank</button>
+                        <button type="submit" class="btn btn-primary" id="bank-submit-btn">Save account</button>
                     </div>
                 </div>
             </form>
@@ -1415,9 +1415,9 @@
                 <div class="qb-body-scroll">
                     <div class="approval-note" style="margin-bottom:14px;">
                         <i class="fa-solid fa-circle-info"></i>
-                        <!-- Debits and Credits are optional and don't need to match to save — but for correct double-entry
+                        Debits and Credits are optional and don't need to match to save — but for correct double-entry
                         accounting we recommend keeping them equal. Any difference will be saved as an unbalanced entry
-                        and flagged below. -->
+                        and flagged below.
                     </div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="qb-line-table">
