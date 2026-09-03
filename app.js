@@ -38,7 +38,8 @@ const PRESBYTERIES = [
 
 const ROLE_LABELS = {
     superadmin: "Superadmin", manager: "Manager", finance: "Finance User",
-    accountant: "Accountant", general_accountant: "General Accountant"
+    accountant: "Accountant", general_accountant: "Senior Accountant",
+    cashier: "Cashier", moderator: "Moderator"
 };
 const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
@@ -547,7 +548,7 @@ function setupAccountCombobox(prefix) {
             dropdown.classList.add('hidden');
             openBankModal(null, { onCreated: bank => {
                 hidden.value = bank.id;
-                input.value = formatBankLabel(bank);
+                input.value = formatHeaderBankLabel(bank);
                 input.classList.add('default-account-selected');
                 if (prefix === 'exp') updateExpenseHeaderBalance(bank);
                 if (prefix === 'deposit') updateDepositHeaderBalance(bank);
@@ -587,7 +588,7 @@ function setupAccountCombobox(prefix) {
                 row.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     hidden.value = b.id;
-                    input.value = formatBankLabel(b);
+                    input.value = formatHeaderBankLabel(b);
                     input.classList.add('default-account-selected');
                     input.classList.remove('invalid');
                     dropdown.classList.add('hidden');
@@ -617,7 +618,7 @@ function prefillAccountCombobox(prefix, bankId) {
     if (!input || !hidden) return;
     const bank = banksDb.find(b => b.id === bankId);
     hidden.value = bankId || '';
-    input.value = bank ? formatBankLabel(bank) : '';
+    input.value = bank ? formatHeaderBankLabel(bank) : '';
     input.classList.toggle('default-account-selected', !!bank);
 }
 
@@ -1167,7 +1168,7 @@ function updateProfileUI() {
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
 function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
 function hasFullScope() { return currentUser && (currentUser.role === 'superadmin' || currentUser.fullAccess === true); }
-function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant'); }
+function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
 
 function setSyncStatus(state) {
@@ -3160,6 +3161,10 @@ function formatBankLabel(b) {
     return `${b.name} · ${b.accountType || 'Cash and cash equivalents'} · ${b.detailType || 'Bank'} · ${formatRF(computeBankBalance(b))}`;
 }
 
+function formatHeaderBankLabel(b) {
+    return `${b.name} · ${b.accountType || 'Cash and cash equivalents'} · ${b.detailType || 'Bank'}`;
+}
+
 function readLineBank(row) {
     const hidden = row.querySelector('.line-bank-id');
     const id = hidden ? hidden.value : '';
@@ -3927,8 +3932,14 @@ function updateExpenseTotals() {
     const hasBank = !!$('exp-bank-id').value;
     $('exp-balance-preview').classList.toggle('hidden', !hasBank);
     $('exp-current-balance').textContent = formatRF(current);
-    $('exp-projected-balance').textContent = formatRF(current - total);
-    $('exp-projected-balance').classList.toggle('negative-balance', current - total < 0);
+    const projected = $('exp-projected-balance');
+    if (projected) {
+        if ('value' in projected) projected.value = String(current - total);
+        else {
+            projected.textContent = formatRF(current - total);
+            projected.classList.toggle('negative-balance', current - total < 0);
+        }
+    }
 }
 
 function openExpenseModal(editRecord) {
