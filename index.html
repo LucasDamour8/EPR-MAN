@@ -1025,8 +1025,8 @@
     </div>
 
     <!-- ============ Page-form: Customer ============ -->
-    <div id="customer-modal" class="modal page-modal hidden">
-        <div class="modal-content modal-wide">
+    <div id="customer-modal" class="modal page-modal drawer-modal hidden">
+        <div class="modal-content account-drawer customer-drawer">
             <div class="modal-header"><h3 id="customer-modal-title"><i class="fa-solid fa-address-book"></i> Add Customer</h3><button class="close-btn" id="close-customer-modal">&times;</button></div>
             <form id="customer-form" novalidate>
                 <div class="modal-body">
@@ -1237,12 +1237,11 @@
                                 <div class="acct-dropdown hidden" id="exp-bank-dropdown"></div>
                             </div>
                             <div id="exp-balance-preview" class="account-selected-balance hidden">
-                                <span>Account balance</span>
                                 <strong id="exp-current-balance">RF 0</strong>
                             </div>
                         </div>
                         <input type="hidden" id="exp-projected-balance" value="0">
-                        <div class="field-hint">The selected account name and type remain visible; its live balance is shown on the right.</div>
+                        <div class="field-hint">Search every Chart of Accounts entry by account name, account type, or detail type.</div>
                     </div>
                     <div class="qb-amount-huge">
                         <div class="qb-amount-label">Amount</div>
@@ -1329,12 +1328,11 @@
                                 <div class="acct-dropdown hidden" id="deposit-bank-dropdown"></div>
                             </div>
                             <div id="deposit-balance-preview" class="deposit-selected-balance hidden">
-                                <span>Account balance</span>
                                 <strong id="deposit-current-balance">RF 0</strong>
                             </div>
                         </div>
                         <input type="hidden" id="deposit-projected-balance" value="0">
-                        <div class="field-hint">Choose “Add new account” first, or search existing accounts by name, account type or detail type.</div>
+                        <div class="field-hint">Choose “Add new account”, or search every Chart of Accounts entry by name or type.</div>
                     </div>
                     <div class="qb-amount-huge">
                         <div class="qb-amount-label">Amount</div>
