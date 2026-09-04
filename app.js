@@ -4275,6 +4275,8 @@ async function onSubmitDepositForm(e) {
 // JOURNAL ENTRY — double-entry lines. Debits and Credits are OPTIONAL and
 // do NOT need to match to save: a live pill shows whether the entry is
 // currently balanced, purely as a helpful indicator, never as a blocker.
+// The account picker intentionally shows NO balance figure — this is a
+// double-entry ledger form, not a place to preview a bank's cash balance.
 // ---------------------------------------------------------------------
 function getJournalAccountOptions() {
     const list = ['Accounts Receivable (A/R)', 'Accounts Payable (A/P)'];
@@ -4284,7 +4286,9 @@ function getJournalAccountOptions() {
     return list;
 }
 function formatAccountLabel(a) {
-    return `${a.name} · ${a.type || 'Account'} · ${a.detailType || 'General'} · ${formatRF(a.balance || 0)}`;
+    // No balance appended here on purpose — Journal Entry line accounts
+    // are shown by name/type/detail-type only, never with a balance figure.
+    return `${a.name} · ${a.type || 'Account'} · ${a.detailType || 'General'}`;
 }
 
 function addJournalLine(afterRow = null) {
