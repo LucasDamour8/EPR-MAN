@@ -208,6 +208,10 @@ a { color: #1d4ed8; }
 .sub-menu { display: none; }
 
 .my-assignment-card { display: none; }
+.access-summary { display:flex; align-items:center; gap:12px; margin:0 0 16px; padding:12px 15px; border:1px solid #cfe3d1; border-left:4px solid var(--primary); border-radius:10px; background:#f8fcf8; color:var(--text); }
+.access-summary > i { color:var(--primary); font-size:1.05rem; }
+.access-summary strong { display:block; font-size:.86rem; font-weight:600; }
+.access-summary span { display:block; margin-top:2px; color:var(--text-muted); font-size:.8rem; }
 
 .sidebar-footer { margin-top: auto; padding: 10px 4px; font-size: 0.54rem; text-align: center; color: var(--text-faint); border-top: 1px solid var(--border); }
 
@@ -395,6 +399,8 @@ a { color: #1d4ed8; }
 .glance-bank-icon { width: 30px; height:30px; border-radius:50%; background: var(--primary-light); color: var(--primary-dark); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .glance-bank-name { font-size: .8rem; font-weight: 700; flex:1; min-width:0; overflow:hidden; text-overflow: ellipsis; white-space:nowrap; }
 .glance-bank-bal { font-size: .82rem; font-weight: 800; }
+.clickable-card { cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.clickable-card:hover, .clickable-card:focus-visible { border-color:var(--primary); box-shadow:0 6px 18px rgba(20,83,45,.10); transform:translateY(-1px); outline:none; }
 .glance-donut-wrap { display:flex; align-items:center; gap: 16px; }
 .glance-donut-wrap canvas { max-width: 130px; max-height: 130px; }
 .glance-legend { flex:1; display:flex; flex-direction:column; gap:6px; font-size:.76rem; }
@@ -679,9 +685,12 @@ a { color: #1d4ed8; }
 .reports-side-item { display:block; width:100%; text-align:left; background:none; border:none; padding: 10px 12px; border-radius: 8px; font-size:.85rem; font-weight:700; color: var(--text); }
 .reports-side-item.active { background: var(--primary-light); color: var(--primary-darker); font-weight:800; }
 .reports-side-item:hover { background: var(--bg); }
-.reports-fav-row { display:flex; align-items:center; justify-content:space-between; padding: 9px 12px; border-radius: 8px; font-size:.85rem; }
+.reports-fav-row { display:flex; width:100%; align-items:center; justify-content:space-between; padding:9px 12px; border:0; border-radius:8px; background:transparent; color:var(--text); font:inherit; font-size:.85rem; text-align:left; }
 .reports-fav-row:hover { background: var(--bg); cursor:pointer; }
 .reports-fav-row i.fa-star { color: var(--warning); }
+.statement-focus { animation:statementFocus 1.8s ease; }
+@keyframes statementFocus { 0%,100% { box-shadow:none; } 25%,70% { box-shadow:0 0 0 4px rgba(22,101,52,.16); background:#f8fcf8; } }
+.badge.role-head_of_department { background:#e7f4e8; color:#14532d; }
 
 .org-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
 .org-tab-btn {
