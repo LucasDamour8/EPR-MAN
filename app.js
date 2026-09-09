@@ -241,45 +241,33 @@ function buildStaticSelectOptions() {
 }
 
 function refreshOrganisationScopeOptions() {
-    const select = $('sa-department-select');
-    if (!select) return;
-    const selected = select.value || 'ALL';
-    select.innerHTML = '<option value="ALL">-- All Departments & Locations --</option>';
-    const departments = document.createElement('optgroup');
-    departments.label = 'Departments';
+    const input = $('sa-department-select');
+    const list = $('organisation-scope-options');
+    if (!input || !list) return;
+    list.innerHTML = '<option value="All Departments & Presbytery Locations"></option>';
     Object.keys(EPR_STRUCTURE).forEach(name => {
         const option = document.createElement('option');
-        option.value = `department::${name}`;
-        option.textContent = name;
-        departments.appendChild(option);
+        option.value = `Department | ${name}`;
+        list.appendChild(option);
     });
-    select.appendChild(departments);
-    const locations = document.createElement('optgroup');
-    locations.label = 'EPR Presbytery Locations';
     PRESBYTERIES.forEach(name => {
         const option = document.createElement('option');
-        option.value = `presbytery::${name}`;
-        option.textContent = name;
-        locations.appendChild(option);
+        option.value = `Presbytery Location | ${name}`;
+        list.appendChild(option);
     });
-    select.appendChild(locations);
-    select.value = [...select.options].some(option => option.value === selected) ? selected : 'ALL';
 }
 
 function refreshProjectScopeOptions() {
-    const select = $('sa-project-select');
-    if (!select) return;
-    const selected = currentScope.project || 'ALL';
-    select.innerHTML = '<option value="ALL">-- All Projects --</option>';
+    const input = $('sa-project-select');
+    const list = $('project-scope-options');
+    if (!input || !list) return;
+    list.innerHTML = '<option value="All Projects"></option>';
     Object.entries(EPR_STRUCTURE).forEach(([department, projects]) => {
-        const group = document.createElement('optgroup');
-        group.label = shortDeptName(department);
         projects.forEach(project => {
             const option = document.createElement('option');
-            option.value = project; option.textContent = project;
-            group.appendChild(option);
+            option.value = `${shortDeptName(department)} | ${project}`;
+            list.appendChild(option);
         });
-        select.appendChild(group);
     });
     const builtIn = new Set(Object.values(EPR_STRUCTURE).flat());
     const savedGroups = new Map();
@@ -296,17 +284,12 @@ function refreshProjectScopeOptions() {
         savedGroups.get(heading).add(name);
     });
     [...savedGroups.keys()].sort((a, b) => a.localeCompare(b)).forEach(heading => {
-        const group = document.createElement('optgroup');
-        group.label = heading;
         [...savedGroups.get(heading)].sort((a, b) => a.localeCompare(b)).forEach(project => {
             const option = document.createElement('option');
-            option.value = project;
-            option.textContent = project;
-            group.appendChild(option);
+            option.value = `${heading} | ${project}`;
+            list.appendChild(option);
         });
-        select.appendChild(group);
     });
-    select.value = [...select.options].some(option => option.value === selected) ? selected : 'ALL';
 }
 
 function fillSelect(select, values, prependValue, prependLabel) {
@@ -461,17 +444,35 @@ function setupEventListeners() {
     function e_toggleProfile() { $('profile-dropdown').classList.toggle('hidden'); }
 
     $('sa-department-select').addEventListener('change', (e) => {
-        const [kind, ...parts] = e.target.value.split('::');
-        const value = parts.join('::');
-        currentScope.department = kind === 'department' ? value : 'ALL';
-        currentScope.presbytery = kind === 'presbytery' ? value : 'ALL';
-        if (e.target.value === 'ALL') { currentScope.department = 'ALL'; currentScope.presbytery = 'ALL'; }
+        const selected = e.target.value.trim();
+        currentScope.department = 'ALL';
+        currentScope.presbytery = 'ALL';
+        if (selected.startsWith('Department | ')) currentScope.department = selected.slice('Department | '.length);
+        else if (selected.startsWith('Presbytery Location | ')) currentScope.presbytery = selected.slice('Presbytery Location | '.length);
+        else if (selected && selected !== 'All Departments & Presbytery Locations') {
+            showToast('error', 'Choose one Department or Presbytery Location from the search list.');
+            e.target.value = '';
+            return;
+        }
         onScopeChanged();
     });
-    $('sa-project-select').addEventListener('change', (e) => { currentScope.project = e.target.value; onScopeChanged(); });
+    $('sa-project-select').addEventListener('change', (e) => {
+        const selected = e.target.value.trim();
+        if (!selected || selected === 'All Projects') currentScope.project = 'ALL';
+        else {
+            const optionValues = [...$('project-scope-options').options].map(option => option.value);
+            if (!optionValues.includes(selected)) {
+                showToast('error', 'Choose one project from the search list.');
+                e.target.value = '';
+                return;
+            }
+            currentScope.project = selected.split(' | ').pop();
+        }
+        onScopeChanged();
+    });
     $('scope-reset-btn').addEventListener('click', () => {
         currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
-        $('sa-project-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
+        $('sa-project-select').value = ''; $('sa-department-select').value = '';
         onScopeChanged();
         showToast('info', 'Scope reset to all departments and projects.');
     });
@@ -1065,7 +1066,7 @@ function onSidebarDeptFilter(e) {
     e.preventDefault();
     if (currentUser.role !== 'superadmin') return;
     const dept = e.currentTarget.getAttribute('data-dept');
-    $('sa-department-select').value = `department::${dept}`;
+    $('sa-department-select').value = `Department | ${dept}`;
     currentScope.department = dept;
     currentScope.presbytery = 'ALL';
     switchView('transactions');
@@ -1087,9 +1088,9 @@ function highlightSidebarFilters() {
 function renderActiveScopeChips() {
     const wrap = $('active-scope-chips');
     wrap.innerHTML = '';
-    if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
-    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
-    if (currentScope.project !== 'ALL') wrap.appendChild(makeChip(currentScope.project, () => { currentScope.project = 'ALL'; $('sa-project-select').value = 'ALL'; onScopeChanged(); }));
+    if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = ''; onScopeChanged(); }));
+    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-department-select').value = ''; onScopeChanged(); }));
+    if (currentScope.project !== 'ALL') wrap.appendChild(makeChip(currentScope.project, () => { currentScope.project = 'ALL'; $('sa-project-select').value = ''; onScopeChanged(); }));
 }
 function makeChip(label, onRemove) {
     const chip = document.createElement('span');
@@ -1233,7 +1234,7 @@ function initAppSession() {
 
     if (hasFullAccess) {
         currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
-        $('sa-project-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
+        $('sa-project-select').value = ''; $('sa-department-select').value = '';
     } else {
         currentScope = { presbytery: currentUser.presbytery, department: currentUser.department, project: 'ALL' };
         $('ab-department').textContent = shortDeptName(currentUser.department);
@@ -1839,7 +1840,7 @@ function renderDeptBreakdown(list, superVisible) {
             <div class="dc-net"><span>Net</span><span style="color:${inc - exp >= 0 ? 'var(--primary-dark)' : 'var(--danger)'}">${formatRF(inc - exp)}</span></div>
         `;
         card.addEventListener('click', () => {
-            $('sa-department-select').value = `department::${dept}`;
+            $('sa-department-select').value = `Department | ${dept}`;
             currentScope.department = dept;
             currentScope.presbytery = 'ALL';
             switchView('transactions');
@@ -1973,7 +1974,7 @@ function renderOrgChart() {
             <div class="odc-body">${subs.map(s => `<div class="odc-sub">${s}</div>`).join('')}</div>
             ${superVisible ? `<div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managerCount} user${managerCount === 1 ? '' : 's'} assigned</div>` : (isMine ? `<div class="odc-count"><i class="fa-solid fa-circle-check"></i> This is your department</div>` : '')}
         `;
-        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = `department::${dept}`; currentScope.department = dept; currentScope.presbytery = 'ALL'; switchView('transactions'); onScopeChanged(); });
+        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = `Department | ${dept}`; currentScope.department = dept; currentScope.presbytery = 'ALL'; switchView('transactions'); onScopeChanged(); });
         deptGrid.appendChild(card);
     });
 
@@ -3910,22 +3911,33 @@ function openFinancialView(view = 'all') {
     const income = $('income-statement-section');
     const balance = $('balance-sheet-section');
     const ageing = $('receivables-ageing-section');
+    const charts = qsa('#view-reports .ext-grid-wide');
+    const title = $('financial-report-title');
     [income, balance, ageing].forEach(section => section?.classList.remove('financial-section-hidden'));
+    charts.forEach(chart => chart.classList.toggle('financial-section-hidden', view !== 'all'));
 
     let target = $('printable-report');
     if (view === 'balance') {
         income?.classList.add('financial-section-hidden');
         ageing?.classList.add('financial-section-hidden');
         target = balance;
+        if (title) title.textContent = 'SAS BALANCE SHEET';
     } else if (view === 'profit-loss' || view === 'income') {
         balance?.classList.add('financial-section-hidden');
         ageing?.classList.add('financial-section-hidden');
         target = income;
         const heading = $('income-statement-heading');
         if (heading) heading.textContent = view === 'profit-loss' ? 'Profit & Loss Statement' : 'Income Statement';
+        if (title) title.textContent = view === 'profit-loss' ? 'SAS PROFIT & LOSS STATEMENT' : 'SAS INCOME STATEMENT';
+    } else if (view === 'receivables') {
+        income?.classList.add('financial-section-hidden');
+        balance?.classList.add('financial-section-hidden');
+        target = ageing;
+        if (title) title.textContent = 'SAS ACCOUNTS RECEIVABLE AGEING';
     } else {
         const heading = $('income-statement-heading');
         if (heading) heading.textContent = 'Profit & Loss / Income Statement';
+        if (title) title.textContent = 'SAS FINANCIAL STATEMENTS';
     }
 
     qsa('[data-financial-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.financialView === view));
