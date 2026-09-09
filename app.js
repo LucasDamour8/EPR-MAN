@@ -241,37 +241,59 @@ function buildStaticSelectOptions() {
 }
 
 function refreshOrganisationScopeOptions() {
-    const input = $('sa-department-select');
-    const list = $('organisation-scope-options');
-    if (!input || !list) return;
-    list.innerHTML = '<option value="All Departments & Presbytery Locations"></option>';
+    const select = $('sa-department-select');
+    if (!select) return;
+    const selected = currentScope.department !== 'ALL'
+        ? `department::${currentScope.department}`
+        : currentScope.presbytery !== 'ALL' ? `presbytery::${currentScope.presbytery}` : 'ALL';
+    select.innerHTML = '<option value="ALL">-- All Departments & Presbyteries --</option>';
+    const departments = document.createElement('optgroup');
+    departments.label = 'DEPARTMENTS';
     Object.keys(EPR_STRUCTURE).forEach(name => {
         const option = document.createElement('option');
-        option.value = `Department | ${name}`;
-        list.appendChild(option);
+        option.value = `department::${name}`;
+        option.textContent = name;
+        departments.appendChild(option);
     });
+    select.appendChild(departments);
+    const presbyteries = document.createElement('optgroup');
+    presbyteries.label = 'PRESBYTERIES';
     PRESBYTERIES.forEach(name => {
         const option = document.createElement('option');
-        option.value = `Presbytery Location | ${name}`;
-        list.appendChild(option);
+        option.value = `presbytery::${name}`;
+        option.textContent = name.replace('EPR ', '');
+        presbyteries.appendChild(option);
     });
+    select.appendChild(presbyteries);
+    select.value = [...select.options].some(option => option.value === selected) ? selected : 'ALL';
 }
 
 function refreshProjectScopeOptions() {
-    const input = $('sa-project-select');
-    const list = $('project-scope-options');
-    if (!input || !list) return;
-    list.innerHTML = '<option value="All Projects"></option>';
-    Object.entries(EPR_STRUCTURE).forEach(([department, projects]) => {
+    const select = $('sa-project-select');
+    if (!select) return;
+    const selected = currentScope.project || 'ALL';
+    select.innerHTML = '<option value="ALL">-- All Sections & Projects --</option>';
+    const structures = currentScope.department !== 'ALL'
+        ? [[currentScope.department, EPR_STRUCTURE[currentScope.department] || []]]
+        : Object.entries(EPR_STRUCTURE);
+    structures.forEach(([department, projects]) => {
+        const group = document.createElement('optgroup');
+        group.label = `SECTIONS — ${shortDeptName(department)}`;
         projects.forEach(project => {
             const option = document.createElement('option');
-            option.value = `${shortDeptName(department)} | ${project}`;
-            list.appendChild(option);
+            option.value = project;
+            option.textContent = project;
+            group.appendChild(option);
         });
+        if (group.children.length) select.appendChild(group);
     });
     const builtIn = new Set(Object.values(EPR_STRUCTURE).flat());
     const savedGroups = new Map();
-    projectsDb.forEach(project => {
+    projectsDb.filter(project => {
+        if (currentScope.department !== 'ALL' && project.department !== currentScope.department) return false;
+        if (currentScope.presbytery !== 'ALL' && project.presbytery !== currentScope.presbytery) return false;
+        return true;
+    }).forEach(project => {
         const name = project.name || project.projectName || project.title;
         if (!name || builtIn.has(name)) return;
         const department = project.department && project.department !== 'ALL' ? shortDeptName(project.department) : '';
@@ -284,12 +306,18 @@ function refreshProjectScopeOptions() {
         savedGroups.get(heading).add(name);
     });
     [...savedGroups.keys()].sort((a, b) => a.localeCompare(b)).forEach(heading => {
+        const group = document.createElement('optgroup');
+        group.label = `PROJECTS — ${heading}`;
         [...savedGroups.get(heading)].sort((a, b) => a.localeCompare(b)).forEach(project => {
             const option = document.createElement('option');
-            option.value = `${heading} | ${project}`;
-            list.appendChild(option);
+            option.value = project;
+            option.textContent = project;
+            group.appendChild(option);
         });
+        select.appendChild(group);
     });
+    select.value = [...select.options].some(option => option.value === selected) ? selected : 'ALL';
+    if (select.value === 'ALL') currentScope.project = 'ALL';
 }
 
 function fillSelect(select, values, prependValue, prependLabel) {
@@ -444,35 +472,24 @@ function setupEventListeners() {
     function e_toggleProfile() { $('profile-dropdown').classList.toggle('hidden'); }
 
     $('sa-department-select').addEventListener('change', (e) => {
-        const selected = e.target.value.trim();
+        const selected = e.target.value;
+        const [kind, ...parts] = selected.split('::');
+        const value = parts.join('::');
         currentScope.department = 'ALL';
         currentScope.presbytery = 'ALL';
-        if (selected.startsWith('Department | ')) currentScope.department = selected.slice('Department | '.length);
-        else if (selected.startsWith('Presbytery Location | ')) currentScope.presbytery = selected.slice('Presbytery Location | '.length);
-        else if (selected && selected !== 'All Departments & Presbytery Locations') {
-            showToast('error', 'Choose one Department or Presbytery Location from the search list.');
-            e.target.value = '';
-            return;
-        }
+        if (kind === 'department') currentScope.department = value;
+        if (kind === 'presbytery') currentScope.presbytery = value;
+        currentScope.project = 'ALL';
+        refreshProjectScopeOptions();
         onScopeChanged();
     });
     $('sa-project-select').addEventListener('change', (e) => {
-        const selected = e.target.value.trim();
-        if (!selected || selected === 'All Projects') currentScope.project = 'ALL';
-        else {
-            const optionValues = [...$('project-scope-options').options].map(option => option.value);
-            if (!optionValues.includes(selected)) {
-                showToast('error', 'Choose one project from the search list.');
-                e.target.value = '';
-                return;
-            }
-            currentScope.project = selected.split(' | ').pop();
-        }
+        currentScope.project = e.target.value || 'ALL';
         onScopeChanged();
     });
     $('scope-reset-btn').addEventListener('click', () => {
         currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
-        $('sa-project-select').value = ''; $('sa-department-select').value = '';
+        $('sa-project-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
         onScopeChanged();
         showToast('info', 'Scope reset to all departments and projects.');
     });
@@ -512,18 +529,27 @@ function setupEventListeners() {
     $('user-role').addEventListener('change', () => {
         const isSuperRole = $('user-role').value === 'superadmin';
         const isHead = $('user-role').value === 'head_of_department';
+        $('user-head-department').checked = isHead;
         if (isHead) {
             const deptMode = document.querySelector('input[name="user-assign-mode"][value="department"]');
             if (deptMode) deptMode.checked = true;
             $('user-full-access').checked = false;
             onUserAssignModeChange();
+            $('user-mode-group').classList.add('hidden');
+            populateHeadDepartmentProjects();
+        } else if (!isSuperRole && !$('user-full-access').checked) {
+            $('user-mode-group').classList.remove('hidden');
         }
-        $('user-full-access-group').classList.toggle('hidden', isSuperRole);
+        $('user-full-access-group').classList.toggle('hidden', isSuperRole || isHead);
         $('user-scope-fields').classList.toggle('hidden', isSuperRole || $('user-full-access').checked);
         qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole && !$('user-full-access').checked);
     });
+    $('user-head-department').addEventListener('change', onHeadOfDepartmentChange);
     $('user-full-access').addEventListener('change', onUserFullAccessChange);
-    $('user-dept').addEventListener('change', () => populateSubsections('user-dept', 'user-subsection'));
+    $('user-dept').addEventListener('change', () => {
+        populateSubsections('user-dept', 'user-subsection');
+        if ($('user-head-department').checked) populateHeadDepartmentProjects();
+    });
 
     qsa('input[name="user-assign-mode"]').forEach(r => r.addEventListener('change', onUserAssignModeChange));
 
@@ -1066,7 +1092,7 @@ function onSidebarDeptFilter(e) {
     e.preventDefault();
     if (currentUser.role !== 'superadmin') return;
     const dept = e.currentTarget.getAttribute('data-dept');
-    $('sa-department-select').value = `Department | ${dept}`;
+    $('sa-department-select').value = dept === 'ALL' ? 'ALL' : `department::${dept}`;
     currentScope.department = dept;
     currentScope.presbytery = 'ALL';
     switchView('transactions');
@@ -1076,7 +1102,15 @@ function onSidebarDeptFilter(e) {
 
 function onSidebarPresFilter(e) {
     e.preventDefault();
-    showToast('info', 'Use the Department and Project selectors at the top to change the active data scope.');
+    if (currentUser.role !== 'superadmin') return;
+    const pres = e.currentTarget.getAttribute('data-pres');
+    $('sa-department-select').value = pres === 'ALL' ? 'ALL' : `presbytery::${pres}`;
+    currentScope.department = 'ALL';
+    currentScope.presbytery = pres;
+    currentScope.project = 'ALL';
+    refreshProjectScopeOptions();
+    switchView('transactions');
+    onScopeChanged();
     closeAppsPanel();
 }
 
@@ -1088,9 +1122,9 @@ function highlightSidebarFilters() {
 function renderActiveScopeChips() {
     const wrap = $('active-scope-chips');
     wrap.innerHTML = '';
-    if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = ''; onScopeChanged(); }));
-    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-department-select').value = ''; onScopeChanged(); }));
-    if (currentScope.project !== 'ALL') wrap.appendChild(makeChip(currentScope.project, () => { currentScope.project = 'ALL'; $('sa-project-select').value = ''; onScopeChanged(); }));
+    if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
+    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
+    if (currentScope.project !== 'ALL') wrap.appendChild(makeChip(currentScope.project, () => { currentScope.project = 'ALL'; $('sa-project-select').value = 'ALL'; onScopeChanged(); }));
 }
 function makeChip(label, onRemove) {
     const chip = document.createElement('span');
@@ -1234,7 +1268,7 @@ function initAppSession() {
 
     if (hasFullAccess) {
         currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
-        $('sa-project-select').value = ''; $('sa-department-select').value = '';
+        $('sa-project-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
     } else {
         currentScope = { presbytery: currentUser.presbytery, department: currentUser.department, project: 'ALL' };
         $('ab-department').textContent = shortDeptName(currentUser.department);
@@ -1333,6 +1367,8 @@ function subscribeTransactions() {
 }
 
 function onScopeChanged() {
+    refreshOrganisationScopeOptions();
+    refreshProjectScopeOptions();
     subscribeTransactions();
     subscribeInvoices();
     subscribeBills();
@@ -1569,6 +1605,36 @@ function getCheckedProjectKeys() {
     return qsa('#user-projects-checklist input[type=checkbox]:checked').map(cb => cb.value);
 }
 
+function populateHeadDepartmentProjects() {
+    const department = $('user-dept').value;
+    const departmentProjects = (EPR_STRUCTURE[department] || []).map(project => `${department}::${project}`);
+    populateUserProjectsChecklist(departmentProjects);
+}
+
+function onHeadOfDepartmentChange() {
+    const checked = $('user-head-department').checked;
+    if (!checked) {
+        if ($('user-role').value === 'head_of_department') $('user-role').value = 'finance';
+        $('user-full-access-group').classList.remove('hidden');
+        $('user-mode-group').classList.remove('hidden');
+        onUserAssignModeChange();
+        return;
+    }
+    $('user-role').value = 'head_of_department';
+    $('user-full-access').checked = false;
+    $('user-full-access-group').classList.add('hidden');
+    $('user-scope-fields').classList.remove('hidden');
+    $('user-mode-group').classList.add('hidden');
+    const departmentMode = document.querySelector('input[name="user-assign-mode"][value="department"]');
+    if (departmentMode) departmentMode.checked = true;
+    $('user-pres-field').classList.add('hidden');
+    $('user-dept-field').classList.remove('hidden');
+    $('user-dept').required = true;
+    $('user-pres').required = false;
+    populateHeadDepartmentProjects();
+    showToast('info', 'Select the Department this user will control. All Sections and Projects in that Department are assigned automatically.');
+}
+
 function onUserFullAccessChange() {
     const full = $('user-full-access').checked;
     $('user-scope-fields').classList.toggle('hidden', full);
@@ -1658,6 +1724,7 @@ function resetUserForm() {
     $('user-reset-group').classList.add('hidden');
     $('user-password').required = true;
     $('user-full-access').checked = false;
+    $('user-head-department').checked = false;
     $('user-full-access-group').classList.remove('hidden');
     $('user-scope-fields').classList.remove('hidden');
     $('user-mode-group').classList.remove('hidden');
@@ -1681,16 +1748,18 @@ function onUsersTableClick(e) {
         $('user-email').value = u.email;
         $('user-email').disabled = true;
         $('user-role').value = u.role;
+        $('user-head-department').checked = u.role === 'head_of_department';
 
         $('user-password-group').classList.add('hidden');
         $('user-password').required = false;
         $('user-reset-group').classList.remove('hidden');
 
         const roleSuper = u.role === 'superadmin';
+        const roleHead = u.role === 'head_of_department';
         $('user-full-access-group').classList.toggle('hidden', roleSuper);
         $('user-full-access').checked = !!u.fullAccess;
         $('user-scope-fields').classList.toggle('hidden', roleSuper || !!u.fullAccess);
-        $('user-mode-group').classList.toggle('hidden', roleSuper || !!u.fullAccess);
+        $('user-mode-group').classList.toggle('hidden', roleSuper || roleHead || !!u.fullAccess);
         if (!roleSuper && !u.fullAccess) {
             const mode = u.assignMode || (u.department === 'ALL' ? 'presbytery' : 'department');
             const radio = document.querySelector(`input[name="user-assign-mode"][value="${mode}"]`);
@@ -1700,7 +1769,8 @@ function onUsersTableClick(e) {
             if (deptField) deptField.classList.toggle('hidden', mode !== 'department');
             if (mode === 'presbytery') $('user-pres').value = u.presbytery;
             else $('user-dept').value = u.department;
-            populateUserProjectsChecklist(u.assignedProjects || []);
+            if (roleHead) populateHeadDepartmentProjects();
+            else populateUserProjectsChecklist(u.assignedProjects || []);
         } else if (!roleSuper) {
             populateUserProjectsChecklist(getAllProjectKeys());
         }
@@ -1765,7 +1835,7 @@ function refreshAllViews() {
     const superVisible = hasFullScope();
 
     const scopeDesc = superVisible
-        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery Location: [${currentScope.presbytery}]` : 'Departments / Locations: [ALL]'} | Project: [${currentScope.project}]`
+        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery: [${currentScope.presbytery}]` : 'Departments / Presbyteries: [ALL]'} | Section / Project: [${currentScope.project}]`
         : `Department: [${currentUser.department}] | Assigned projects only`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
     $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
@@ -1840,7 +1910,7 @@ function renderDeptBreakdown(list, superVisible) {
             <div class="dc-net"><span>Net</span><span style="color:${inc - exp >= 0 ? 'var(--primary-dark)' : 'var(--danger)'}">${formatRF(inc - exp)}</span></div>
         `;
         card.addEventListener('click', () => {
-            $('sa-department-select').value = `Department | ${dept}`;
+            $('sa-department-select').value = `department::${dept}`;
             currentScope.department = dept;
             currentScope.presbytery = 'ALL';
             switchView('transactions');
@@ -1974,7 +2044,7 @@ function renderOrgChart() {
             <div class="odc-body">${subs.map(s => `<div class="odc-sub">${s}</div>`).join('')}</div>
             ${superVisible ? `<div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managerCount} user${managerCount === 1 ? '' : 's'} assigned</div>` : (isMine ? `<div class="odc-count"><i class="fa-solid fa-circle-check"></i> This is your department</div>` : '')}
         `;
-        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = `Department | ${dept}`; currentScope.department = dept; currentScope.presbytery = 'ALL'; switchView('transactions'); onScopeChanged(); });
+        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = `department::${dept}`; currentScope.department = dept; currentScope.presbytery = 'ALL'; switchView('transactions'); onScopeChanged(); });
         deptGrid.appendChild(card);
     });
 
@@ -3645,7 +3715,7 @@ function renderReportCharts(list) {
 function renderReportPanel() {
     const superVisible = hasFullScope();
     const scopeDesc = superVisible
-        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery Location: [${currentScope.presbytery}]` : 'Departments / Locations: [ALL]'} | Project: [${currentScope.project}]`
+        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery: [${currentScope.presbytery}]` : 'Departments / Presbyteries: [ALL]'} | Section / Project: [${currentScope.project}]`
         : `Department: [${currentUser.department}] | Assigned projects only`;
     $('statement-scope').textContent = `${scopeDesc} · Range: ${rangeLabel(reportRange.preset === 'all' ? { preset: 'all' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to))}`;
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
