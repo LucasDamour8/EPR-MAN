@@ -233,21 +233,80 @@ async function checkFirstRun() {
 }
 
 function buildStaticSelectOptions() {
-    fillSelect($('sa-department-select'), Object.keys(EPR_STRUCTURE), "ALL", "-- All Departments --");
+    refreshOrganisationScopeOptions();
     refreshProjectScopeOptions();
     fillSelect($('user-pres'), PRESBYTERIES);
     fillSelect($('user-dept'), Object.keys(EPR_STRUCTURE));
     renderSidebarFilters();
 }
 
+function refreshOrganisationScopeOptions() {
+    const select = $('sa-department-select');
+    if (!select) return;
+    const selected = select.value || 'ALL';
+    select.innerHTML = '<option value="ALL">-- All Departments & Locations --</option>';
+    const departments = document.createElement('optgroup');
+    departments.label = 'Departments';
+    Object.keys(EPR_STRUCTURE).forEach(name => {
+        const option = document.createElement('option');
+        option.value = `department::${name}`;
+        option.textContent = name;
+        departments.appendChild(option);
+    });
+    select.appendChild(departments);
+    const locations = document.createElement('optgroup');
+    locations.label = 'EPR Presbytery Locations';
+    PRESBYTERIES.forEach(name => {
+        const option = document.createElement('option');
+        option.value = `presbytery::${name}`;
+        option.textContent = name;
+        locations.appendChild(option);
+    });
+    select.appendChild(locations);
+    select.value = [...select.options].some(option => option.value === selected) ? selected : 'ALL';
+}
+
 function refreshProjectScopeOptions() {
-    const projects = [...new Set([
-        ...Object.values(EPR_STRUCTURE).flat(),
-        ...projectsDb.map(p => p.name || p.projectName || p.title).filter(Boolean)
-    ])].sort((a, b) => a.localeCompare(b));
+    const select = $('sa-project-select');
+    if (!select) return;
     const selected = currentScope.project || 'ALL';
-    fillSelect($('sa-project-select'), projects, 'ALL', '-- All Projects --');
-    $('sa-project-select').value = projects.includes(selected) ? selected : 'ALL';
+    select.innerHTML = '<option value="ALL">-- All Projects --</option>';
+    Object.entries(EPR_STRUCTURE).forEach(([department, projects]) => {
+        const group = document.createElement('optgroup');
+        group.label = shortDeptName(department);
+        projects.forEach(project => {
+            const option = document.createElement('option');
+            option.value = project; option.textContent = project;
+            group.appendChild(option);
+        });
+        select.appendChild(group);
+    });
+    const builtIn = new Set(Object.values(EPR_STRUCTURE).flat());
+    const savedGroups = new Map();
+    projectsDb.forEach(project => {
+        const name = project.name || project.projectName || project.title;
+        if (!name || builtIn.has(name)) return;
+        const department = project.department && project.department !== 'ALL' ? shortDeptName(project.department) : '';
+        const location = project.presbytery && project.presbytery !== 'ALL'
+            ? project.presbytery.replace('EPR Presbytery ', '') : '';
+        const heading = department && location
+            ? `${department} / ${location}`
+            : department || location || 'Other saved projects';
+        if (!savedGroups.has(heading)) savedGroups.set(heading, new Set());
+        savedGroups.get(heading).add(name);
+    });
+    [...savedGroups.keys()].sort((a, b) => a.localeCompare(b)).forEach(heading => {
+        const group = document.createElement('optgroup');
+        group.label = heading;
+        [...savedGroups.get(heading)].sort((a, b) => a.localeCompare(b)).forEach(project => {
+            const option = document.createElement('option');
+            option.value = project;
+            option.textContent = project;
+            group.appendChild(option);
+        });
+        select.appendChild(group);
+    });
+    select.value = [...select.options].some(option => option.value === selected) ? selected : 'ALL';
 }
 
 function fillSelect(select, values, prependValue, prependLabel) {
@@ -401,7 +460,14 @@ function setupEventListeners() {
 
     function e_toggleProfile() { $('profile-dropdown').classList.toggle('hidden'); }
 
-    $('sa-department-select').addEventListener('change', (e) => { currentScope.department = e.target.value; onScopeChanged(); });
+    $('sa-department-select').addEventListener('change', (e) => {
+        const [kind, ...parts] = e.target.value.split('::');
+        const value = parts.join('::');
+        currentScope.department = kind === 'department' ? value : 'ALL';
+        currentScope.presbytery = kind === 'presbytery' ? value : 'ALL';
+        if (e.target.value === 'ALL') { currentScope.department = 'ALL'; currentScope.presbytery = 'ALL'; }
+        onScopeChanged();
+    });
     $('sa-project-select').addEventListener('change', (e) => { currentScope.project = e.target.value; onScopeChanged(); });
     $('scope-reset-btn').addEventListener('click', () => {
         currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
@@ -999,8 +1065,9 @@ function onSidebarDeptFilter(e) {
     e.preventDefault();
     if (currentUser.role !== 'superadmin') return;
     const dept = e.currentTarget.getAttribute('data-dept');
-    $('sa-department-select').value = dept;
+    $('sa-department-select').value = `department::${dept}`;
     currentScope.department = dept;
+    currentScope.presbytery = 'ALL';
     switchView('transactions');
     onScopeChanged();
     closeAppsPanel();
@@ -1021,6 +1088,7 @@ function renderActiveScopeChips() {
     const wrap = $('active-scope-chips');
     wrap.innerHTML = '';
     if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
+    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
     if (currentScope.project !== 'ALL') wrap.appendChild(makeChip(currentScope.project, () => { currentScope.project = 'ALL'; $('sa-project-select').value = 'ALL'; onScopeChanged(); }));
 }
 function makeChip(label, onRemove) {
@@ -1243,8 +1311,9 @@ function buildScopedQuery(collectionName) {
     if (!hasFullScope()) {
         if (currentUser.department && currentUser.department !== 'ALL') clauses.push(where('department', '==', currentUser.department));
         if (!isHeadOfDepartment() && currentUser.presbytery && currentUser.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentUser.presbytery));
-    } else if (currentScope.department !== 'ALL') {
+    } else if (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL') {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
+        if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     }
     return clauses.length ? query(col, ...clauses) : query(col);
 }
@@ -1695,7 +1764,7 @@ function refreshAllViews() {
     const superVisible = hasFullScope();
 
     const scopeDesc = superVisible
-        ? `Department: [${currentScope.department}] | Project: [${currentScope.project}]`
+        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery Location: [${currentScope.presbytery}]` : 'Departments / Locations: [ALL]'} | Project: [${currentScope.project}]`
         : `Department: [${currentUser.department}] | Assigned projects only`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
     $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
@@ -1770,8 +1839,9 @@ function renderDeptBreakdown(list, superVisible) {
             <div class="dc-net"><span>Net</span><span style="color:${inc - exp >= 0 ? 'var(--primary-dark)' : 'var(--danger)'}">${formatRF(inc - exp)}</span></div>
         `;
         card.addEventListener('click', () => {
-            $('sa-department-select').value = dept;
+            $('sa-department-select').value = `department::${dept}`;
             currentScope.department = dept;
+            currentScope.presbytery = 'ALL';
             switchView('transactions');
             onScopeChanged();
         });
@@ -1903,7 +1973,7 @@ function renderOrgChart() {
             <div class="odc-body">${subs.map(s => `<div class="odc-sub">${s}</div>`).join('')}</div>
             ${superVisible ? `<div class="odc-count"><i class="fa-solid fa-user-gear"></i> ${managerCount} user${managerCount === 1 ? '' : 's'} assigned</div>` : (isMine ? `<div class="odc-count"><i class="fa-solid fa-circle-check"></i> This is your department</div>` : '')}
         `;
-        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = dept; currentScope.department = dept; switchView('transactions'); onScopeChanged(); });
+        if (superVisible) card.addEventListener('click', () => { $('sa-department-select').value = `department::${dept}`; currentScope.department = dept; currentScope.presbytery = 'ALL'; switchView('transactions'); onScopeChanged(); });
         deptGrid.appendChild(card);
     });
 
@@ -3574,7 +3644,7 @@ function renderReportCharts(list) {
 function renderReportPanel() {
     const superVisible = hasFullScope();
     const scopeDesc = superVisible
-        ? `Department: [${currentScope.department}] | Project: [${currentScope.project}]`
+        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery Location: [${currentScope.presbytery}]` : 'Departments / Locations: [ALL]'} | Project: [${currentScope.project}]`
         : `Department: [${currentUser.department}] | Assigned projects only`;
     $('statement-scope').textContent = `${scopeDesc} · Range: ${rangeLabel(reportRange.preset === 'all' ? { preset: 'all' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to))}`;
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
@@ -3609,6 +3679,24 @@ function renderReportPanel() {
     $('stmt-assets').textContent = formatRF(assets);
     $('stmt-liabilities').textContent = formatRF(liabilities);
     $('stmt-equity').textContent = formatRF(equity);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const receivables = invoicesDb.filter(invoice => !['paid', 'cancelled', 'void'].includes(String(invoice.status || '').toLowerCase()));
+    const ageing = { current: 0, d30: 0, d60: 0, older: 0 };
+    receivables.forEach(invoice => {
+        const amount = Number(invoice.balanceDue ?? invoice.balance ?? invoice.amount ?? invoice.total ?? 0);
+        const due = new Date(invoice.dueDate || invoice.date || today);
+        due.setHours(0, 0, 0, 0);
+        const days = Math.floor((today - due) / 86400000);
+        if (days <= 0) ageing.current += amount;
+        else if (days <= 30) ageing.d30 += amount;
+        else if (days <= 60) ageing.d60 += amount;
+        else ageing.older += amount;
+    });
+    $('stmt-ar-current').textContent = formatRF(ageing.current);
+    $('stmt-ar-30').textContent = formatRF(ageing.d30);
+    $('stmt-ar-60').textContent = formatRF(ageing.d60);
+    $('stmt-ar-older').textContent = formatRF(ageing.older);
+    $('stmt-ar-total').textContent = formatRF(ageing.current + ageing.d30 + ageing.d60 + ageing.older);
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
@@ -3624,14 +3712,16 @@ function openFinancialStatementDetail(type) {
     const labels = {
         Income: 'Revenue / Income details', Expense: 'Operating expense details',
         CostOfSales: 'Cost of sales details', OperatingExpense: 'Operating expense details',
-        Asset: 'Current asset and bank details', Liability: 'Liability details'
+        Asset: 'Current asset and bank details', Liability: 'Liability details', Receivable: 'Accounts receivable details'
     };
     const txRows = getReportTransactions()
         .filter(tx => type === 'CostOfSales' ? isCostOfSalesTransaction(tx) : type === 'OperatingExpense' ? tx.type === 'Expense' && !isCostOfSalesTransaction(tx) : tx.type === type)
         .map(tx => normalizeReportRecord('transactions', tx));
     const assetAccounts = accountsDb.filter(account => !account.linkedBankId && ['Accounts receivable (A/R)', 'Current assets', 'Fixed assets', 'Non-current assets'].includes(account.type));
     const liabilityAccounts = accountsDb.filter(account => ['Credit card', 'Accounts payable (A/P)', 'Current liabilities', 'Non-current liabilities'].includes(account.type));
-    const rows = type === 'Asset'
+    const rows = type === 'Receivable'
+        ? invoicesDb.filter(invoice => !['paid', 'cancelled', 'void'].includes(String(invoice.status || '').toLowerCase())).map(invoice => normalizeReportRecord('invoices', invoice))
+        : type === 'Asset'
         ? [...getVisibleBanks().filter(bank => bank.accountType !== 'Credit card').map(bank => ({ ...normalizeReportRecord('banks', bank), amount: computeBankBalance(bank), raw: bank })), ...assetAccounts.map(account => normalizeReportRecord('accounts', account)), ...txRows]
         : type === 'Liability' ? [...liabilityAccounts.map(account => normalizeReportRecord('accounts', account)), ...txRows] : txRows;
     const total = rows.reduce((sum, row) => sum + row.amount, 0);
@@ -3790,12 +3880,18 @@ function setReportMode(mode) {
 }
 
 function setupCustomReports() {
-    qsa('.reports-side-item[data-report-mode]').forEach(btn => btn.addEventListener('click', () => setReportMode(btn.dataset.reportMode)));
+    qsa('.reports-side-item[data-report-mode]').forEach(btn => btn.addEventListener('click', () => {
+        if (btn.dataset.reportMode === 'financial') openFinancialView(btn.dataset.financialView || 'all');
+        else setReportMode(btn.dataset.reportMode);
+    }));
     qsa('[data-financial-target]').forEach(btn => btn.addEventListener('click', () => openFinancialStatement(btn.dataset.financialTarget)));
+    qsa('[data-financial-view]').forEach(btn => {
+        if (!btn.classList.contains('reports-side-item')) btn.addEventListener('click', () => openFinancialView(btn.dataset.financialView));
+    });
     const profitCard = $('glance-profit-loss-card');
     if (profitCard) {
-        profitCard.addEventListener('click', () => openFinancialStatement('income-statement-section'));
-        profitCard.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openFinancialStatement('income-statement-section'); });
+        profitCard.addEventListener('click', () => openFinancialView('profit-loss'));
+        profitCard.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openFinancialView('profit-loss'); });
     }
     $('run-custom-report').addEventListener('click', renderCustomReport);
     ['custom-report-source', 'custom-report-sort', 'custom-report-status'].forEach(id => $(id).addEventListener('change', renderCustomReport));
@@ -3807,10 +3903,43 @@ function setupCustomReports() {
     $('print-record-detail').addEventListener('click', () => window.print());
 }
 
-function openFinancialStatement(targetId) {
+function openFinancialView(view = 'all') {
     switchView('reports');
     setReportMode('financial');
     renderReportPanel();
+    const income = $('income-statement-section');
+    const balance = $('balance-sheet-section');
+    const ageing = $('receivables-ageing-section');
+    [income, balance, ageing].forEach(section => section?.classList.remove('financial-section-hidden'));
+
+    let target = $('printable-report');
+    if (view === 'balance') {
+        income?.classList.add('financial-section-hidden');
+        ageing?.classList.add('financial-section-hidden');
+        target = balance;
+    } else if (view === 'profit-loss' || view === 'income') {
+        balance?.classList.add('financial-section-hidden');
+        ageing?.classList.add('financial-section-hidden');
+        target = income;
+        const heading = $('income-statement-heading');
+        if (heading) heading.textContent = view === 'profit-loss' ? 'Profit & Loss Statement' : 'Income Statement';
+    } else {
+        const heading = $('income-statement-heading');
+        if (heading) heading.textContent = 'Profit & Loss / Income Statement';
+    }
+
+    qsa('[data-financial-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.financialView === view));
+    requestAnimationFrame(() => {
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target?.classList.add('statement-focus');
+        window.setTimeout(() => target?.classList.remove('statement-focus'), 1800);
+    });
+}
+
+function openFinancialStatement(targetId) {
+    if (targetId === 'balance-sheet-section') return openFinancialView('balance');
+    if (targetId === 'income-statement-section') return openFinancialView('income');
+    openFinancialView('all');
     requestAnimationFrame(() => {
         const section = $(targetId);
         if (!section) return;
