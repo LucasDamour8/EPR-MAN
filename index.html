@@ -209,15 +209,15 @@
                     <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies across every module</h4>
                     <div class="scope-fields">
                         <div class="scope-field">
-                            <label>Department</label>
+                            <label>Departments / Presbytery Locations</label>
                             <div class="select-wrap">
                                 <select id="sa-department-select">
-                                    <option value="ALL">-- All Departments --</option>
+                                    <option value="ALL">-- All Departments &amp; Locations --</option>
                                 </select>
                             </div>
                         </div>
                         <div class="scope-field">
-                            <label>Project</label>
+                            <label>Projects by Department / Presbytery Location</label>
                             <div class="select-wrap">
                                 <select id="sa-project-select">
                                     <option value="ALL">-- All Projects --</option>
@@ -422,14 +422,18 @@
 
                     <div class="reports-layout">
                         <aside class="reports-side">
-                            <button type="button" class="reports-side-item active" data-report-mode="financial">Financial statements</button>
+                            <button type="button" class="reports-side-item active" data-report-mode="financial" data-financial-view="all">Financial Statements</button>
+                            <button type="button" class="reports-side-item" data-report-mode="financial" data-financial-view="balance">Balance Sheet</button>
+                            <button type="button" class="reports-side-item" data-report-mode="financial" data-financial-view="profit-loss">Profit &amp; Loss</button>
+                            <button type="button" class="reports-side-item" data-report-mode="financial" data-financial-view="income">Income Statement</button>
                             <button type="button" class="reports-side-item" data-report-mode="custom">Custom system report</button>
                             <button type="button" class="reports-side-item" data-report-mode="management">Management summary</button>
                             <button type="button" class="reports-side-item" data-report-mode="activity">Activity audit</button>
                             <div style="padding:10px 12px 4px; font-size:.7rem; font-weight:800; text-transform:uppercase; color:var(--text-muted);">Favourites</div>
-                            <button type="button" class="reports-fav-row" data-financial-target="balance-sheet-section"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></button>
-                            <button type="button" class="reports-fav-row" data-financial-target="income-statement-section"><span>Profit and Loss / Income Statement</span><i class="fa-solid fa-star"></i></button>
-                            <div class="reports-fav-row"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></div>
+                            <button type="button" class="reports-fav-row" data-financial-view="balance"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></button>
+                            <button type="button" class="reports-fav-row" data-financial-view="profit-loss"><span>Profit &amp; Loss</span><i class="fa-solid fa-star"></i></button>
+                            <button type="button" class="reports-fav-row" data-financial-view="income"><span>Income Statement</span><i class="fa-solid fa-star"></i></button>
+                            <button type="button" class="reports-fav-row" data-financial-target="receivables-ageing-section"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></button>
                         </aside>
 
                         <div>
@@ -481,8 +485,8 @@
                                 <p style="text-align: center; color: var(--text-muted); margin-bottom: 6px;" id="statement-scope">System Wide Statement</p>
                                 <p style="text-align:center; color: var(--text-muted); font-size:.78rem; margin-bottom: 25px;" id="stmt-record-count"></p>
 
-                                <div style="margin-bottom: 25px;" id="income-statement-section">
-                                    <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss / Income Statement</h4>
+                                <div class="financial-report-section" style="margin-bottom: 25px;" id="income-statement-section">
+                                    <h4 id="income-statement-heading" style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss / Income Statement</h4>
                                     <div class="statement-row clickable" data-jump="Income"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row clickable" data-jump="CostOfSales"><span>Cost of Sales</span><strong id="stmt-cost-sales">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row highlight"><span>Gross Margin</span><strong id="stmt-gross-margin">RF 0</strong></div>
@@ -491,13 +495,22 @@
                                     <div class="statement-row highlight"><span>Net Profit / (Loss)</span><strong id="stmt-net">RF 0</strong></div>
                                 </div>
 
-                                <div id="balance-sheet-section">
+                                <div class="financial-report-section" id="balance-sheet-section">
                                     <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
                                     <div class="statement-row clickable" data-jump="Asset"><span>Cash and Bank Balances</span><strong id="stmt-cash-assets">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row"><span>Other Assets</span><strong id="stmt-other-assets">RF 0</strong></div>
                                     <div class="statement-row highlight"><span>Total Assets</span><strong id="stmt-assets">RF 0</strong></div>
                                     <div class="statement-row clickable" data-jump="Liability"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row highlight"><span>Owner's Equity</span><strong id="stmt-equity">RF 0</strong></div>
+                                </div>
+
+                                <div id="receivables-ageing-section" class="statement-section-spaced">
+                                    <h4>Accounts Receivable Ageing</h4>
+                                    <div class="statement-row"><span>Current</span><strong id="stmt-ar-current">RF 0</strong></div>
+                                    <div class="statement-row"><span>1–30 days overdue</span><strong id="stmt-ar-30">RF 0</strong></div>
+                                    <div class="statement-row"><span>31–60 days overdue</span><strong id="stmt-ar-60">RF 0</strong></div>
+                                    <div class="statement-row"><span>61+ days overdue</span><strong id="stmt-ar-older">RF 0</strong></div>
+                                    <div class="statement-row highlight clickable" data-jump="Receivable"><span>Total Accounts Receivable</span><strong id="stmt-ar-total">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                 </div>
 
                                 <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
