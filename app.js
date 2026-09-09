@@ -39,7 +39,7 @@ const PRESBYTERIES = [
 const ROLE_LABELS = {
     superadmin: "Superadmin", manager: "Manager", finance: "Finance User",
     accountant: "Accountant", general_accountant: "Senior Accountant",
-    cashier: "Cashier", moderator: "Moderator"
+    cashier: "Cashier", moderator: "Moderator", head_of_department: "Head of Department"
 };
 const STATUS_LABELS = { pending_approval: "Pending Approval", approved: "Approved", rejected: "Rejected" };
 
@@ -94,7 +94,7 @@ let journalEntriesDb = [];
 let accountsDb = [];
 
 let currentUser = null;
-let currentScope = { presbytery: "ALL", department: "ALL" };
+let currentScope = { presbytery: "ALL", department: "ALL", project: "ALL" };
 let searchQuery = "";
 let txFilters = { type: "ALL", from: "", to: "" };
 let userListRoleFilter = "ALL";
@@ -233,11 +233,21 @@ async function checkFirstRun() {
 }
 
 function buildStaticSelectOptions() {
-    fillSelect($('sa-presbytery-select'), PRESBYTERIES, "ALL", "-- All Presbyteries --");
     fillSelect($('sa-department-select'), Object.keys(EPR_STRUCTURE), "ALL", "-- All Departments --");
+    refreshProjectScopeOptions();
     fillSelect($('user-pres'), PRESBYTERIES);
     fillSelect($('user-dept'), Object.keys(EPR_STRUCTURE));
     renderSidebarFilters();
+}
+
+function refreshProjectScopeOptions() {
+    const projects = [...new Set([
+        ...Object.values(EPR_STRUCTURE).flat(),
+        ...projectsDb.map(p => p.name || p.projectName || p.title).filter(Boolean)
+    ])].sort((a, b) => a.localeCompare(b));
+    const selected = currentScope.project || 'ALL';
+    fillSelect($('sa-project-select'), projects, 'ALL', '-- All Projects --');
+    $('sa-project-select').value = projects.includes(selected) ? selected : 'ALL';
 }
 
 function fillSelect(select, values, prependValue, prependLabel) {
@@ -391,13 +401,13 @@ function setupEventListeners() {
 
     function e_toggleProfile() { $('profile-dropdown').classList.toggle('hidden'); }
 
-    $('sa-presbytery-select').addEventListener('change', (e) => { currentScope.presbytery = e.target.value; onScopeChanged(); });
     $('sa-department-select').addEventListener('change', (e) => { currentScope.department = e.target.value; onScopeChanged(); });
+    $('sa-project-select').addEventListener('change', (e) => { currentScope.project = e.target.value; onScopeChanged(); });
     $('scope-reset-btn').addEventListener('click', () => {
-        currentScope = { presbytery: 'ALL', department: 'ALL' };
-        $('sa-presbytery-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
+        currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
+        $('sa-project-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
         onScopeChanged();
-        showToast('info', 'Scope reset to all presbyteries and departments.');
+        showToast('info', 'Scope reset to all departments and projects.');
     });
 
     $('global-search').addEventListener('input', (e) => {
@@ -434,6 +444,13 @@ function setupEventListeners() {
 
     $('user-role').addEventListener('change', () => {
         const isSuperRole = $('user-role').value === 'superadmin';
+        const isHead = $('user-role').value === 'head_of_department';
+        if (isHead) {
+            const deptMode = document.querySelector('input[name="user-assign-mode"][value="department"]');
+            if (deptMode) deptMode.checked = true;
+            $('user-full-access').checked = false;
+            onUserAssignModeChange();
+        }
         $('user-full-access-group').classList.toggle('hidden', isSuperRole);
         $('user-scope-fields').classList.toggle('hidden', isSuperRole || $('user-full-access').checked);
         qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole && !$('user-full-access').checked);
@@ -991,25 +1008,20 @@ function onSidebarDeptFilter(e) {
 
 function onSidebarPresFilter(e) {
     e.preventDefault();
-    if (currentUser.role !== 'superadmin') return;
-    const pres = e.currentTarget.getAttribute('data-pres');
-    $('sa-presbytery-select').value = pres;
-    currentScope.presbytery = pres;
-    switchView('transactions');
-    onScopeChanged();
+    showToast('info', 'Use the Department and Project selectors at the top to change the active data scope.');
     closeAppsPanel();
 }
 
 function highlightSidebarFilters() {
     qsa('.filter-dept').forEach(b => b.classList.toggle('active-filter', b.dataset.dept === currentScope.department));
-    qsa('.filter-pres').forEach(b => b.classList.toggle('active-filter', b.dataset.pres === currentScope.presbytery));
+    qsa('.filter-pres').forEach(b => b.classList.remove('active-filter'));
 }
 
 function renderActiveScopeChips() {
     const wrap = $('active-scope-chips');
     wrap.innerHTML = '';
     if (currentScope.department !== 'ALL') wrap.appendChild(makeChip(shortDeptName(currentScope.department), () => { currentScope.department = 'ALL'; $('sa-department-select').value = 'ALL'; onScopeChanged(); }));
-    if (currentScope.presbytery !== 'ALL') wrap.appendChild(makeChip(currentScope.presbytery.replace('EPR Presbytery ', ''), () => { currentScope.presbytery = 'ALL'; $('sa-presbytery-select').value = 'ALL'; onScopeChanged(); }));
+    if (currentScope.project !== 'ALL') wrap.appendChild(makeChip(currentScope.project, () => { currentScope.project = 'ALL'; $('sa-project-select').value = 'ALL'; onScopeChanged(); }));
 }
 function makeChip(label, onRemove) {
     const chip = document.createElement('span');
@@ -1115,7 +1127,7 @@ function doLogout() {
     invoicesDb = []; billsDb = [];
     suppliersDb = []; customersDb = []; projectsDb = [];
     budgetsDb = []; banksDb = []; journalEntriesDb = []; accountsDb = [];
-    currentScope = { presbytery: 'ALL', department: 'ALL' };
+    currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
     searchQuery = ''; txFilters = { type: 'ALL', from: '', to: '' };
     reportRange = { preset: 'all', from: '', to: '' };
     coaRange = { preset: 'all', from: '', to: '' };
@@ -1152,10 +1164,10 @@ function initAppSession() {
     $('apps-admin-only').classList.toggle('hidden', !isSuperUser);
 
     if (hasFullAccess) {
-        currentScope = { presbytery: 'ALL', department: 'ALL' };
-        $('sa-presbytery-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
+        currentScope = { presbytery: 'ALL', department: 'ALL', project: 'ALL' };
+        $('sa-project-select').value = 'ALL'; $('sa-department-select').value = 'ALL';
     } else {
-        currentScope = { presbytery: currentUser.presbytery, department: currentUser.department };
+        currentScope = { presbytery: currentUser.presbytery, department: currentUser.department, project: 'ALL' };
         $('ab-department').textContent = shortDeptName(currentUser.department);
         $('ab-presbytery').textContent = currentUser.presbytery;
         $('ab-subsection').textContent = (currentUser.assignedProjects && currentUser.assignedProjects.length)
@@ -1201,14 +1213,22 @@ function updateProfileUI() {
         : (currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection);
     $('user-scope-line').textContent = currentUser.role === 'superadmin'
         ? 'Full system access'
-        : (hasFullAccess ? 'Full EPR Location access' : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`);
+        : (hasFullAccess ? 'Full system access' : currentUser.role === 'head_of_department' ? `Department-wide access · ${shortDeptName(currentUser.department)}` : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`);
+    const accessText = currentUser.role === 'superadmin' || hasFullAccess
+        ? 'You can view and manage records across all departments and projects.'
+        : currentUser.role === 'head_of_department'
+            ? `You can view and manage all records in ${shortDeptName(currentUser.department)}.`
+            : `You can access ${shortDeptName(currentUser.department)} and your assigned projects.`;
+    if ($('access-summary-text')) $('access-summary-text').textContent = accessText;
 }
 
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
 function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
+function isHeadOfDepartment() { return currentUser && currentUser.role === 'head_of_department'; }
 function hasFullScope() { return currentUser && (currentUser.role === 'superadmin' || currentUser.fullAccess === true); }
-function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
+function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'head_of_department' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
+function canManageRecord(rec) { return !!(isSuper() || currentUser?.fullAccess || isOwnRecord(rec) || (isHeadOfDepartment() && rec?.department === currentUser.department)); }
 
 function setSyncStatus(state) {
     const el = $('sync-indicator');
@@ -1221,11 +1241,10 @@ function buildScopedQuery(collectionName) {
     const col = collection(db, collectionName);
     const clauses = [];
     if (!hasFullScope()) {
-        clauses.push(where('department', '==', currentUser.department));
-        clauses.push(where('presbytery', '==', currentUser.presbytery));
-    } else if (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL') {
+        if (currentUser.department && currentUser.department !== 'ALL') clauses.push(where('department', '==', currentUser.department));
+        if (!isHeadOfDepartment() && currentUser.presbytery && currentUser.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentUser.presbytery));
+    } else if (currentScope.department !== 'ALL') {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
-        if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     }
     return clauses.length ? query(col, ...clauses) : query(col);
 }
@@ -1503,14 +1522,18 @@ async function onSubmitUserForm(e) {
     const editId = $('user-edit-id').value;
     const role = $('user-role').value;
     const roleSuper = role === 'superadmin';
-    const fullAccess = !roleSuper && $('user-full-access').checked;
+    const isHead = role === 'head_of_department';
+    const fullAccess = !roleSuper && !isHead && $('user-full-access').checked;
     const modeEl = document.querySelector('input[name="user-assign-mode"]:checked');
-    const mode = modeEl ? modeEl.value : 'presbytery';
+    const mode = isHead ? 'department' : (modeEl ? modeEl.value : 'presbytery');
 
     const name = $('user-name').value.trim();
     const email = $('user-email').value.trim().toLowerCase();
     const password = $('user-password').value;
-    const assignedProjects = (roleSuper || fullAccess) ? getAllProjectKeys() : getCheckedProjectKeys();
+    const headDepartment = $('user-dept').value;
+    const assignedProjects = (roleSuper || fullAccess) ? getAllProjectKeys() : isHead
+        ? (EPR_STRUCTURE[headDepartment] || []).map(project => `${headDepartment}::${project}`)
+        : getCheckedProjectKeys();
 
     const profileFields = sanitizePayload({
         name, email, role,
@@ -1652,6 +1675,10 @@ function showToast(type, message) {
 
 function getFilteredTransactions() {
     return transactionsDb.filter(tx => {
+        if (hasFullScope() && currentScope.project !== 'ALL') {
+            const projectText = [tx.project, tx.projectName, tx.customerProject, tx.subsection, JSON.stringify(tx.lines || [])].filter(Boolean).join(' ').toLowerCase();
+            if (!projectText.includes(currentScope.project.toLowerCase())) return false;
+        }
         if (txFilters.type !== 'ALL' && tx.type !== txFilters.type) return false;
         if (txFilters.from && tx.date < txFilters.from) return false;
         if (txFilters.to && tx.date > txFilters.to) return false;
@@ -1668,8 +1695,8 @@ function refreshAllViews() {
     const superVisible = hasFullScope();
 
     const scopeDesc = superVisible
-        ? `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`
-        : `Presbytery: [${currentUser.presbytery}] | Department: [${currentUser.department}] (locked to your assignment)`;
+        ? `Department: [${currentScope.department}] | Project: [${currentScope.project}]`
+        : `Department: [${currentUser.department}] | Assigned projects only`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
     $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
 
@@ -1795,8 +1822,7 @@ function renderGlanceBanks() {
         row.className = 'glance-bank-row';
         row.innerHTML = `
             <div class="glance-bank-icon"><i class="fa-solid fa-building-columns"></i></div>
-            <div class="glance-bank-name">${escapeHtml(b.name)}<br><span class="glance-sub" style="margin:0;">${escapeHtml(b.account || '')}</span></div>
-            <div class="glance-bank-bal">${formatRF(computeBankBalance(b))}</div>`;
+            <div class="glance-bank-name">${escapeHtml(b.name)}<br><span class="glance-sub" style="margin:0;">${escapeHtml(b.accountType || b.type || 'Account')}</span></div>`;
         wrap.appendChild(row);
     });
 }
@@ -1816,7 +1842,7 @@ function renderTransactionsTable(list) {
     list.forEach(tx => {
         const tr = document.createElement('tr');
         const isInc = tx.type === 'Income' || tx.type === 'Asset';
-        const canEdit = superVisible || tx.createdById === currentUser.id;
+        const canEdit = canManageRecord(tx);
         tr.innerHTML = `
             <td>${tx.date}</td>
             <td><strong>${escapeHtml(tx.ref || '—')}</strong></td>
@@ -1893,7 +1919,7 @@ function renderOrgChart() {
             <div class="pc-name">${p.replace('EPR Presbytery ', '')}</div>
             ${superVisible ? `<div class="pc-count">${count} user${count === 1 ? '' : 's'}</div>` : (isMine ? `<div class="pc-count">Your presbytery</div>` : '')}
         `;
-        if (superVisible) card.addEventListener('click', () => { $('sa-presbytery-select').value = p; currentScope.presbytery = p; switchView('transactions'); onScopeChanged(); });
+        if (superVisible) card.addEventListener('click', () => { switchView('transactions'); showToast('info', 'Use Department and Project at the top to refine this list.'); });
         presGrid.appendChild(card);
     });
 }
@@ -2126,7 +2152,7 @@ function renderInvoicesTable() {
     if (invoicesDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10">No invoices in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     invoicesDb.forEach(inv => {
-        const canEditRaw = (isSuper() || inv.createdById === currentUser.id) && inv.status === 'pending_approval';
+        const canEditRaw = canManageRecord(inv) && inv.status === 'pending_approval';
         const canApprove = isSuper() && inv.status === 'pending_approval';
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -2257,7 +2283,7 @@ function renderBillsTable() {
     if (billsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10">No bills in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     billsDb.forEach(bill => {
-        const canEditRaw = (isSuper() || bill.createdById === currentUser.id) && bill.status === 'pending_approval';
+        const canEditRaw = canManageRecord(bill) && bill.status === 'pending_approval';
         const canApprove = isSuper() && bill.status === 'pending_approval';
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -2360,7 +2386,7 @@ function renderSuppliersTable() {
     if (suppliersDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No suppliers in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     suppliersDb.forEach(s => {
-        const canEdit = isSuper() || s.createdById === currentUser.id;
+        const canEdit = canManageRecord(s);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(s.name)}</strong><div class="row-who">by ${whoLine(s)}</div></td><td>${escapeHtml(s.contact||'—')}</td><td>${escapeHtml(s.phone||'—')}</td>
@@ -2451,7 +2477,7 @@ function renderCustomersTable() {
     if (customersDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No customers in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     customersDb.forEach(c => {
-        const canEdit = isSuper() || c.createdById === currentUser.id;
+        const canEdit = canManageRecord(c);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(c.name)}</strong><div class="row-who">by ${whoLine(c)}</div></td><td>${escapeHtml(c.contact||'—')}</td><td>${escapeHtml(c.phone||'—')}</td>
@@ -2482,6 +2508,7 @@ function subscribeProjects() {
     if (unsubProjects) unsubProjects();
     unsubProjects = onSnapshot(buildScopedQuery(COLLECTIONS.PROJECTS), (snap) => {
         projectsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        refreshProjectScopeOptions();
         projectsDb.sort((a, b) => (b.start || '').localeCompare(a.start || ''));
         renderProjectsTable();
         $('nav-projects-count').textContent = projectsDb.length;
@@ -2540,7 +2567,7 @@ function renderProjectsTable() {
     if (projectsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="8">No projects in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     projectsDb.forEach(p => {
-        const canEdit = isSuper() || p.createdById === currentUser.id;
+        const canEdit = canManageRecord(p);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(p.name)}</strong>${p.desc ? `<div class="ext-sub">${escapeHtml(p.desc)}</div>` : ''}<div class="row-who">by ${whoLine(p)}</div></td>
@@ -3480,7 +3507,14 @@ window.addEventListener('resize', () => {
 
 function getReportTransactions() {
     const range = reportRange.preset === 'all' ? { from: '', to: '' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to);
-    return transactionsDb.filter(tx => dateInRange(tx.date, range) || (!range.from && !range.to));
+    return transactionsDb.filter(tx => {
+        if (!(dateInRange(tx.date, range) || (!range.from && !range.to))) return false;
+        if (hasFullScope() && currentScope.project !== 'ALL') {
+            const projectText = [tx.project, tx.projectName, tx.customerProject, tx.subsection, JSON.stringify(tx.lines || [])].filter(Boolean).join(' ').toLowerCase();
+            return projectText.includes(currentScope.project.toLowerCase());
+        }
+        return true;
+    });
 }
 
 function renderReportCharts(list) {
@@ -3540,8 +3574,8 @@ function renderReportCharts(list) {
 function renderReportPanel() {
     const superVisible = hasFullScope();
     const scopeDesc = superVisible
-        ? `Presbytery: [${currentScope.presbytery}] | Department: [${currentScope.department}]`
-        : `Presbytery: [${currentUser.presbytery}] | Department: [${currentUser.department}] (locked to your assignment)`;
+        ? `Department: [${currentScope.department}] | Project: [${currentScope.project}]`
+        : `Department: [${currentUser.department}] | Assigned projects only`;
     $('statement-scope').textContent = `${scopeDesc} · Range: ${rangeLabel(reportRange.preset === 'all' ? { preset: 'all' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to))}`;
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
 
@@ -3757,6 +3791,12 @@ function setReportMode(mode) {
 
 function setupCustomReports() {
     qsa('.reports-side-item[data-report-mode]').forEach(btn => btn.addEventListener('click', () => setReportMode(btn.dataset.reportMode)));
+    qsa('[data-financial-target]').forEach(btn => btn.addEventListener('click', () => openFinancialStatement(btn.dataset.financialTarget)));
+    const profitCard = $('glance-profit-loss-card');
+    if (profitCard) {
+        profitCard.addEventListener('click', () => openFinancialStatement('income-statement-section'));
+        profitCard.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openFinancialStatement('income-statement-section'); });
+    }
     $('run-custom-report').addEventListener('click', renderCustomReport);
     ['custom-report-source', 'custom-report-sort', 'custom-report-status'].forEach(id => $(id).addEventListener('change', renderCustomReport));
     $('custom-report-search').addEventListener('input', renderCustomReport);
@@ -3765,6 +3805,19 @@ function setupCustomReports() {
     $('manage-record-detail').addEventListener('click', () => openAndManageReportRecord(activeReportDetailRecord));
     $('record-detail-modal').addEventListener('click', e => { if (e.target === $('record-detail-modal')) closeModal('record-detail-modal'); });
     $('print-record-detail').addEventListener('click', () => window.print());
+}
+
+function openFinancialStatement(targetId) {
+    switchView('reports');
+    setReportMode('financial');
+    renderReportPanel();
+    requestAnimationFrame(() => {
+        const section = $(targetId);
+        if (!section) return;
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        section.classList.add('statement-focus');
+        window.setTimeout(() => section.classList.remove('statement-focus'), 1800);
+    });
 }
 
 function renderPendingApprovals() {
