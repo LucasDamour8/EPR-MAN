@@ -8,19 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-    <style>
-        /* Requested: never show the account balance preview inside the
-           Journal Entry (double-entry) modal, even if it gets rendered
-           dynamically by app.js using the same components as the
-           Expense / Deposit forms. */
-        #journal-modal .account-selected-balance,
-        #journal-modal .deposit-selected-balance,
-        #journal-modal #exp-balance-preview,
-        #journal-modal #deposit-balance-preview,
-        #journal-modal [id*="balance-preview"] {
-            display: none !important;
-        }
-    </style>
 </head>
 <body>
 
@@ -222,18 +209,18 @@
                     <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies across every module</h4>
                     <div class="scope-fields">
                         <div class="scope-field">
-                            <label>Filter Presbytery / Location</label>
+                            <label>Department</label>
                             <div class="select-wrap">
-                                <select id="sa-presbytery-select">
-                                    <option value="ALL">-- All Presbyteries --</option>
+                                <select id="sa-department-select">
+                                    <option value="ALL">-- All Departments --</option>
                                 </select>
                             </div>
                         </div>
                         <div class="scope-field">
-                            <label>Filter Main Department</label>
+                            <label>Project</label>
                             <div class="select-wrap">
-                                <select id="sa-department-select">
-                                    <option value="ALL">-- All Departments --</option>
+                                <select id="sa-project-select">
+                                    <option value="ALL">-- All Projects --</option>
                                 </select>
                             </div>
                         </div>
@@ -257,6 +244,10 @@
                             <button type="button" id="privacy-link-btn"><i class="fa-regular fa-eye-slash"></i> Privacy</button>
                         </div>
                     </div>
+                    <div class="access-summary" id="access-summary">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <div><strong>Your data access</strong><span id="access-summary-text">Loading your assigned access…</span></div>
+                    </div>
 
                     <div class="pill-nav" id="pill-nav">
                         <button type="button" class="pill-nav-btn" data-view="transactions"><span class="pill-icon" style="background:var(--primary-dark)"><i class="fa-solid fa-coins"></i></span>Accounting Field</button>
@@ -277,7 +268,7 @@
 
                     <div class="glance-title">Business at a glance</div>
                     <div class="glance-grid">
-                        <div class="glance-card">
+                        <div class="glance-card clickable-card" id="glance-profit-loss-card" role="button" tabindex="0" aria-label="Open Profit and Loss Income Statement">
                             <div class="glance-card-head"><h4>Profit &amp; Loss</h4><span>Current scope</span></div>
                             <div class="glance-sub">Net profit</div>
                             <div class="glance-big" id="gl-net-profit">RF 0</div>
@@ -436,8 +427,8 @@
                             <button type="button" class="reports-side-item" data-report-mode="management">Management summary</button>
                             <button type="button" class="reports-side-item" data-report-mode="activity">Activity audit</button>
                             <div style="padding:10px 12px 4px; font-size:.7rem; font-weight:800; text-transform:uppercase; color:var(--text-muted);">Favourites</div>
-                            <div class="reports-fav-row"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></div>
-                            <div class="reports-fav-row"><span>Profit and Loss</span><i class="fa-solid fa-star"></i></div>
+                            <button type="button" class="reports-fav-row" data-financial-target="balance-sheet-section"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></button>
+                            <button type="button" class="reports-fav-row" data-financial-target="income-statement-section"><span>Profit and Loss / Income Statement</span><i class="fa-solid fa-star"></i></button>
                             <div class="reports-fav-row"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></div>
                         </aside>
 
@@ -490,7 +481,7 @@
                                 <p style="text-align: center; color: var(--text-muted); margin-bottom: 6px;" id="statement-scope">System Wide Statement</p>
                                 <p style="text-align:center; color: var(--text-muted); font-size:.78rem; margin-bottom: 25px;" id="stmt-record-count"></p>
 
-                                <div style="margin-bottom: 25px;">
+                                <div style="margin-bottom: 25px;" id="income-statement-section">
                                     <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss / Income Statement</h4>
                                     <div class="statement-row clickable" data-jump="Income"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row clickable" data-jump="CostOfSales"><span>Cost of Sales</span><strong id="stmt-cost-sales">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
@@ -500,7 +491,7 @@
                                     <div class="statement-row highlight"><span>Net Profit / (Loss)</span><strong id="stmt-net">RF 0</strong></div>
                                 </div>
 
-                                <div>
+                                <div id="balance-sheet-section">
                                     <h4 style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Balance Sheet Overview</h4>
                                     <div class="statement-row clickable" data-jump="Asset"><span>Cash and Bank Balances</span><strong id="stmt-cash-assets">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row"><span>Other Assets</span><strong id="stmt-other-assets">RF 0</strong></div>
@@ -581,6 +572,7 @@
                                             <option value="finance">Finance User (Staff)</option>
                                             <option value="accountant">Accountant (Staff)</option>
                                             <option value="general_accountant">Senior Accountant (Staff)</option>
+                                            <option value="head_of_department">Head of Department (Staff)</option>
                                             <option value="cashier">Cashier (Staff)</option>
                                             <option value="moderator">Moderator (Staff)</option>
                                             <option value="manager">Department Manager (Staff)</option>
@@ -636,6 +628,7 @@
                                         <option value="finance">Finance</option>
                                         <option value="accountant">Accountant</option>
                                         <option value="general_accountant">Senior Accountant</option>
+                                        <option value="head_of_department">Head of Department</option>
                                         <option value="cashier">Cashier</option>
                                         <option value="moderator">Moderator</option>
                                     </select>
