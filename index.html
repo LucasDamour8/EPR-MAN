@@ -209,20 +209,22 @@
                     <h4><i class="fa-solid fa-user-shield"></i> Superadmin Scope Selector — applies across every module</h4>
                     <div class="scope-fields">
                         <div class="scope-field">
-                            <label>Departments / Presbytery Locations</label>
-                            <div class="select-wrap">
-                                <select id="sa-department-select">
-                                    <option value="ALL">-- All Departments &amp; Locations --</option>
-                                </select>
+                            <label for="sa-department-select">Departments / Presbytery Locations</label>
+                            <div class="scope-search-wrap">
+                                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                <input type="search" id="sa-department-select" list="organisation-scope-options" placeholder="Search all departments or presbytery locations…" autocomplete="off">
+                                <datalist id="organisation-scope-options"></datalist>
                             </div>
+                            <small class="scope-field-hint">One selection · Departments and Presbytery Locations</small>
                         </div>
                         <div class="scope-field">
-                            <label>Projects by Department / Presbytery Location</label>
-                            <div class="select-wrap">
-                                <select id="sa-project-select">
-                                    <option value="ALL">-- All Projects --</option>
-                                </select>
+                            <label for="sa-project-select">Projects by Department / Presbytery Location</label>
+                            <div class="scope-search-wrap">
+                                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                <input type="search" id="sa-project-select" list="project-scope-options" placeholder="Search all projects…" autocomplete="off">
+                                <datalist id="project-scope-options"></datalist>
                             </div>
+                            <small class="scope-field-hint">One project selection</small>
                         </div>
                         <div style="display:flex; align-items:flex-end;">
                             <button type="button" class="btn btn-outline scope-reset-btn" id="scope-reset-btn"><i class="fa-solid fa-rotate-left"></i> Reset scope</button>
@@ -433,7 +435,7 @@
                             <button type="button" class="reports-fav-row" data-financial-view="balance"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></button>
                             <button type="button" class="reports-fav-row" data-financial-view="profit-loss"><span>Profit &amp; Loss</span><i class="fa-solid fa-star"></i></button>
                             <button type="button" class="reports-fav-row" data-financial-view="income"><span>Income Statement</span><i class="fa-solid fa-star"></i></button>
-                            <button type="button" class="reports-fav-row" data-financial-target="receivables-ageing-section"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></button>
+                            <button type="button" class="reports-fav-row" data-financial-view="receivables"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></button>
                         </aside>
 
                         <div>
@@ -481,7 +483,7 @@
                             </div>
 
                             <div class="financial-statement-card" id="printable-report">
-                                <h3 style="text-align: center; font-size: 1.3rem;">SAS FINANCIAL STATEMENT</h3>
+                                <h3 id="financial-report-title" style="text-align: center; font-size: 1.3rem;">SAS FINANCIAL STATEMENTS</h3>
                                 <p style="text-align: center; color: var(--text-muted); margin-bottom: 6px;" id="statement-scope">System Wide Statement</p>
                                 <p style="text-align:center; color: var(--text-muted); font-size:.78rem; margin-bottom: 25px;" id="stmt-record-count"></p>
 
