@@ -542,7 +542,11 @@ function setupEventListeners() {
         }
         $('user-full-access-group').classList.add('hidden');
         $('user-scope-fields').classList.toggle('hidden', isSuperRole || $('user-full-access').checked);
-        qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole && !$('user-full-access').checked);
+        if (isSuperRole || $('user-full-access').checked) {
+            qsa('#user-scope-fields select').forEach(sel => sel.required = false);
+        } else {
+            onUserAssignModeChange();
+        }
     });
     $('user-head-department').addEventListener('change', onHeadOfDepartmentChange);
     $('user-full-access').addEventListener('change', onUserFullAccessChange);
@@ -1311,8 +1315,8 @@ function updateProfileUI() {
     $('pd-role-badge').className = `badge role-${currentUser.role}`;
     const isHead = currentUser.role === 'head_of_department';
     const assignmentMode = isHead ? 'department' : (currentUser.assignMode || (currentUser.department && currentUser.department !== 'ALL' ? 'department' : 'presbytery'));
-    const showPresbytery = !hasFullAccess && assignmentMode === 'presbytery' && currentUser.presbytery && currentUser.presbytery !== 'ALL';
-    const showDepartment = !hasFullAccess && assignmentMode === 'department' && currentUser.department && currentUser.department !== 'ALL';
+    const showPresbytery = !hasFullAccess && ['presbytery', 'presbytery_department'].includes(assignmentMode) && currentUser.presbytery && currentUser.presbytery !== 'ALL';
+    const showDepartment = !hasFullAccess && ['department', 'presbytery_department'].includes(assignmentMode) && currentUser.department && currentUser.department !== 'ALL';
     $('pd-presbytery-row').classList.toggle('hidden', !showPresbytery);
     $('pd-department-row').classList.toggle('hidden', !showDepartment);
     $('pd-subsection-row').classList.toggle('hidden', hasFullAccess || (!showDepartment && !showPresbytery));
@@ -1325,28 +1329,46 @@ function updateProfileUI() {
         ? 'Superadmin · Full system access'
         : isHead
             ? `Head of Department · ${shortDeptName(currentUser.department)} · Department records`
+            : assignmentMode === 'presbytery_department'
+                ? `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${currentUser.presbytery.replace('EPR ', '')} · ${shortDeptName(currentUser.department)}`
             : showPresbytery
-                ? `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${currentUser.presbytery.replace('EPR ', '')} · Own records`
-                : `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${shortDeptName(currentUser.department)} · Own records`;
+                ? `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${currentUser.presbytery.replace('EPR ', '')} · Presbytery records`
+                : `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${shortDeptName(currentUser.department)} · Department records`;
     const accessText = currentUser.role === 'superadmin'
         ? 'You can view and manage records across all departments and projects.'
         : isHead
             ? `You can view and manage all records assigned to ${shortDeptName(currentUser.department)}. Other departments remain private.`
-            : 'You can view and manage only records created with your signed-in account. Your financial statements include only those transactions.';
+            : assignmentMode === 'presbytery'
+                ? `You can view and manage all records assigned to ${currentUser.presbytery.replace('EPR ', '')}. Other Presbyteries remain private.`
+                : assignmentMode === 'presbytery_department'
+                    ? `You can view and manage ${shortDeptName(currentUser.department)} records in ${currentUser.presbytery.replace('EPR ', '')}.`
+                    : assignmentMode === 'department'
+                        ? `You can view and manage all ${shortDeptName(currentUser.department)} records across locations.`
+                        : 'You can view and manage only records created with your signed-in account.';
     if ($('access-summary-text')) $('access-summary-text').textContent = accessText;
 }
 
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
 function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
 function isHeadOfDepartment() { return currentUser && currentUser.role === 'head_of_department'; }
+function hasAssignedManagementScope() {
+    return !!(currentUser && ['presbytery', 'presbytery_department', 'department'].includes(currentUser.assignMode));
+}
 function hasFullScope() { return currentUser && currentUser.role === 'superadmin'; }
 function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'head_of_department' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
 function canManageRecord(rec) {
+    const mode = currentUser && currentUser.assignMode;
+    const assignedScopeMatch = !!(rec && (
+        (mode === 'presbytery' && rec.presbytery === currentUser.presbytery)
+        || (mode === 'presbytery_department' && rec.presbytery === currentUser.presbytery && rec.department === currentUser.department)
+        || (mode === 'department' && rec.department === currentUser.department)
+    ));
     return !!(
         isSuper()
         || isOwnRecord(rec)
         || (isHeadOfDepartment() && rec && rec.department === currentUser.department)
+        || assignedScopeMatch
     );
 }
 
@@ -1367,6 +1389,13 @@ function buildScopedQuery(collectionName) {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     } else if (isHeadOfDepartment()) {
+        clauses.push(where('department', '==', currentUser.department));
+    } else if (currentUser.assignMode === 'presbytery') {
+        clauses.push(where('presbytery', '==', currentUser.presbytery));
+    } else if (currentUser.assignMode === 'presbytery_department') {
+        clauses.push(where('presbytery', '==', currentUser.presbytery));
+        clauses.push(where('department', '==', currentUser.department));
+    } else if (currentUser.assignMode === 'department') {
         clauses.push(where('department', '==', currentUser.department));
     } else if (!isSuper()) {
         clauses.push(where('createdById', '==', currentUser.id));
@@ -1671,8 +1700,15 @@ function onUserAssignModeChange() {
     const mode = checked ? checked.value : 'presbytery';
     const presField = $('user-pres-field');
     const deptField = $('user-dept-field');
-    if (presField) presField.classList.toggle('hidden', mode !== 'presbytery');
-    if (deptField) deptField.classList.toggle('hidden', mode !== 'department');
+    const needsPresbytery = mode === 'presbytery' || mode === 'presbytery_department';
+    const needsDepartment = mode === 'department' || mode === 'presbytery_department';
+    if (presField) presField.classList.toggle('hidden', !needsPresbytery);
+    if (deptField) deptField.classList.toggle('hidden', !needsDepartment);
+    $('user-pres').required = needsPresbytery;
+    $('user-dept').required = needsDepartment;
+    if ($('user-dept-label')) {
+        $('user-dept-label').innerHTML = `${mode === 'presbytery_department' ? 'Assign Department' : 'Assign Main Department'} <span class="req">*</span>`;
+    }
     populateUserProjectsChecklist(getCheckedProjectKeys());
 }
 
@@ -1696,8 +1732,8 @@ async function onSubmitUserForm(e) {
 
     const profileFields = sanitizePayload({
         name, email, role,
-        presbytery: (roleSuper || fullAccess) ? 'ALL' : (mode === 'presbytery' ? $('user-pres').value : 'ALL'),
-        department: (roleSuper || fullAccess) ? 'ALL' : (mode === 'department' ? $('user-dept').value : 'ALL'),
+        presbytery: (roleSuper || fullAccess) ? 'ALL' : (['presbytery', 'presbytery_department'].includes(mode) ? $('user-pres').value : 'ALL'),
+        department: (roleSuper || fullAccess) ? 'ALL' : (['department', 'presbytery_department'].includes(mode) ? $('user-dept').value : 'ALL'),
         subsection: (roleSuper || fullAccess) ? 'ALL' : (assignedProjects[0] ? assignedProjects[0].split('::')[1] : ''),
         assignMode: (roleSuper || fullAccess) ? '' : mode
     });
@@ -1707,8 +1743,8 @@ async function onSubmitUserForm(e) {
     if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
     if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
     if (!roleSuper && !fullAccess) {
-        if (mode === 'presbytery' && !profileFields.presbytery) { showToast('error', 'Assign a presbytery location for this user.'); return; }
-        if (mode === 'department' && !profileFields.department) { showToast('error', 'Assign a department for this user.'); return; }
+        if (['presbytery', 'presbytery_department'].includes(mode) && !profileFields.presbytery) { showToast('error', 'Assign a Presbytery for this user.'); return; }
+        if (['department', 'presbytery_department'].includes(mode) && !profileFields.department) { showToast('error', 'Assign a Department for this user.'); return; }
         if (!assignedProjects.length) { showToast('error', 'Tick at least one sub-project for this user to work on.'); return; }
     }
 
@@ -1788,10 +1824,13 @@ function onUsersTableClick(e) {
             const radio = document.querySelector(`input[name="user-assign-mode"][value="${mode}"]`);
             if (radio) radio.checked = true;
             const presField = $('user-pres-field'), deptField = $('user-dept-field');
-            if (presField) presField.classList.toggle('hidden', mode !== 'presbytery');
-            if (deptField) deptField.classList.toggle('hidden', mode !== 'department');
-            if (mode === 'presbytery') $('user-pres').value = u.presbytery;
-            else $('user-dept').value = u.department;
+            const needsPresbytery = mode === 'presbytery' || mode === 'presbytery_department';
+            const needsDepartment = mode === 'department' || mode === 'presbytery_department';
+            if (presField) presField.classList.toggle('hidden', !needsPresbytery);
+            if (deptField) deptField.classList.toggle('hidden', !needsDepartment);
+            if (needsPresbytery) $('user-pres').value = u.presbytery;
+            if (needsDepartment) $('user-dept').value = u.department;
+            onUserAssignModeChange();
             if (roleHead) populateHeadDepartmentProjects();
             else populateUserProjectsChecklist(u.assignedProjects || []);
         }
@@ -1861,7 +1900,13 @@ function refreshAllViews() {
         ? 'Full visibility across the selected scope.'
         : isHeadOfDepartment()
             ? `Department access: all records assigned to ${shortDeptName(currentUser.department)}.`
-            : 'Personal access: only records created with your signed-in account.';
+            : currentUser.assignMode === 'presbytery'
+                ? `Presbytery access: all records assigned to ${currentUser.presbytery.replace('EPR ', '')}.`
+                : currentUser.assignMode === 'presbytery_department'
+                    ? `Department access in ${currentUser.presbytery.replace('EPR ', '')}: ${shortDeptName(currentUser.department)}.`
+                    : currentUser.assignMode === 'department'
+                        ? `Main Department access: all ${shortDeptName(currentUser.department)} records.`
+                        : 'Personal access: only records created with your signed-in account.';
 
     let income = 0, expense = 0, assets = 0, liabilities = 0;
     list.forEach(tx => {
@@ -3593,7 +3638,7 @@ function renderCoaCharts() {
         return runningBalance;
     });
 
-    const scopedDeptSource = (hasFullScope() || isHeadOfDepartment())
+    const scopedDeptSource = (hasFullScope() || isHeadOfDepartment() || hasAssignedManagementScope())
         ? transactionsDb
         : transactionsDb.filter(t => t.createdById === currentUser.id);
     const deptSource = scopedDeptSource.filter(t => dateInRange(t.date, range) || (!range.from && !range.to));
@@ -3686,7 +3731,7 @@ function getReportTransactions() {
     return transactionsDb.filter(tx => {
         // Ordinary staff statements contain only their own records. HOD data
         // is already restricted to the assigned department by the listener.
-        if (!isSuper() && !isHeadOfDepartment() && tx.createdById !== currentUser.id) return false;
+        if (!isSuper() && !isHeadOfDepartment() && !hasAssignedManagementScope() && tx.createdById !== currentUser.id) return false;
         if (!(dateInRange(tx.date, range) || (!range.from && !range.to))) return false;
         if (hasFullScope() && currentScope.project !== 'ALL') {
             const projectText = [tx.project, tx.projectName, tx.customerProject, tx.subsection, JSON.stringify(tx.lines || [])].filter(Boolean).join(' ').toLowerCase();
