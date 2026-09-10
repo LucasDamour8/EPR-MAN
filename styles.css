@@ -1342,3 +1342,76 @@ a { color:#2563eb; }
     .account-selected-balance,
     .deposit-selected-balance { justify-content:flex-start; }
 }
+
+/* ======================================================================
+   COMPACT FORM PAGES + UNCLIPPED SELECTION RESULTS
+   Standard record forms end immediately after their action bar instead of
+   stretching a white card through the remaining viewport. Search results
+   are allowed to float over the form/footer in a spacious scrollable panel.
+====================================================================== */
+.page-modal:not(.qb-modal):not(.drawer-modal) {
+    align-items: flex-start;
+    overflow-y: auto;
+    background: var(--bg);
+}
+
+.page-modal:not(.qb-modal):not(.drawer-modal) .modal-content {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    align-self: flex-start;
+    background: #fff;
+}
+
+.page-modal:not(.qb-modal):not(.drawer-modal) .modal-body {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+}
+
+.page-modal:not(.qb-modal):not(.drawer-modal) .modal-footer {
+    position: relative;
+    bottom: auto;
+}
+
+.acct-combo {
+    position: relative;
+    z-index: 1;
+}
+
+.acct-combo:focus-within {
+    z-index: 120;
+}
+
+.page-modal .acct-dropdown {
+    width: 100%;
+    min-width: min(620px, calc(100vw - 48px));
+    max-height: min(420px, 58vh);
+    z-index: 300;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, .18);
+}
+
+.page-modal .acct-dropdown-item {
+    min-height: 58px;
+    padding: 12px 16px;
+}
+
+.expense-account-row #exp-bank-search,
+.deposit-account-row #deposit-bank-search {
+    min-height: 50px;
+    font-size: 1rem;
+}
+
+@media (max-width: 720px) {
+    .page-modal:not(.qb-modal):not(.drawer-modal) .modal-content {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .page-modal .acct-dropdown {
+        min-width: 0;
+        width: auto;
+        max-height: min(390px, 60vh);
+    }
+}
