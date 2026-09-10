@@ -1324,13 +1324,15 @@ function updateProfileUI() {
     $('user-scope-line').textContent = currentUser.role === 'superadmin'
         ? 'Superadmin · Full system access'
         : isHead
-            ? `Head of Department · ${shortDeptName(currentUser.department)} · Own records`
+            ? `Head of Department · ${shortDeptName(currentUser.department)} · Department records`
             : showPresbytery
                 ? `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${currentUser.presbytery.replace('EPR ', '')} · Own records`
                 : `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${shortDeptName(currentUser.department)} · Own records`;
     const accessText = currentUser.role === 'superadmin'
         ? 'You can view and manage records across all departments and projects.'
-        : `You can view shared records and add new entries. You can edit or delete only records you created. Your financial statements include only your own transactions.`;
+        : isHead
+            ? `You can view and manage all records assigned to ${shortDeptName(currentUser.department)}. Other departments remain private.`
+            : 'You can view and manage only records created with your signed-in account. Your financial statements include only those transactions.';
     if ($('access-summary-text')) $('access-summary-text').textContent = accessText;
 }
 
@@ -1352,11 +1354,16 @@ function setSyncStatus(state) {
 function buildScopedQuery(collectionName) {
     const col = collection(db, collectionName);
     const clauses = [];
-    // Shared operational lists are visible to every authenticated user.
-    // Only the Superadmin's optional scope selector narrows these listeners.
+    // Query constraints must mirror Firestore Rules: Superadmin sees the
+    // selected system scope, HOD sees their department, everyone else sees
+    // only records created with their authenticated Firebase UID.
     if (isSuper() && (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL')) {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
+    } else if (isHeadOfDepartment()) {
+        clauses.push(where('department', '==', currentUser.department));
+    } else if (!isSuper()) {
+        clauses.push(where('createdById', '==', currentUser.id));
     }
     return clauses.length ? query(col, ...clauses) : query(col);
 }
@@ -1846,7 +1853,9 @@ function refreshAllViews() {
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
     $('tx-scope-note').textContent = superVisible
         ? 'Full visibility across the selected scope.'
-        : 'Shared records are visible. You can edit or delete only records you created.';
+        : isHeadOfDepartment()
+            ? `Department access: all records assigned to ${shortDeptName(currentUser.department)}.`
+            : 'Personal access: only records created with your signed-in account.';
 
     let income = 0, expense = 0, assets = 0, liabilities = 0;
     list.forEach(tx => {
@@ -3574,7 +3583,9 @@ function renderCoaCharts() {
         return runningBalance;
     });
 
-    const scopedDeptSource = hasFullScope() ? transactionsDb : transactionsDb.filter(t => t.createdById === currentUser.id);
+    const scopedDeptSource = (hasFullScope() || isHeadOfDepartment())
+        ? transactionsDb
+        : transactionsDb.filter(t => t.createdById === currentUser.id);
     const deptSource = scopedDeptSource.filter(t => dateInRange(t.date, range) || (!range.from && !range.to));
     const recordedDepartments = [...new Set(deptSource.map(t => t.department || 'ALL'))];
     const depts = currentScope.department === 'ALL'
@@ -3663,9 +3674,9 @@ window.addEventListener('resize', () => {
 function getReportTransactions() {
     const range = reportRange.preset === 'all' ? { from: '', to: '' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to);
     return transactionsDb.filter(tx => {
-        // Staff statements contain only the signed-in user's own records,
-        // even though the operational transaction list is shared.
-        if (!isSuper() && tx.createdById !== currentUser.id) return false;
+        // Ordinary staff statements contain only their own records. HOD data
+        // is already restricted to the assigned department by the listener.
+        if (!isSuper() && !isHeadOfDepartment() && tx.createdById !== currentUser.id) return false;
         if (!(dateInRange(tx.date, range) || (!range.from && !range.to))) return false;
         if (hasFullScope() && currentScope.project !== 'ALL') {
             const projectText = [tx.project, tx.projectName, tx.customerProject, tx.subsection, JSON.stringify(tx.lines || [])].filter(Boolean).join(' ').toLowerCase();
