@@ -1016,6 +1016,117 @@ a { color: #1d4ed8; }
 .toast.success { background: var(--primary-dark); }
 .toast.error { background: var(--danger); }
 
+/* ======================================================================
+   READABLE SELECTION CONTROLS
+   Account autocomplete panels show at least five comfortably sized rows
+   before scrolling. Native customer, supplier, project and scope selects
+   use the same taller, readable control sizing throughout the application.
+====================================================================== */
+.form-group input:not([type="checkbox"]):not([type="radio"]),
+.form-group select,
+.scope-field select,
+.select-wrap select {
+    min-height: 50px;
+    padding: 11px 14px;
+    font-size: 1rem;
+    line-height: 1.35;
+}
+
+.form-group select,
+.scope-field select,
+.select-wrap select {
+    padding-right: 40px;
+    text-overflow: ellipsis;
+}
+
+select option {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 1rem;
+    line-height: 1.45;
+}
+
+.acct-combo input[type="text"] {
+    min-height: 52px;
+    padding: 12px 15px;
+    font-size: 1rem;
+}
+
+.acct-dropdown {
+    max-height: 342px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.acct-dropdown-item {
+    min-height: 56px;
+    padding: 11px 16px;
+    align-items: center;
+}
+
+.acct-dropdown-item .adi-name {
+    font-size: 1rem;
+    line-height: 1.35;
+}
+
+.acct-dropdown-item .adi-acct,
+.acct-dropdown-item .adi-meta {
+    font-size: .88rem;
+    line-height: 1.35;
+}
+
+.acct-empty {
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .92rem;
+}
+
+.qb-line-table input:not([type="checkbox"]),
+.qb-line-table select {
+    min-height: 48px;
+    font-size: .95rem;
+    padding: 10px 11px;
+}
+
+.qb-line-table .line-received,
+.qb-line-table .line-customer {
+    min-width: 300px;
+}
+
+.qb-line-table .line-bank-input,
+.qb-line-table .line-bank-combo {
+    min-width: 380px !important;
+}
+
+@media (max-width: 720px) {
+    .acct-dropdown {
+        position: fixed;
+        left: 12px;
+        right: 12px;
+        top: auto;
+        bottom: 14px;
+        max-height: min(342px, 56vh);
+        z-index: 250;
+        border-radius: 14px;
+    }
+
+    .acct-dropdown-item {
+        min-height: 54px;
+        padding: 10px 13px;
+    }
+
+    .form-group input:not([type="checkbox"]):not([type="radio"]),
+    .form-group select,
+    .scope-field select,
+    .select-wrap select {
+        min-height: 48px;
+        font-size: 16px;
+    }
+}
+
 @media (min-width: 1600px) {
     .content-body { max-width: 1560px; }
 }
