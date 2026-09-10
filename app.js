@@ -689,29 +689,27 @@ function setupAccountCombobox(prefix) {
         const t = (term || '').toLowerCase().trim();
         dropdown.innerHTML = '';
 
-        if (isSuper()) {
-            const addRow = document.createElement('div');
-            addRow.className = 'acct-dropdown-item acct-add-new';
-            addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span><span class="adi-acct">Create an account without leaving this action</span></div>';
-            addRow.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                dropdown.classList.add('hidden');
-                openBankModal(null, { onCreated: bank => {
-                    hidden.value = bank.id;
-                    input.value = formatHeaderBankLabel(bank);
-                    input.classList.add('default-account-selected');
-                    if (prefix === 'exp') updateExpenseHeaderBalance(bank);
-                    if (prefix === 'deposit') updateDepositHeaderBalance(bank);
-                }});
-            });
-            dropdown.appendChild(addRow);
-        }
+        const addRow = document.createElement('div');
+        addRow.className = 'acct-dropdown-item acct-add-new';
+        addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span><span class="adi-acct">Create an account without leaving this action</span></div>';
+        addRow.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dropdown.classList.add('hidden');
+            openBankModal(null, { onCreated: bank => {
+                hidden.value = bank.id;
+                input.value = formatHeaderBankLabel(bank);
+                input.classList.add('default-account-selected');
+                if (prefix === 'exp') updateExpenseHeaderBalance(bank);
+                if (prefix === 'deposit') updateDepositHeaderBalance(bank);
+            }});
+        });
+        dropdown.appendChild(addRow);
 
         const availableAccounts = getSelectableActionAccounts();
         if (availableAccounts.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = isSuper() ? 'No accounts exist yet. Use “Add new account” above.' : 'No accounts are available. Ask the Superadmin to add an account.';
+            empty.textContent = 'No accounts exist yet. Use “Add new account” above.';
             dropdown.appendChild(empty);
             dropdown.classList.remove('hidden');
             return;
@@ -1332,7 +1330,7 @@ function updateProfileUI() {
                 : `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${shortDeptName(currentUser.department)} · Own records`;
     const accessText = currentUser.role === 'superadmin'
         ? 'You can view and manage records across all departments and projects.'
-        : `You can view and manage only records you created. New records are assigned to ${shortDeptName(currentUser.department)} according to your role.`;
+        : `You can view shared records and add new entries. You can edit or delete only records you created. Your financial statements include only your own transactions.`;
     if ($('access-summary-text')) $('access-summary-text').textContent = accessText;
 }
 
@@ -1354,9 +1352,9 @@ function setSyncStatus(state) {
 function buildScopedQuery(collectionName) {
     const col = collection(db, collectionName);
     const clauses = [];
-    if (!isSuper()) {
-        clauses.push(where('createdById', '==', currentUser.id));
-    } else if (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL') {
+    // Shared operational lists are visible to every authenticated user.
+    // Only the Superadmin's optional scope selector narrows these listeners.
+    if (isSuper() && (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL')) {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     }
@@ -1846,7 +1844,9 @@ function refreshAllViews() {
 
     const scopeDesc = `${currentUser.name || currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
-    $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : 'You are seeing only records you personally created.';
+    $('tx-scope-note').textContent = superVisible
+        ? 'Full visibility across the selected scope.'
+        : 'Shared records are visible. You can edit or delete only records you created.';
 
     let income = 0, expense = 0, assets = 0, liabilities = 0;
     list.forEach(tx => {
@@ -2855,11 +2855,13 @@ function subscribeBanks() {
 // back into that line without leaving the page it was launched from.
 function openBankModal(edit, target) {
     pendingBankTarget = target || null;
-    // Editing or managing banks from the dedicated Bank Management page
-    // stays Superadmin-only; quick-adding a brand new bank from a line
-    // item (target is set) is available to any signed-in user.
-    if (!target && !edit && !guardSuperadminAction()) { pendingBankTarget = null; return; }
-    if (edit && !guardSuperadminAction()) { pendingBankTarget = null; return; }
+    // All authenticated users may create shared accounts. Only the creator
+    // (or Superadmin) may change an existing account.
+    if (edit && !canManageRecord(edit)) {
+        pendingBankTarget = null;
+        showToast('error', 'You can edit only accounts you created.');
+        return;
+    }
 
     if (edit) {
         $('bank-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit account';
@@ -2902,7 +2904,11 @@ function openBankModal(edit, target) {
 async function onSubmitBankForm(e) {
     e.preventDefault();
     const editId = $('bank-edit-id').value;
-    if (editId && !guardSuperadminAction()) return;
+    const existingBankForAccess = editId ? banksDb.find(b => b.id === editId) : null;
+    if (editId && !canManageRecord(existingBankForAccess)) {
+        showToast('error', 'You can edit only accounts you created.');
+        return;
+    }
     const payload = sanitizePayload({
         name: $('bank-name').value.trim(), branch: $('bank-branch').value.trim(),
         account: $('bank-account').value.trim(), currency: $('bank-currency').value || 'RWF',
@@ -3002,12 +3008,12 @@ async function syncChartAccountToBank(accountId, payload, existingAccount) {
 }
 
 function renderBanksTable() {
-    if (!guardSuperadminView('view-banks', 'Bank Management')) return;
     const tbody = $('banks-table-body');
     if (!tbody) return;
     if (banksDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="7">No banks added yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     banksDb.forEach(b => {
+        const canEdit = canManageRecord(b);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(b.name)}</strong>${b.linkedAccountId ? '<div class="linked-account-badge"><i class="fa-solid fa-link"></i> Chart-linked</div>' : ''}</td>
@@ -3015,8 +3021,8 @@ function renderBanksTable() {
             <td><span class="account-meta-chip detail">${escapeHtml(b.detailType || 'Bank')}</span></td>
             <td>${escapeHtml(b.branch||'—')}</td><td>${escapeHtml(b.currency||'RWF')}</td><td><strong>${formatRF(computeBankBalance(b))}</strong></td>
             <td><div class="row-actions">
-                <button class="icon-action-btn" data-edit="${b.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                <button class="icon-action-btn danger-hover" data-delete="${b.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                <button class="icon-action-btn" data-edit="${b.id}" title="Edit" ${canEdit?'':'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${b.id}" title="Delete" ${canEdit?'':'disabled'}><i class="fa-solid fa-trash"></i></button>
             </div></td>`;
         tbody.appendChild(tr);
     });
@@ -3163,6 +3169,10 @@ function refreshAccountParentOptions() {
 }
 
 function openAccountModal(edit, target) {
+    if (edit && !canManageRecord(edit)) {
+        showToast('error', 'You can edit only accounts you created.');
+        return;
+    }
     pendingAccountTarget = target || null;
     $('account-form').reset();
     $('account-edit-id').value = '';
@@ -3204,6 +3214,11 @@ function closeAccountModal() { closeModal('account-modal'); pendingAccountTarget
 async function onSubmitAccountForm(e) {
     e.preventDefault();
     const editId = $('account-edit-id').value;
+    const existingAccountForAccess = editId ? accountsDb.find(a => a.id === editId) : null;
+    if (editId && !canManageRecord(existingAccountForAccess)) {
+        showToast('error', 'You can edit only accounts you created.');
+        return;
+    }
     const name = $('account-name').value.trim();
     const number = $('account-number').value.trim();
     const type = $('account-type').value;
@@ -3256,13 +3271,14 @@ function renderAccountsTable() {
     if (accountsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="3">No chart-of-accounts entries yet. Click "New account" to add one.</td></tr>`; return; }
     tbody.innerHTML = '';
     accountsDb.forEach(a => {
+        const canEdit = canManageRecord(a);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(a.name)}</strong>${a.linkedBankId ? '<div class="linked-account-badge"><i class="fa-solid fa-building-columns"></i> Bank-linked</div>' : ''}</td>
             <td><span class="badge">${escapeHtml(a.type || '')}</span></td>
             <td><div class="row-actions">
-                <button class="icon-action-btn" data-edit="${a.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                <button class="icon-action-btn danger-hover" data-delete="${a.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                <button class="icon-action-btn" data-edit="${a.id}" title="Edit" ${canEdit?'':'disabled'}><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-action-btn danger-hover" data-delete="${a.id}" title="Delete" ${canEdit?'':'disabled'}><i class="fa-solid fa-trash"></i></button>
             </div></td>`;
         tbody.appendChild(tr);
     });
@@ -3300,22 +3316,20 @@ function setupLineBankCombobox(row) {
         const t = (term || '').toLowerCase().trim();
         dropdown.innerHTML = '';
 
-        if (isSuper()) {
-            const addNewRow = document.createElement('div');
-            addNewRow.className = 'acct-dropdown-item acct-add-new';
-            addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span></div>`;
-            addNewRow.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                dropdown.classList.add('hidden');
-                openBankModal(null, {
-                    onCreated: (bank) => {
-                        hidden.value = bank.id;
-                        input.value = formatBankLabel(bank);
-                    }
-                });
+        const addNewRow = document.createElement('div');
+        addNewRow.className = 'acct-dropdown-item acct-add-new';
+        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span></div>`;
+        addNewRow.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dropdown.classList.add('hidden');
+            openBankModal(null, {
+                onCreated: (bank) => {
+                    hidden.value = bank.id;
+                    input.value = formatBankLabel(bank);
+                }
             });
-            dropdown.appendChild(addNewRow);
-        }
+        });
+        dropdown.appendChild(addNewRow);
 
         const availableAccounts = getSelectableActionAccounts();
         const matches = availableAccounts.filter(b =>
@@ -3329,7 +3343,7 @@ function setupLineBankCombobox(row) {
         if (availableAccounts.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = isSuper() ? 'No accounts yet — use "+ Add new account" above to create one.' : 'No accounts are available. Ask the Superadmin to add one.';
+            empty.textContent = 'No accounts yet — use "+ Add new account" above to create one.';
             dropdown.appendChild(empty);
         } else if (matches.length === 0) {
             const empty = document.createElement('div');
@@ -3649,6 +3663,9 @@ window.addEventListener('resize', () => {
 function getReportTransactions() {
     const range = reportRange.preset === 'all' ? { from: '', to: '' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to);
     return transactionsDb.filter(tx => {
+        // Staff statements contain only the signed-in user's own records,
+        // even though the operational transaction list is shared.
+        if (!isSuper() && tx.createdById !== currentUser.id) return false;
         if (!(dateInRange(tx.date, range) || (!range.from && !range.to))) return false;
         if (hasFullScope() && currentScope.project !== 'ALL') {
             const projectText = [tx.project, tx.projectName, tx.customerProject, tx.subsection, JSON.stringify(tx.lines || [])].filter(Boolean).join(' ').toLowerCase();
@@ -4523,26 +4540,24 @@ function addJournalLine(afterRow = null) {
         <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     const accountSelect = tr.querySelector('.line-account');
     fillSimpleSelect(accountSelect, getJournalAccountOptions(), true, '-- Account --');
-    if (isSuper()) {
-        const addAccountOption = document.createElement('option');
-        addAccountOption.value = '__ADD_NEW_ACCOUNT__';
-        addAccountOption.textContent = '+ Add new account';
-        accountSelect.insertBefore(addAccountOption, accountSelect.options[1] || null);
-        accountSelect.addEventListener('change', () => {
-            if (accountSelect.value !== '__ADD_NEW_ACCOUNT__') return;
-            accountSelect.value = '';
-            openAccountModal(null, {
-                onCreated: account => {
-                    const label = formatAccountLabel(account);
-                    const option = document.createElement('option');
-                    option.value = label;
-                    option.textContent = label;
-                    accountSelect.appendChild(option);
-                    accountSelect.value = label;
-                }
-            });
+    const addAccountOption = document.createElement('option');
+    addAccountOption.value = '__ADD_NEW_ACCOUNT__';
+    addAccountOption.textContent = '+ Add new account';
+    accountSelect.insertBefore(addAccountOption, accountSelect.options[1] || null);
+    accountSelect.addEventListener('change', () => {
+        if (accountSelect.value !== '__ADD_NEW_ACCOUNT__') return;
+        accountSelect.value = '';
+        openAccountModal(null, {
+            onCreated: account => {
+                const label = formatAccountLabel(account);
+                const option = document.createElement('option');
+                option.value = label;
+                option.textContent = label;
+                accountSelect.appendChild(option);
+                accountSelect.value = label;
+            }
         });
-    }
+    });
     fillSimpleSelect(tr.querySelector('.line-name'), [...new Set([...customersDb.map(c => c.name), ...suppliersDb.map(s => s.name)])], true, '-- Name --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillSimpleSelect(tr.querySelector('.line-location'), PRESBYTERIES, true, '-- Location --');
