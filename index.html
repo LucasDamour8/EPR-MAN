@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260910-ownership-2">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -192,9 +192,9 @@
                                 <span class="badge" id="pd-role-badge" style="margin-top:8px;"></span>
                             </div>
                             <div class="pd-body">
-                                <div class="pd-row"><strong>Presbytery:</strong> <span id="pd-presbytery"></span></div>
-                                <div class="pd-row"><strong>Department:</strong> <span id="pd-department"></span></div>
-                                <div class="pd-row"><strong>Section:</strong> <span id="pd-subsection"></span></div>
+                                <div class="pd-row" id="pd-presbytery-row"><strong>Presbytery:</strong> <span id="pd-presbytery"></span></div>
+                                <div class="pd-row" id="pd-department-row"><strong>Department:</strong> <span id="pd-department"></span></div>
+                                <div class="pd-row" id="pd-subsection-row"><strong>Sections / Projects:</strong> <span id="pd-subsection"></span></div>
                             </div>
                             <button id="logout-btn" class="pd-logout"><i class="fa-solid fa-right-from-bracket"></i> Sign out</button>
                         </div>
@@ -351,10 +351,6 @@
                         <div class="dept-grid" id="dept-breakdown-grid"></div>
                     </div>
 
-                    <div id="pending-approvals-wrap" class="dept-breakdown hidden">
-                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Waiting on your approval</h3>
-                        <div class="ext-grid" id="pending-approvals-grid"></div>
-                    </div>
                 </section>
 
                 <!-- ============ View: Transactions ============ -->
@@ -659,14 +655,13 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Income Portal — Invoices</h2>
-                            <p id="invoices-scope-note">Every invoice raised by staff needs Superadmin approval before it counts as issued.</p>
+                            <p id="invoices-scope-note">Invoices you record are saved immediately and included in your own reports.</p>
                         </div>
                         <button class="btn btn-primary" id="open-invoice-modal-btn"><i class="fa-solid fa-plus"></i> New Invoice</button>
                     </div>
 
                     <div class="portal-stat-row" id="invoices-stat-row"></div>
 
-                    <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Managers and Finance users submit invoices for approval. Only a Superadmin can approve or reject one — once approved, an invoice is locked and counted as issued.</div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
                             <thead>
@@ -682,14 +677,13 @@
                     <div class="view-header flex-between">
                         <div>
                             <h2>Expense Portal — Bills</h2>
-                            <p id="bills-scope-note">Bills raised for payment need Superadmin approval before they are marked as paid.</p>
+                            <p id="bills-scope-note">Bills you record are saved immediately and included in your own reports.</p>
                         </div>
                         <button class="btn btn-primary" id="open-bill-modal-btn"><i class="fa-solid fa-plus"></i> New Bill</button>
                     </div>
 
                     <div class="portal-stat-row" id="bills-stat-row"></div>
 
-                    <div class="approval-note"><i class="fa-solid fa-circle-info"></i> Managers and Finance users submit bills to be paid. Only a Superadmin can approve (mark paid) or reject a bill.</div>
                     <div class="table-wrap ext-scroll-x">
                         <table class="data-table">
                             <thead>
@@ -1468,6 +1462,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=20260910-ownership-2"></script>
 </body>
 </html>
