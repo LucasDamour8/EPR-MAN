@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css?v=20260910-access-modes-8">
+    <link rel="stylesheet" href="styles.css?v=20260910-presbytery-access-9">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -609,9 +609,9 @@
                                         <label id="user-dept-label">Assign Main Department <span class="req">*</span></label>
                                         <div class="select-wrap"><select id="user-dept" required></select></div>
                                     </div>
-                                    <div class="form-group">
+                                    <div class="form-group" id="user-projects-field">
                                         <label>Assign Sub-Projects <span class="req">*</span></label>
-                                        <div class="field-hint">Tick every sub-project this user should see and record against, across any department.</div>
+                                        <div class="field-hint">Tick every sub-project this user should see and record against. Presbytery access includes every project automatically, so this section is hidden in Presbytery mode.</div>
                                         <div id="user-projects-checklist" class="checklist-grid"></div>
                                     </div>
                                 </div>
@@ -1463,6 +1463,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=20260910-access-modes-8"></script>
+    <script type="module" src="app.js?v=20260910-presbytery-access-9"></script>
 </body>
 </html>
