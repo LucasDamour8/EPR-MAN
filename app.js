@@ -540,7 +540,7 @@ function setupEventListeners() {
         } else if (!isSuperRole && !$('user-full-access').checked) {
             $('user-mode-group').classList.remove('hidden');
         }
-        $('user-full-access-group').classList.toggle('hidden', isSuperRole || isHead);
+        $('user-full-access-group').classList.add('hidden');
         $('user-scope-fields').classList.toggle('hidden', isSuperRole || $('user-full-access').checked);
         qsa('#user-scope-fields select').forEach(sel => sel.required = !isSuperRole && !$('user-full-access').checked);
     });
@@ -1259,7 +1259,7 @@ function describeAuthError(err) {
 function initAppSession() {
     $('app-container').classList.remove('hidden');
     const isSuperUser = currentUser.role === 'superadmin';
-    const hasFullAccess = isSuperUser || currentUser.fullAccess === true;
+    const hasFullAccess = isSuperUser;
 
     $('superadmin-filter-bar').classList.toggle('hidden', !hasFullAccess);
     $('admin-filter-section').classList.toggle('hidden', !isSuperUser);
@@ -1302,7 +1302,7 @@ function updateGreeting() {
 }
 
 function updateProfileUI() {
-    const hasFullAccess = isSuper() || currentUser.fullAccess === true;
+    const hasFullAccess = isSuper();
     $('user-display-name').textContent = currentUser.name;
     $('avatar-initials').textContent = initials(currentUser.name);
     $('pd-name').textContent = currentUser.name;
@@ -1316,22 +1316,20 @@ function updateProfileUI() {
         : (currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection);
     $('user-scope-line').textContent = currentUser.role === 'superadmin'
         ? 'Full system access'
-        : (hasFullAccess ? 'Full system access' : currentUser.role === 'head_of_department' ? `Department-wide access · ${shortDeptName(currentUser.department)}` : `${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`);
-    const accessText = currentUser.role === 'superadmin' || hasFullAccess
+        : `Own records only · ${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`;
+    const accessText = currentUser.role === 'superadmin'
         ? 'You can view and manage records across all departments and projects.'
-        : currentUser.role === 'head_of_department'
-            ? `You can view and manage all records in ${shortDeptName(currentUser.department)}.`
-            : `You can access ${shortDeptName(currentUser.department)} and your assigned projects.`;
+        : `You can view and manage only records you created. New records are assigned to ${shortDeptName(currentUser.department)} according to your role.`;
     if ($('access-summary-text')) $('access-summary-text').textContent = accessText;
 }
 
 function initials(name) { return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join(''); }
 function isSuper() { return currentUser && currentUser.role === 'superadmin'; }
 function isHeadOfDepartment() { return currentUser && currentUser.role === 'head_of_department'; }
-function hasFullScope() { return currentUser && (currentUser.role === 'superadmin' || currentUser.fullAccess === true); }
+function hasFullScope() { return currentUser && currentUser.role === 'superadmin'; }
 function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'head_of_department' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
-function canManageRecord(rec) { return !!(isSuper() || currentUser?.fullAccess || isOwnRecord(rec) || (isHeadOfDepartment() && rec?.department === currentUser.department)); }
+function canManageRecord(rec) { return !!(isSuper() || isOwnRecord(rec)); }
 
 function setSyncStatus(state) {
     const el = $('sync-indicator');
@@ -1343,9 +1341,8 @@ function setSyncStatus(state) {
 function buildScopedQuery(collectionName) {
     const col = collection(db, collectionName);
     const clauses = [];
-    if (!hasFullScope()) {
-        if (currentUser.department && currentUser.department !== 'ALL') clauses.push(where('department', '==', currentUser.department));
-        if (!isHeadOfDepartment() && currentUser.presbytery && currentUser.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentUser.presbytery));
+    if (!isSuper()) {
+        clauses.push(where('createdById', '==', currentUser.id));
     } else if (currentScope.department !== 'ALL' || currentScope.presbytery !== 'ALL') {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
@@ -1405,7 +1402,9 @@ function subscribeOwnProfile() {
             ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
             : currentUser.subsection;
         if (scopeChanged) {
-            currentScope = hasFullAccess ? { presbytery: 'ALL', department: 'ALL' } : { presbytery: currentUser.presbytery, department: currentUser.department };
+            currentScope = hasFullAccess
+                ? { presbytery: 'ALL', department: 'ALL', project: 'ALL' }
+                : { presbytery: currentUser.presbytery, department: currentUser.department, project: 'ALL' };
             onScopeChanged();
             showToast('info', 'Your access/assignment was updated.');
         }
@@ -1615,7 +1614,7 @@ function onHeadOfDepartmentChange() {
     const checked = $('user-head-department').checked;
     if (!checked) {
         if ($('user-role').value === 'head_of_department') $('user-role').value = 'finance';
-        $('user-full-access-group').classList.remove('hidden');
+        $('user-full-access-group').classList.add('hidden');
         $('user-mode-group').classList.remove('hidden');
         onUserAssignModeChange();
         return;
@@ -1659,7 +1658,7 @@ async function onSubmitUserForm(e) {
     const role = $('user-role').value;
     const roleSuper = role === 'superadmin';
     const isHead = role === 'head_of_department';
-    const fullAccess = !roleSuper && !isHead && $('user-full-access').checked;
+    const fullAccess = false;
     const modeEl = document.querySelector('input[name="user-assign-mode"]:checked');
     const mode = isHead ? 'department' : (modeEl ? modeEl.value : 'presbytery');
 
@@ -1725,7 +1724,7 @@ function resetUserForm() {
     $('user-password').required = true;
     $('user-full-access').checked = false;
     $('user-head-department').checked = false;
-    $('user-full-access-group').classList.remove('hidden');
+    $('user-full-access-group').classList.add('hidden');
     $('user-scope-fields').classList.remove('hidden');
     $('user-mode-group').classList.remove('hidden');
     const presRadio = document.querySelector('input[name="user-assign-mode"][value="presbytery"]');
@@ -1756,11 +1755,11 @@ function onUsersTableClick(e) {
 
         const roleSuper = u.role === 'superadmin';
         const roleHead = u.role === 'head_of_department';
-        $('user-full-access-group').classList.toggle('hidden', roleSuper);
-        $('user-full-access').checked = !!u.fullAccess;
-        $('user-scope-fields').classList.toggle('hidden', roleSuper || !!u.fullAccess);
-        $('user-mode-group').classList.toggle('hidden', roleSuper || roleHead || !!u.fullAccess);
-        if (!roleSuper && !u.fullAccess) {
+        $('user-full-access-group').classList.add('hidden');
+        $('user-full-access').checked = false;
+        $('user-scope-fields').classList.toggle('hidden', roleSuper);
+        $('user-mode-group').classList.toggle('hidden', roleSuper || roleHead);
+        if (!roleSuper) {
             const mode = u.assignMode || (u.department === 'ALL' ? 'presbytery' : 'department');
             const radio = document.querySelector(`input[name="user-assign-mode"][value="${mode}"]`);
             if (radio) radio.checked = true;
@@ -1771,8 +1770,6 @@ function onUsersTableClick(e) {
             else $('user-dept').value = u.department;
             if (roleHead) populateHeadDepartmentProjects();
             else populateUserProjectsChecklist(u.assignedProjects || []);
-        } else if (!roleSuper) {
-            populateUserProjectsChecklist(getAllProjectKeys());
         }
         $('user-form-title').textContent = `Edit User — ${u.name}`;
         $('user-submit-btn').textContent = 'Save Changes';
@@ -1834,11 +1831,9 @@ function refreshAllViews() {
     const list = getFilteredTransactions();
     const superVisible = hasFullScope();
 
-    const scopeDesc = superVisible
-        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery: [${currentScope.presbytery}]` : 'Departments / Presbyteries: [ALL]'} | Section / Project: [${currentScope.project}]`
-        : `Department: [${currentUser.department}] | Assigned projects only`;
+    const scopeDesc = `${currentUser.name || currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
     $('scope-indicator').textContent = `Current Scope: ${scopeDesc}`;
-    $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : `You're seeing only what belongs to ${shortDeptName(currentUser.department)} · ${currentUser.presbytery}.`;
+    $('tx-scope-note').textContent = superVisible ? 'Full visibility across the selected scope.' : 'You are seeing only records you personally created.';
 
     let income = 0, expense = 0, assets = 0, liabilities = 0;
     list.forEach(tx => {
@@ -2840,7 +2835,7 @@ function onBudgetTableClick(e) {
 // =======================================================================
 function subscribeBanks() {
     if (unsubBanks) unsubBanks();
-    unsubBanks = onSnapshot(collection(db, COLLECTIONS.BANKS), (snap) => {
+    unsubBanks = onSnapshot(buildScopedQuery(COLLECTIONS.BANKS), (snap) => {
         banksDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         banksLoaded = true;
         banksDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -3047,7 +3042,7 @@ function onBanksTableClick(e) {
 // =======================================================================
 function subscribeAccounts() {
     if (unsubAccounts) unsubAccounts();
-    unsubAccounts = onSnapshot(collection(db, COLLECTIONS.ACCOUNTS), (snap) => {
+    unsubAccounts = onSnapshot(buildScopedQuery(COLLECTIONS.ACCOUNTS), (snap) => {
         accountsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         accountsLoaded = true;
         accountsDb.sort((a, b) => (a.number || '').localeCompare(b.number || '', undefined, { numeric: true }) || (a.name || '').localeCompare(b.name || ''));
@@ -3714,9 +3709,7 @@ function renderReportCharts(list) {
 
 function renderReportPanel() {
     const superVisible = hasFullScope();
-    const scopeDesc = superVisible
-        ? `${currentScope.department !== 'ALL' ? `Department: [${currentScope.department}]` : currentScope.presbytery !== 'ALL' ? `Presbytery: [${currentScope.presbytery}]` : 'Departments / Presbyteries: [ALL]'} | Section / Project: [${currentScope.project}]`
-        : `Department: [${currentUser.department}] | Assigned projects only`;
+    const scopeDesc = `${currentUser.name || currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
     $('statement-scope').textContent = `${scopeDesc} · Range: ${rangeLabel(reportRange.preset === 'all' ? { preset: 'all' } : computePresetRange(reportRange.preset, reportRange.from, reportRange.to))}`;
     $('stmt-generated-line').textContent = `Generated ${new Date().toLocaleString()} by ${currentUser.name} (${ROLE_LABELS[currentUser.role]})`;
 
@@ -3961,8 +3954,8 @@ function setupCustomReports() {
     });
     const profitCard = $('glance-profit-loss-card');
     if (profitCard) {
-        profitCard.addEventListener('click', () => openFinancialView('profit-loss'));
-        profitCard.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openFinancialView('profit-loss'); });
+        profitCard.addEventListener('click', () => openFinancialView('income'));
+        profitCard.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openFinancialView('income'); });
     }
     $('run-custom-report').addEventListener('click', renderCustomReport);
     ['custom-report-source', 'custom-report-sort', 'custom-report-status'].forEach(id => $(id).addEventListener('change', renderCustomReport));
@@ -3992,13 +3985,13 @@ function openFinancialView(view = 'all') {
         ageing?.classList.add('financial-section-hidden');
         target = balance;
         if (title) title.textContent = 'SAS BALANCE SHEET';
-    } else if (view === 'profit-loss' || view === 'income') {
+    } else if (view === 'income') {
         balance?.classList.add('financial-section-hidden');
         ageing?.classList.add('financial-section-hidden');
         target = income;
         const heading = $('income-statement-heading');
-        if (heading) heading.textContent = view === 'profit-loss' ? 'Profit & Loss Statement' : 'Income Statement';
-        if (title) title.textContent = view === 'profit-loss' ? 'SAS PROFIT & LOSS STATEMENT' : 'SAS INCOME STATEMENT';
+        if (heading) heading.textContent = 'Income Statement';
+        if (title) title.textContent = 'SAS INCOME STATEMENT';
     } else if (view === 'receivables') {
         income?.classList.add('financial-section-hidden');
         balance?.classList.add('financial-section-hidden');
@@ -4006,7 +3999,7 @@ function openFinancialView(view = 'all') {
         if (title) title.textContent = 'SAS ACCOUNTS RECEIVABLE AGEING';
     } else {
         const heading = $('income-statement-heading');
-        if (heading) heading.textContent = 'Profit & Loss / Income Statement';
+        if (heading) heading.textContent = 'Income Statement';
         if (title) title.textContent = 'SAS FINANCIAL STATEMENTS';
     }
 
