@@ -1342,7 +1342,13 @@ function isHeadOfDepartment() { return currentUser && currentUser.role === 'head
 function hasFullScope() { return currentUser && currentUser.role === 'superadmin'; }
 function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'head_of_department' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
-function canManageRecord(rec) { return !!(isSuper() || isOwnRecord(rec)); }
+function canManageRecord(rec) {
+    return !!(
+        isSuper()
+        || isOwnRecord(rec)
+        || (isHeadOfDepartment() && rec && rec.department === currentUser.department)
+    );
+}
 
 function setSyncStatus(state) {
     const el = $('sync-indicator');
@@ -2480,7 +2486,8 @@ function onBillsTableClick(e) {
 
 function subscribeSuppliers() {
     if (unsubSuppliers) unsubSuppliers();
-    unsubSuppliers = onSnapshot(buildScopedQuery(COLLECTIONS.SUPPLIERS), (snap) => {
+    // Suppliers are shared reference data so every role can select them.
+    unsubSuppliers = onSnapshot(query(collection(db, COLLECTIONS.SUPPLIERS)), (snap) => {
         suppliersDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         suppliersDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         renderSuppliersTable();
@@ -2563,7 +2570,9 @@ function onSuppliersTableClick(e) {
 
 function subscribeCustomers() {
     if (unsubCustomers) unsubCustomers();
-    unsubCustomers = onSnapshot(buildScopedQuery(COLLECTIONS.CUSTOMERS), (snap) => {
+    // Customers are shared reference data. This keeps “Received from” fully
+    // populated for every authenticated user and role.
+    unsubCustomers = onSnapshot(query(collection(db, COLLECTIONS.CUSTOMERS)), (snap) => {
         customersDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         customersDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         renderCustomersTable();
@@ -2654,7 +2663,8 @@ function onCustomersTableClick(e) {
 
 function subscribeProjects() {
     if (unsubProjects) unsubProjects();
-    unsubProjects = onSnapshot(buildScopedQuery(COLLECTIONS.PROJECTS), (snap) => {
+    // Projects are shared reference data for transaction/customer selectors.
+    unsubProjects = onSnapshot(query(collection(db, COLLECTIONS.PROJECTS)), (snap) => {
         projectsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         refreshProjectScopeOptions();
         projectsDb.sort((a, b) => (b.start || '').localeCompare(a.start || ''));
