@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css?v=20260910-readable-selects-6">
+    <link rel="stylesheet" href="styles.css?v=20260910-access-modes-8">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -580,7 +580,7 @@
                                 <div class="form-group" id="user-head-department-group">
                                     <label class="checklist-item hod-assignment-check">
                                         <input type="checkbox" id="user-head-department">
-                                        <span><strong>Make this user Head of Department</strong><span class="field-hint">The Department determines where this user records data. The user sees and manages only records they personally create.</span></span>
+                                        <span><strong>Make this user Head of Department</strong><span class="field-hint">The selected Main Department determines the user's access. The user can view and manage all records assigned to that Department.</span></span>
                                     </label>
                                 </div>
 
@@ -592,20 +592,21 @@
                                 </div>
 
                                 <div class="form-group" id="user-mode-group">
-                                    <label>Assign By</label>
+                                    <label>Assign Access By</label>
                                     <div class="radio-row">
-                                        <label><input type="radio" name="user-assign-mode" value="presbytery" checked> Presbytery Location <span class="field-hint" style="margin:0;">(hides department)</span></label>
-                                        <label><input type="radio" name="user-assign-mode" value="department"> Department <span class="field-hint" style="margin:0;">(hides location)</span></label>
+                                        <label><input type="radio" name="user-assign-mode" value="presbytery" checked> Presbytery <span class="field-hint" style="margin:0;">(all records in the selected Presbytery)</span></label>
+                                        <label><input type="radio" name="user-assign-mode" value="presbytery_department"> Department <span class="field-hint" style="margin:0;">(selected Department within the selected Presbytery)</span></label>
+                                        <label><input type="radio" name="user-assign-mode" value="department"> Main Department <span class="field-hint" style="margin:0;">(hides location)</span></label>
                                     </div>
                                 </div>
 
                                 <div id="user-scope-fields">
                                     <div class="form-group" id="user-pres-field">
-                                        <label>Assign Presbytery Location <span class="req">*</span></label>
+                                        <label>Assign Presbytery <span class="req">*</span></label>
                                         <div class="select-wrap"><select id="user-pres" required></select></div>
                                     </div>
                                     <div class="form-group hidden" id="user-dept-field">
-                                        <label>Assign Main Department <span class="req">*</span></label>
+                                        <label id="user-dept-label">Assign Main Department <span class="req">*</span></label>
                                         <div class="select-wrap"><select id="user-dept" required></select></div>
                                     </div>
                                     <div class="form-group">
@@ -1462,6 +1463,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=20260910-reference-access-5"></script>
+    <script type="module" src="app.js?v=20260910-access-modes-8"></script>
 </body>
 </html>
