@@ -689,27 +689,29 @@ function setupAccountCombobox(prefix) {
         const t = (term || '').toLowerCase().trim();
         dropdown.innerHTML = '';
 
-        const addRow = document.createElement('div');
-        addRow.className = 'acct-dropdown-item acct-add-new';
-        addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span><span class="adi-acct">Create an account without leaving this action</span></div>';
-        addRow.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            dropdown.classList.add('hidden');
-            openBankModal(null, { onCreated: bank => {
-                hidden.value = bank.id;
-                input.value = formatHeaderBankLabel(bank);
-                input.classList.add('default-account-selected');
-                if (prefix === 'exp') updateExpenseHeaderBalance(bank);
-                if (prefix === 'deposit') updateDepositHeaderBalance(bank);
-            }});
-        });
-        dropdown.appendChild(addRow);
+        if (isSuper()) {
+            const addRow = document.createElement('div');
+            addRow.className = 'acct-dropdown-item acct-add-new';
+            addRow.innerHTML = '<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span><span class="adi-acct">Create an account without leaving this action</span></div>';
+            addRow.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                dropdown.classList.add('hidden');
+                openBankModal(null, { onCreated: bank => {
+                    hidden.value = bank.id;
+                    input.value = formatHeaderBankLabel(bank);
+                    input.classList.add('default-account-selected');
+                    if (prefix === 'exp') updateExpenseHeaderBalance(bank);
+                    if (prefix === 'deposit') updateDepositHeaderBalance(bank);
+                }});
+            });
+            dropdown.appendChild(addRow);
+        }
 
         const availableAccounts = getSelectableActionAccounts();
         if (availableAccounts.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = 'No accounts exist yet. Use “Add new account” above.';
+            empty.textContent = isSuper() ? 'No accounts exist yet. Use “Add new account” above.' : 'No accounts are available. Ask the Superadmin to add an account.';
             dropdown.appendChild(empty);
             dropdown.classList.remove('hidden');
             return;
@@ -1309,14 +1311,25 @@ function updateProfileUI() {
     $('pd-email').textContent = currentUser.email;
     $('pd-role-badge').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
     $('pd-role-badge').className = `badge role-${currentUser.role}`;
-    $('pd-presbytery').textContent = (hasFullAccess || currentUser.presbytery === 'ALL') ? 'All presbyteries' : currentUser.presbytery;
-    $('pd-department').textContent = (hasFullAccess || currentUser.department === 'ALL') ? 'All departments' : currentUser.department;
+    const isHead = currentUser.role === 'head_of_department';
+    const assignmentMode = isHead ? 'department' : (currentUser.assignMode || (currentUser.department && currentUser.department !== 'ALL' ? 'department' : 'presbytery'));
+    const showPresbytery = !hasFullAccess && assignmentMode === 'presbytery' && currentUser.presbytery && currentUser.presbytery !== 'ALL';
+    const showDepartment = !hasFullAccess && assignmentMode === 'department' && currentUser.department && currentUser.department !== 'ALL';
+    $('pd-presbytery-row').classList.toggle('hidden', !showPresbytery);
+    $('pd-department-row').classList.toggle('hidden', !showDepartment);
+    $('pd-subsection-row').classList.toggle('hidden', hasFullAccess || (!showDepartment && !showPresbytery));
+    $('pd-presbytery').textContent = showPresbytery ? currentUser.presbytery.replace('EPR ', '') : '';
+    $('pd-department').textContent = showDepartment ? currentUser.department : '';
     $('pd-subsection').textContent = (currentUser.assignedProjects && currentUser.assignedProjects.length)
         ? currentUser.assignedProjects.map(p => p.split('::')[1]).join(', ')
         : (currentUser.subsection === 'ALL' ? 'All sections' : currentUser.subsection);
     $('user-scope-line').textContent = currentUser.role === 'superadmin'
-        ? 'Full system access'
-        : `Own records only · ${shortDeptName(currentUser.department)} · ${(currentUser.presbytery || '').replace('EPR Presbytery ', '')}`;
+        ? 'Superadmin · Full system access'
+        : isHead
+            ? `Head of Department · ${shortDeptName(currentUser.department)} · Own records`
+            : showPresbytery
+                ? `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${currentUser.presbytery.replace('EPR ', '')} · Own records`
+                : `${ROLE_LABELS[currentUser.role] || currentUser.role} · ${shortDeptName(currentUser.department)} · Own records`;
     const accessText = currentUser.role === 'superadmin'
         ? 'You can view and manage records across all departments and projects.'
         : `You can view and manage only records you created. New records are assigned to ${shortDeptName(currentUser.department)} according to your role.`;
@@ -1872,7 +1885,6 @@ function refreshAllViews() {
     renderTransactionsTable(list);
     renderDeptBreakdown(list, superVisible);
     renderActiveScopeChips();
-    renderPendingApprovals();
     renderGlanceExpenseDonut(list);
     renderGlanceBanks();
 
@@ -2184,7 +2196,6 @@ function subscribeInvoices() {
         invoicesDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         renderInvoicesTable();
         $('nav-invoices-count').textContent = invoicesDb.length;
-        renderPendingApprovals();
     }, (err) => showToast('error', 'Invoices feed error: ' + err.message));
 }
 
@@ -2243,11 +2254,11 @@ async function onSubmitInvoiceForm(e) {
     const btn = $('invoice-submit-btn'); btn.disabled = true;
     try {
         if (editId) {
-            await updateDoc(doc(db, COLLECTIONS.INVOICES, editId), { ...payload, ...updateMeta() });
+            await updateDoc(doc(db, COLLECTIONS.INVOICES, editId), { ...payload, status: 'approved', autoApproved: true, ...updateMeta() });
             showToast('success', 'Invoice updated.');
         } else {
-            await addDoc(collection(db, COLLECTIONS.INVOICES), sanitizePayload({ ...payload, status: 'pending_approval', ...actorMeta(), createdAt: serverTimestamp() }));
-            showToast('success', 'Invoice submitted for Superadmin approval.');
+            await addDoc(collection(db, COLLECTIONS.INVOICES), sanitizePayload({ ...payload, status: 'approved', autoApproved: true, approvedBy: currentUser.email, approvedById: currentUser.id, approvedByName: currentUser.name, approvedAt: serverTimestamp(), ...actorMeta(), createdAt: serverTimestamp() }));
+            showToast('success', 'Invoice saved and issued.');
         }
         closeModal('invoice-modal');
     } catch (err) { showToast('error', "Couldn't save invoice: " + err.message); }
@@ -2258,9 +2269,7 @@ function renderPortalStatRow(elId, list, kind) {
     const wrap = $(elId);
     if (!wrap) return;
     const total = list.reduce((s, r) => s + (r.amount || 0), 0);
-    const pending = list.filter(r => r.status === 'pending_approval');
     const approved = list.filter(r => r.status === 'approved');
-    const pendingTotal = pending.reduce((s, r) => s + (r.amount || 0), 0);
     const approvedTotal = approved.reduce((s, r) => s + (r.amount || 0), 0);
     const noun = kind === 'invoice' ? 'Invoiced' : 'Billed';
     wrap.innerHTML = `
@@ -2268,11 +2277,6 @@ function renderPortalStatRow(elId, list, kind) {
             <span class="psc-label">Total ${noun}</span>
             <span class="psc-value">${formatRF(total)}</span>
             <span class="psc-sub">${list.length} record${list.length === 1 ? '' : 's'}</span>
-        </div>
-        <div class="portal-stat-card warn">
-            <span class="psc-label">Awaiting approval</span>
-            <span class="psc-value">${formatRF(pendingTotal)}</span>
-            <span class="psc-sub">${pending.length} pending</span>
         </div>
         <div class="portal-stat-card ok">
             <span class="psc-label">${kind === 'invoice' ? 'Issued' : 'Paid'}</span>
@@ -2288,8 +2292,8 @@ function renderInvoicesTable() {
     if (invoicesDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10">No invoices in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     invoicesDb.forEach(inv => {
-        const canEditRaw = canManageRecord(inv) && inv.status === 'pending_approval';
-        const canApprove = isSuper() && inv.status === 'pending_approval';
+        const canEditRaw = canManageRecord(inv);
+        const canApprove = false;
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${inv.date}</td><td><strong>${escapeHtml(inv.number)}</strong></td><td>${escapeHtml(inv.customerName || '—')}</td>
@@ -2343,7 +2347,6 @@ function subscribeBills() {
         billsDb.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         renderBillsTable();
         $('nav-bills-count').textContent = billsDb.length;
-        renderPendingApprovals();
     }, (err) => showToast('error', 'Bills feed error: ' + err.message));
 }
 
@@ -2402,11 +2405,11 @@ async function onSubmitBillForm(e) {
     const btn = $('bill-submit-btn'); btn.disabled = true;
     try {
         if (editId) {
-            await updateDoc(doc(db, COLLECTIONS.BILLS, editId), { ...payload, ...updateMeta() });
+            await updateDoc(doc(db, COLLECTIONS.BILLS, editId), { ...payload, status: 'approved', autoApproved: true, ...updateMeta() });
             showToast('success', 'Bill updated.');
         } else {
-            await addDoc(collection(db, COLLECTIONS.BILLS), sanitizePayload({ ...payload, status: 'pending_approval', ...actorMeta(), createdAt: serverTimestamp() }));
-            showToast('success', 'Bill submitted for Superadmin approval.');
+            await addDoc(collection(db, COLLECTIONS.BILLS), sanitizePayload({ ...payload, status: 'approved', autoApproved: true, approvedBy: currentUser.email, approvedById: currentUser.id, approvedByName: currentUser.name, approvedAt: serverTimestamp(), ...actorMeta(), createdAt: serverTimestamp() }));
+            showToast('success', 'Bill saved and recorded.');
         }
         closeModal('bill-modal');
     } catch (err) { showToast('error', "Couldn't save bill: " + err.message); }
@@ -2419,8 +2422,8 @@ function renderBillsTable() {
     if (billsDb.length === 0) { tbody.innerHTML = `<tr class="table-empty-row"><td colspan="10">No bills in this scope yet.</td></tr>`; return; }
     tbody.innerHTML = '';
     billsDb.forEach(bill => {
-        const canEditRaw = canManageRecord(bill) && bill.status === 'pending_approval';
-        const canApprove = isSuper() && bill.status === 'pending_approval';
+        const canEditRaw = canManageRecord(bill);
+        const canApprove = false;
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${bill.date}</td><td><strong>${escapeHtml(bill.number)}</strong></td><td>${escapeHtml(bill.supplierName || '—')}</td>
@@ -2835,7 +2838,7 @@ function onBudgetTableClick(e) {
 // =======================================================================
 function subscribeBanks() {
     if (unsubBanks) unsubBanks();
-    unsubBanks = onSnapshot(buildScopedQuery(COLLECTIONS.BANKS), (snap) => {
+    unsubBanks = onSnapshot(query(collection(db, COLLECTIONS.BANKS)), (snap) => {
         banksDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         banksLoaded = true;
         banksDb.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -3042,7 +3045,7 @@ function onBanksTableClick(e) {
 // =======================================================================
 function subscribeAccounts() {
     if (unsubAccounts) unsubAccounts();
-    unsubAccounts = onSnapshot(buildScopedQuery(COLLECTIONS.ACCOUNTS), (snap) => {
+    unsubAccounts = onSnapshot(query(collection(db, COLLECTIONS.ACCOUNTS)), (snap) => {
         accountsDb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         accountsLoaded = true;
         accountsDb.sort((a, b) => (a.number || '').localeCompare(b.number || '', undefined, { numeric: true }) || (a.name || '').localeCompare(b.name || ''));
@@ -3052,7 +3055,7 @@ function subscribeAccounts() {
 }
 
 async function reconcileExistingBankAccountLinks() {
-    if (!banksLoaded || !accountsLoaded || accountLinkSyncRunning || !currentUser) return;
+    if (!isSuper() || !banksLoaded || !accountsLoaded || accountLinkSyncRunning || !currentUser) return;
     accountLinkSyncRunning = true;
     let linkedCount = 0;
     const norm = value => String(value || '').trim().toLowerCase();
@@ -3297,20 +3300,22 @@ function setupLineBankCombobox(row) {
         const t = (term || '').toLowerCase().trim();
         dropdown.innerHTML = '';
 
-        const addNewRow = document.createElement('div');
-        addNewRow.className = 'acct-dropdown-item acct-add-new';
-        addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span></div>`;
-        addNewRow.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            dropdown.classList.add('hidden');
-            openBankModal(null, {
-                onCreated: (bank) => {
-                    hidden.value = bank.id;
-                    input.value = formatBankLabel(bank);
-                }
+        if (isSuper()) {
+            const addNewRow = document.createElement('div');
+            addNewRow.className = 'acct-dropdown-item acct-add-new';
+            addNewRow.innerHTML = `<div class="adi-main"><span class="adi-name"><i class="fa-solid fa-plus"></i> Add new account</span></div>`;
+            addNewRow.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                dropdown.classList.add('hidden');
+                openBankModal(null, {
+                    onCreated: (bank) => {
+                        hidden.value = bank.id;
+                        input.value = formatBankLabel(bank);
+                    }
+                });
             });
-        });
-        dropdown.appendChild(addNewRow);
+            dropdown.appendChild(addNewRow);
+        }
 
         const availableAccounts = getSelectableActionAccounts();
         const matches = availableAccounts.filter(b =>
@@ -3324,7 +3329,7 @@ function setupLineBankCombobox(row) {
         if (availableAccounts.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'acct-empty';
-            empty.textContent = 'No accounts yet — use "+ Add new account" above to create one.';
+            empty.textContent = isSuper() ? 'No accounts yet — use "+ Add new account" above to create one.' : 'No accounts are available. Ask the Superadmin to add one.';
             dropdown.appendChild(empty);
         } else if (matches.length === 0) {
             const empty = document.createElement('div');
@@ -3725,10 +3730,21 @@ function renderReportPanel() {
     const operatingExpenses = Math.max(0, expense - costOfSales);
     const grossMargin = income - costOfSales;
     const netProfit = income - expense;
-    const cashAssets = banksDb.filter(bank => bank.accountType !== 'Credit card').reduce((sum, bank) => sum + computeBankBalance(bank), 0);
-    const otherAssets = accountsDb.filter(account => !account.linkedBankId && ['Accounts receivable (A/R)', 'Current assets', 'Fixed assets', 'Non-current assets'].includes(account.type)).reduce((sum, account) => sum + Number(account.balance || account.openingBalance || 0), 0) + transactionAssets;
+    const ownCashMovement = list.reduce((sum, tx) => {
+        if (tx.type === 'Income') return sum + Number(tx.amount || 0);
+        if (tx.type === 'Expense') return sum - Number(tx.amount || 0);
+        return sum;
+    }, 0);
+    const cashAssets = isSuper()
+        ? banksDb.filter(bank => bank.accountType !== 'Credit card').reduce((sum, bank) => sum + computeBankBalance(bank), 0)
+        : ownCashMovement;
+    const otherAssets = isSuper()
+        ? accountsDb.filter(account => !account.linkedBankId && ['Accounts receivable (A/R)', 'Current assets', 'Fixed assets', 'Non-current assets'].includes(account.type)).reduce((sum, account) => sum + Number(account.balance || account.openingBalance || 0), 0) + transactionAssets
+        : transactionAssets;
     const assets = cashAssets + otherAssets;
-    const accountLiabilities = accountsDb.filter(account => ['Credit card', 'Accounts payable (A/P)', 'Current liabilities', 'Non-current liabilities'].includes(account.type)).reduce((sum, account) => sum + Math.abs(Number(account.balance || account.openingBalance || 0)), 0);
+    const accountLiabilities = isSuper()
+        ? accountsDb.filter(account => ['Credit card', 'Accounts payable (A/P)', 'Current liabilities', 'Non-current liabilities'].includes(account.type)).reduce((sum, account) => sum + Math.abs(Number(account.balance || account.openingBalance || 0)), 0)
+        : 0;
     const liabilities = accountLiabilities + transactionLiabilities;
     const equity = assets - liabilities;
 
@@ -3996,34 +4012,6 @@ function openFinancialStatement(targetId) {
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
         section.classList.add('statement-focus');
         window.setTimeout(() => section.classList.remove('statement-focus'), 1800);
-    });
-}
-
-function renderPendingApprovals() {
-    if (!currentUser) return;
-    const wrap = $('pending-approvals-wrap');
-    const grid = $('pending-approvals-grid');
-    const items = [];
-
-    if (isSuper()) {
-        invoicesDb.filter(i => i.status === 'pending_approval').forEach(i => items.push({ type: 'Invoice', label: i.number, sub: i.customerName, amount: i.amount, id: i.id, kind: 'invoice' }));
-        billsDb.filter(b => b.status === 'pending_approval').forEach(b => items.push({ type: 'Bill', label: b.number, sub: b.supplierName, amount: b.amount, id: b.id, kind: 'bill' }));
-    }
-
-    if (items.length === 0) { wrap.classList.add('hidden'); grid.innerHTML = ''; return; }
-    wrap.classList.remove('hidden');
-    grid.innerHTML = '';
-    items.slice(0, 8).forEach(it => {
-        const card = document.createElement('div');
-        card.className = 'ext-card';
-        card.innerHTML = `
-            <h4><i class="fa-solid fa-clock"></i> ${it.type} ${escapeHtml(it.label)}</h4>
-            <div class="ext-sub">${escapeHtml(it.sub || '')}</div>
-            <div class="ext-row"><span>Amount</span><strong>${formatRF(it.amount)}</strong></div>
-        `;
-        card.style.cursor = 'pointer';
-        card.addEventListener('click', () => switchView(it.kind === 'invoice' ? 'invoices' : 'bills'));
-        grid.appendChild(card);
     });
 }
 
@@ -4535,24 +4523,26 @@ function addJournalLine(afterRow = null) {
         <td><div class="row-actions"><button type="button" class="icon-action-btn line-edit-btn" title="Edit this line"><i class="fa-solid fa-pen"></i></button><button type="button" class="icon-action-btn danger-hover line-delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button></div></td>`;
     const accountSelect = tr.querySelector('.line-account');
     fillSimpleSelect(accountSelect, getJournalAccountOptions(), true, '-- Account --');
-    const addAccountOption = document.createElement('option');
-    addAccountOption.value = '__ADD_NEW_ACCOUNT__';
-    addAccountOption.textContent = '+ Add new account';
-    accountSelect.insertBefore(addAccountOption, accountSelect.options[1] || null);
-    accountSelect.addEventListener('change', () => {
-        if (accountSelect.value !== '__ADD_NEW_ACCOUNT__') return;
-        accountSelect.value = '';
-        openAccountModal(null, {
-            onCreated: account => {
-                const label = formatAccountLabel(account);
-                const option = document.createElement('option');
-                option.value = label;
-                option.textContent = label;
-                accountSelect.appendChild(option);
-                accountSelect.value = label;
-            }
+    if (isSuper()) {
+        const addAccountOption = document.createElement('option');
+        addAccountOption.value = '__ADD_NEW_ACCOUNT__';
+        addAccountOption.textContent = '+ Add new account';
+        accountSelect.insertBefore(addAccountOption, accountSelect.options[1] || null);
+        accountSelect.addEventListener('change', () => {
+            if (accountSelect.value !== '__ADD_NEW_ACCOUNT__') return;
+            accountSelect.value = '';
+            openAccountModal(null, {
+                onCreated: account => {
+                    const label = formatAccountLabel(account);
+                    const option = document.createElement('option');
+                    option.value = label;
+                    option.textContent = label;
+                    accountSelect.appendChild(option);
+                    accountSelect.value = label;
+                }
+            });
         });
-    });
+    }
     fillSimpleSelect(tr.querySelector('.line-name'), [...new Set([...customersDb.map(c => c.name), ...suppliersDb.map(s => s.name)])], true, '-- Name --');
     fillSimpleSelect(tr.querySelector('.line-vat'), VAT_OPTIONS, true, '-- VAT --');
     fillSimpleSelect(tr.querySelector('.line-location'), PRESBYTERIES, true, '-- Location --');
