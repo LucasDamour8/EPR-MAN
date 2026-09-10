@@ -124,7 +124,7 @@
                 <button type="button" class="apps-grid-item" data-view="transactions"><i class="fa-solid fa-list-check"></i>Transactions</button>
                 <button type="button" class="apps-grid-item" data-view="reports"><i class="fa-solid fa-file-invoice-dollar"></i>Reports</button>
                 <button type="button" class="apps-grid-item" data-view="departments"><i class="fa-solid fa-sitemap"></i>Departments &amp; Presbyteries</button>
-                <button type="button" class="apps-grid-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Sales Portal</button>
+                <button type="button" class="apps-grid-item" data-view="invoices"><i class="fa-solid fa-file-invoice"></i>Income Portal</button>
                 <button type="button" class="apps-grid-item" data-view="bills"><i class="fa-solid fa-receipt"></i>Expense Portal</button>
                 <button type="button" class="apps-grid-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i>Suppliers <span class="count-chip" id="nav-suppliers-count">0</span></button>
                 <button type="button" class="apps-grid-item" data-view="customers"><i class="fa-solid fa-address-book"></i>Customer Portal <span class="count-chip" id="nav-customers-count">0</span></button>
@@ -250,7 +250,7 @@
                     <div class="pill-nav" id="pill-nav">
                         <button type="button" class="pill-nav-btn" data-view="transactions"><span class="pill-icon" style="background:var(--primary-dark)"><i class="fa-solid fa-coins"></i></span>Accounting Field</button>
                         <button type="button" class="pill-nav-btn" data-view="bills"><span class="pill-icon" style="background:var(--accent-dark)"><i class="fa-solid fa-receipt"></i></span>Expense Portal</button>
-                        <button type="button" class="pill-nav-btn" data-view="invoices"><span class="pill-icon" style="background:var(--primary)"><i class="fa-solid fa-file-invoice"></i></span>Sales Portal</button>
+                        <button type="button" class="pill-nav-btn" data-view="invoices"><span class="pill-icon" style="background:var(--primary)"><i class="fa-solid fa-file-invoice"></i></span>Income Portal</button>
                         <button type="button" class="pill-nav-btn" data-view="customers"><span class="pill-icon" style="background:var(--teal)"><i class="fa-solid fa-address-book"></i></span>Customer Portal</button>
                         <button type="button" class="pill-nav-btn" data-view="coa"><span class="pill-icon" style="background:var(--primary-darker)"><i class="fa-solid fa-chart-line"></i></span>Chart of Accounts</button>
                         <button type="button" class="pill-nav-btn" data-view="reports"><span class="pill-icon" style="background:#555"><i class="fa-solid fa-file-invoice-dollar"></i></span>Reports</button>
@@ -264,10 +264,10 @@
                         <button type="button" class="ca-btn show-all" id="qa-show-all">Show all</button>
                     </div>
 
-                    <div class="glance-title">Business at a glance</div>
+                    <div class="glance-title">Summary</div>
                     <div class="glance-grid">
-                        <div class="glance-card clickable-card" id="glance-profit-loss-card" role="button" tabindex="0" aria-label="Open Profit and Loss Income Statement">
-                            <div class="glance-card-head"><h4>Profit &amp; Loss</h4><span>Current scope</span></div>
+                        <div class="glance-card clickable-card" id="glance-profit-loss-card" role="button" tabindex="0" aria-label="Open Income Statement">
+                            <div class="glance-card-head"><h4>Income Statement</h4><span>Current scope</span></div>
                             <div class="glance-sub">Net profit</div>
                             <div class="glance-big" id="gl-net-profit">RF 0</div>
                             <div class="progress-bar-group">
@@ -422,14 +422,12 @@
                         <aside class="reports-side">
                             <button type="button" class="reports-side-item active" data-report-mode="financial" data-financial-view="all">Financial Statements</button>
                             <button type="button" class="reports-side-item" data-report-mode="financial" data-financial-view="balance">Balance Sheet</button>
-                            <button type="button" class="reports-side-item" data-report-mode="financial" data-financial-view="profit-loss">Profit &amp; Loss</button>
                             <button type="button" class="reports-side-item" data-report-mode="financial" data-financial-view="income">Income Statement</button>
                             <button type="button" class="reports-side-item" data-report-mode="custom">Custom system report</button>
                             <button type="button" class="reports-side-item" data-report-mode="management">Management summary</button>
                             <button type="button" class="reports-side-item" data-report-mode="activity">Activity audit</button>
                             <div style="padding:10px 12px 4px; font-size:.7rem; font-weight:800; text-transform:uppercase; color:var(--text-muted);">Favourites</div>
                             <button type="button" class="reports-fav-row" data-financial-view="balance"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></button>
-                            <button type="button" class="reports-fav-row" data-financial-view="profit-loss"><span>Profit &amp; Loss</span><i class="fa-solid fa-star"></i></button>
                             <button type="button" class="reports-fav-row" data-financial-view="income"><span>Income Statement</span><i class="fa-solid fa-star"></i></button>
                             <button type="button" class="reports-fav-row" data-financial-view="receivables"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></button>
                         </aside>
@@ -484,7 +482,7 @@
                                 <p style="text-align:center; color: var(--text-muted); font-size:.78rem; margin-bottom: 25px;" id="stmt-record-count"></p>
 
                                 <div class="financial-report-section" style="margin-bottom: 25px;" id="income-statement-section">
-                                    <h4 id="income-statement-heading" style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Profit &amp; Loss / Income Statement</h4>
+                                    <h4 id="income-statement-heading" style="border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 10px;">Income Statement</h4>
                                     <div class="statement-row clickable" data-jump="Income"><span>Total Revenue / Income</span><strong id="stmt-income">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row clickable" data-jump="CostOfSales"><span>Cost of Sales</span><strong id="stmt-cost-sales">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row highlight"><span>Gross Margin</span><strong id="stmt-gross-margin">RF 0</strong></div>
@@ -596,11 +594,11 @@
                                 <div class="form-group" id="user-head-department-group">
                                     <label class="checklist-item hod-assignment-check">
                                         <input type="checkbox" id="user-head-department">
-                                        <span><strong>Make this user Head of Department</strong><span class="field-hint">The user can view, control and manage every record, Section and Project belonging to the Department selected below.</span></span>
+                                        <span><strong>Make this user Head of Department</strong><span class="field-hint">The Department determines where this user records data. The user sees and manages only records they personally create.</span></span>
                                     </label>
                                 </div>
 
-                                <div class="form-group" id="user-full-access-group">
+                                <div class="form-group hidden" id="user-full-access-group">
                                     <label class="checklist-item" style="border:1px dashed var(--border); border-radius:8px; padding:10px 12px;">
                                         <input type="checkbox" id="user-full-access">
                                         <span>Grant full access to every EPR Location <span class="field-hint" style="margin:0;">(sees &amp; records against all presbyteries/departments, like a Superadmin's scope, while keeping their staff role)</span></span>
@@ -666,11 +664,11 @@
                     </div>
                 </section>
 
-                <!-- ============ View: Invoices (Sales Portal) ============ -->
+                <!-- ============ View: Invoices (Income Portal) ============ -->
                 <section id="view-invoices" class="view-panel">
                     <div class="view-header flex-between">
                         <div>
-                            <h2>Sales Portal — Invoices</h2>
+                            <h2>Income Portal — Invoices</h2>
                             <p id="invoices-scope-note">Every invoice raised by staff needs Superadmin approval before it counts as issued.</p>
                         </div>
                         <button class="btn btn-primary" id="open-invoice-modal-btn"><i class="fa-solid fa-plus"></i> New Invoice</button>
