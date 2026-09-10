@@ -429,7 +429,6 @@
                             <div style="padding:10px 12px 4px; font-size:.7rem; font-weight:800; text-transform:uppercase; color:var(--text-muted);">Favourites</div>
                             <button type="button" class="reports-fav-row" data-financial-view="balance"><span>Balance Sheet</span><i class="fa-solid fa-star"></i></button>
                             <button type="button" class="reports-fav-row" data-financial-view="income"><span>Income Statement</span><i class="fa-solid fa-star"></i></button>
-                            <button type="button" class="reports-fav-row" data-financial-view="receivables"><span>Accounts Receivable Ageing</span><i class="fa-solid fa-star"></i></button>
                         </aside>
 
                         <div>
@@ -498,15 +497,6 @@
                                     <div class="statement-row highlight"><span>Total Assets</span><strong id="stmt-assets">RF 0</strong></div>
                                     <div class="statement-row clickable" data-jump="Liability"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row highlight"><span>Owner's Equity</span><strong id="stmt-equity">RF 0</strong></div>
-                                </div>
-
-                                <div id="receivables-ageing-section" class="statement-section-spaced">
-                                    <h4>Accounts Receivable Ageing</h4>
-                                    <div class="statement-row"><span>Current</span><strong id="stmt-ar-current">RF 0</strong></div>
-                                    <div class="statement-row"><span>1–30 days overdue</span><strong id="stmt-ar-30">RF 0</strong></div>
-                                    <div class="statement-row"><span>31–60 days overdue</span><strong id="stmt-ar-60">RF 0</strong></div>
-                                    <div class="statement-row"><span>61+ days overdue</span><strong id="stmt-ar-older">RF 0</strong></div>
-                                    <div class="statement-row highlight clickable" data-jump="Receivable"><span>Total Accounts Receivable</span><strong id="stmt-ar-total">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                 </div>
 
                                 <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
