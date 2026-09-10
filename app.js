@@ -3743,24 +3743,6 @@ function renderReportPanel() {
     $('stmt-assets').textContent = formatRF(assets);
     $('stmt-liabilities').textContent = formatRF(liabilities);
     $('stmt-equity').textContent = formatRF(equity);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const receivables = invoicesDb.filter(invoice => !['paid', 'cancelled', 'void'].includes(String(invoice.status || '').toLowerCase()));
-    const ageing = { current: 0, d30: 0, d60: 0, older: 0 };
-    receivables.forEach(invoice => {
-        const amount = Number(invoice.balanceDue ?? invoice.balance ?? invoice.amount ?? invoice.total ?? 0);
-        const due = new Date(invoice.dueDate || invoice.date || today);
-        due.setHours(0, 0, 0, 0);
-        const days = Math.floor((today - due) / 86400000);
-        if (days <= 0) ageing.current += amount;
-        else if (days <= 30) ageing.d30 += amount;
-        else if (days <= 60) ageing.d60 += amount;
-        else ageing.older += amount;
-    });
-    $('stmt-ar-current').textContent = formatRF(ageing.current);
-    $('stmt-ar-30').textContent = formatRF(ageing.d30);
-    $('stmt-ar-60').textContent = formatRF(ageing.d60);
-    $('stmt-ar-older').textContent = formatRF(ageing.older);
-    $('stmt-ar-total').textContent = formatRF(ageing.current + ageing.d30 + ageing.d60 + ageing.older);
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
@@ -3973,30 +3955,23 @@ function openFinancialView(view = 'all') {
     renderReportPanel();
     const income = $('income-statement-section');
     const balance = $('balance-sheet-section');
-    const ageing = $('receivables-ageing-section');
+    const reportSections = [income, balance];
     const charts = qsa('#view-reports .ext-grid-wide');
     const title = $('financial-report-title');
-    [income, balance, ageing].forEach(section => section?.classList.remove('financial-section-hidden'));
+    reportSections.forEach(section => section?.classList.remove('financial-section-hidden'));
     charts.forEach(chart => chart.classList.toggle('financial-section-hidden', view !== 'all'));
 
     let target = $('printable-report');
     if (view === 'balance') {
         income?.classList.add('financial-section-hidden');
-        ageing?.classList.add('financial-section-hidden');
         target = balance;
         if (title) title.textContent = 'SAS BALANCE SHEET';
     } else if (view === 'income') {
         balance?.classList.add('financial-section-hidden');
-        ageing?.classList.add('financial-section-hidden');
         target = income;
         const heading = $('income-statement-heading');
         if (heading) heading.textContent = 'Income Statement';
         if (title) title.textContent = 'SAS INCOME STATEMENT';
-    } else if (view === 'receivables') {
-        income?.classList.add('financial-section-hidden');
-        balance?.classList.add('financial-section-hidden');
-        target = ageing;
-        if (title) title.textContent = 'SAS ACCOUNTS RECEIVABLE AGEING';
     } else {
         const heading = $('income-statement-heading');
         if (heading) heading.textContent = 'Income Statement';
