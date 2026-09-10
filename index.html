@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css?v=20260910-role-scope-4">
+    <link rel="stylesheet" href="styles.css?v=20260910-reference-access-5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -268,7 +268,7 @@
                     <div class="glance-grid">
                         <div class="glance-card clickable-card" id="glance-profit-loss-card" role="button" tabindex="0" aria-label="Open Income Statement">
                             <div class="glance-card-head"><h4>Income Statement</h4><span>Current scope</span></div>
-                            <div class="glance-sub">Net profit</div>
+                            <div class="glance-sub">Surplus / Deficit</div>
                             <div class="glance-big" id="gl-net-profit">RF 0</div>
                             <div class="progress-bar-group">
                                 <label style="font-size:.8rem;font-weight:600;">Income: <span id="gl-income">RF 0</span></label>
@@ -483,7 +483,7 @@
                                     <div class="statement-row highlight"><span>Gross Margin</span><strong id="stmt-gross-margin">RF 0</strong></div>
                                     <div class="statement-row clickable" data-jump="OperatingExpense"><span>Operating Expenses</span><strong id="stmt-operating-expenses">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
                                     <div class="statement-row"><span>Total Expenses</span><strong id="stmt-expenses">RF 0</strong></div>
-                                    <div class="statement-row highlight"><span>Net Profit / (Loss)</span><strong id="stmt-net">RF 0</strong></div>
+                                    <div class="statement-row highlight"><span>Surplus / Deficit</span><strong id="stmt-net">RF 0</strong></div>
                                 </div>
 
                                 <div class="financial-report-section" id="balance-sheet-section">
@@ -1462,6 +1462,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=20260910-role-scope-4"></script>
+    <script type="module" src="app.js?v=20260910-reference-access-5"></script>
 </body>
 </html>
