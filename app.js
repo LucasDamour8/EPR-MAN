@@ -209,6 +209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     setupRangeBar('coa-range-bar', (r) => { coaRange = r; renderCoaCharts(); });
     populateUserProjectsChecklist();
+    onUserAssignModeChange();
     setupAccountModal();
     setupCustomReports();
     enhancePageModalsAsPages();
@@ -531,6 +532,7 @@ function setupEventListeners() {
         const isHead = $('user-role').value === 'head_of_department';
         $('user-head-department').checked = isHead;
         if (isHead) {
+            qsa('input[name="user-assign-mode"]').forEach(option => option.checked = false);
             const deptMode = document.querySelector('input[name="user-assign-mode"][value="department"]');
             if (deptMode) deptMode.checked = true;
             $('user-full-access').checked = false;
@@ -1677,6 +1679,7 @@ function onHeadOfDepartmentChange() {
     $('user-full-access-group').classList.add('hidden');
     $('user-scope-fields').classList.remove('hidden');
     $('user-mode-group').classList.add('hidden');
+    qsa('input[name="user-assign-mode"]').forEach(option => option.checked = false);
     const departmentMode = document.querySelector('input[name="user-assign-mode"][value="department"]');
     if (departmentMode) departmentMode.checked = true;
     $('user-pres-field').classList.add('hidden');
@@ -1696,19 +1699,27 @@ function onUserFullAccessChange() {
     if (full) populateUserProjectsChecklist(getAllProjectKeys());
 }
 
-function onUserAssignModeChange() {
+function onUserAssignModeChange(event) {
+    const changed = event && event.target && event.target.matches('input[name="user-assign-mode"]') ? event.target : null;
+    if (changed && changed.checked) {
+        qsa('input[name="user-assign-mode"]').forEach(option => {
+            if (option !== changed) option.checked = false;
+        });
+    }
     const checked = document.querySelector('input[name="user-assign-mode"]:checked');
-    const mode = checked ? checked.value : 'presbytery';
+    const mode = checked ? checked.value : '';
     const presField = $('user-pres-field');
     const deptField = $('user-dept-field');
     const projectsField = $('user-projects-field');
+    const departmentChoice = $('user-department-choice');
     const needsPresbytery = mode === 'presbytery' || mode === 'presbytery_department';
     const needsDepartment = mode === 'department' || mode === 'presbytery_department';
     if (presField) presField.classList.toggle('hidden', !needsPresbytery);
     if (deptField) deptField.classList.toggle('hidden', !needsDepartment);
+    if (departmentChoice) departmentChoice.classList.toggle('hidden', mode === 'presbytery');
     // Presbytery access automatically includes every project in that
     // Presbytery, so no project-by-project selection is required.
-    if (projectsField) projectsField.classList.toggle('hidden', mode === 'presbytery');
+    if (projectsField) projectsField.classList.toggle('hidden', mode === 'presbytery' || mode === '');
     $('user-pres').required = needsPresbytery;
     $('user-dept').required = needsDepartment;
     if ($('user-dept-label')) {
@@ -1725,7 +1736,7 @@ async function onSubmitUserForm(e) {
     const isHead = role === 'head_of_department';
     const fullAccess = false;
     const modeEl = document.querySelector('input[name="user-assign-mode"]:checked');
-    const mode = isHead ? 'department' : (modeEl ? modeEl.value : 'presbytery');
+    const mode = isHead ? 'department' : (modeEl ? modeEl.value : '');
 
     const name = $('user-name').value.trim();
     const email = $('user-email').value.trim().toLowerCase();
@@ -1750,6 +1761,7 @@ async function onSubmitUserForm(e) {
     if (!name || !email) { showToast('error', 'Fill in a name and a valid email.'); return; }
     if (!editId && password.length < 6) { showToast('error', 'Set a password of at least 6 characters for this new user.'); return; }
     if (!roleSuper && !fullAccess) {
+        if (!mode) { showToast('error', 'Choose Presbytery or Department access for this user.'); return; }
         if (['presbytery', 'presbytery_department'].includes(mode) && !profileFields.presbytery) { showToast('error', 'Assign a Presbytery for this user.'); return; }
         if (['department', 'presbytery_department'].includes(mode) && !profileFields.department) { showToast('error', 'Assign a Department for this user.'); return; }
         if (mode !== 'presbytery' && !assignedProjects.length) { showToast('error', 'Tick at least one sub-project for this user to work on.'); return; }
@@ -1794,6 +1806,7 @@ function resetUserForm() {
     $('user-full-access-group').classList.add('hidden');
     $('user-scope-fields').classList.remove('hidden');
     $('user-mode-group').classList.remove('hidden');
+    qsa('input[name="user-assign-mode"]').forEach(option => option.checked = false);
     const presRadio = document.querySelector('input[name="user-assign-mode"][value="presbytery"]');
     if (presRadio) presRadio.checked = true;
     const presField = $('user-pres-field'), deptField = $('user-dept-field');
@@ -1802,6 +1815,7 @@ function resetUserForm() {
     if ($('user-projects-field')) $('user-projects-field').classList.add('hidden');
     populateSubsections('user-dept', 'user-subsection');
     populateUserProjectsChecklist([]);
+    onUserAssignModeChange();
 }
 
 function onUsersTableClick(e) {
@@ -1828,7 +1842,9 @@ function onUsersTableClick(e) {
         $('user-scope-fields').classList.toggle('hidden', roleSuper);
         $('user-mode-group').classList.toggle('hidden', roleSuper || roleHead);
         if (!roleSuper) {
-            const mode = u.assignMode || (u.department === 'ALL' ? 'presbytery' : 'department');
+            const storedMode = u.assignMode || (u.department === 'ALL' ? 'presbytery' : 'department');
+            const mode = storedMode === 'presbytery_department' ? 'department' : storedMode;
+            qsa('input[name="user-assign-mode"]').forEach(option => option.checked = false);
             const radio = document.querySelector(`input[name="user-assign-mode"][value="${mode}"]`);
             if (radio) radio.checked = true;
             const presField = $('user-pres-field'), deptField = $('user-dept-field');
