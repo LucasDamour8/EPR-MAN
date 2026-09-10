@@ -1339,7 +1339,7 @@ function updateProfileUI() {
         : isHead
             ? `You can view and manage all records assigned to ${shortDeptName(currentUser.department)}. Other departments remain private.`
             : assignmentMode === 'presbytery'
-                ? `You can view and manage all records assigned to ${currentUser.presbytery.replace('EPR ', '')}. Other Presbyteries remain private.`
+                ? `You can view and manage all records and projects assigned to ${currentUser.presbytery.replace('EPR ', '')}. Other Presbyteries remain private.`
                 : assignmentMode === 'presbytery_department'
                     ? `You can view and manage ${shortDeptName(currentUser.department)} records in ${currentUser.presbytery.replace('EPR ', '')}.`
                     : assignmentMode === 'department'
@@ -1681,6 +1681,7 @@ function onHeadOfDepartmentChange() {
     if (departmentMode) departmentMode.checked = true;
     $('user-pres-field').classList.add('hidden');
     $('user-dept-field').classList.remove('hidden');
+    $('user-projects-field').classList.remove('hidden');
     $('user-dept').required = true;
     $('user-pres').required = false;
     populateHeadDepartmentProjects();
@@ -1700,10 +1701,14 @@ function onUserAssignModeChange() {
     const mode = checked ? checked.value : 'presbytery';
     const presField = $('user-pres-field');
     const deptField = $('user-dept-field');
+    const projectsField = $('user-projects-field');
     const needsPresbytery = mode === 'presbytery' || mode === 'presbytery_department';
     const needsDepartment = mode === 'department' || mode === 'presbytery_department';
     if (presField) presField.classList.toggle('hidden', !needsPresbytery);
     if (deptField) deptField.classList.toggle('hidden', !needsDepartment);
+    // Presbytery access automatically includes every project in that
+    // Presbytery, so no project-by-project selection is required.
+    if (projectsField) projectsField.classList.toggle('hidden', mode === 'presbytery');
     $('user-pres').required = needsPresbytery;
     $('user-dept').required = needsDepartment;
     if ($('user-dept-label')) {
@@ -1728,13 +1733,15 @@ async function onSubmitUserForm(e) {
     const headDepartment = $('user-dept').value;
     const assignedProjects = (roleSuper || fullAccess) ? getAllProjectKeys() : isHead
         ? (EPR_STRUCTURE[headDepartment] || []).map(project => `${headDepartment}::${project}`)
-        : getCheckedProjectKeys();
+        : mode === 'presbytery'
+            ? []
+            : getCheckedProjectKeys();
 
     const profileFields = sanitizePayload({
         name, email, role,
         presbytery: (roleSuper || fullAccess) ? 'ALL' : (['presbytery', 'presbytery_department'].includes(mode) ? $('user-pres').value : 'ALL'),
         department: (roleSuper || fullAccess) ? 'ALL' : (['department', 'presbytery_department'].includes(mode) ? $('user-dept').value : 'ALL'),
-        subsection: (roleSuper || fullAccess) ? 'ALL' : (assignedProjects[0] ? assignedProjects[0].split('::')[1] : ''),
+        subsection: (roleSuper || fullAccess || mode === 'presbytery') ? 'ALL' : (assignedProjects[0] ? assignedProjects[0].split('::')[1] : ''),
         assignMode: (roleSuper || fullAccess) ? '' : mode
     });
     profileFields.assignedProjects = assignedProjects;
@@ -1745,7 +1752,7 @@ async function onSubmitUserForm(e) {
     if (!roleSuper && !fullAccess) {
         if (['presbytery', 'presbytery_department'].includes(mode) && !profileFields.presbytery) { showToast('error', 'Assign a Presbytery for this user.'); return; }
         if (['department', 'presbytery_department'].includes(mode) && !profileFields.department) { showToast('error', 'Assign a Department for this user.'); return; }
-        if (!assignedProjects.length) { showToast('error', 'Tick at least one sub-project for this user to work on.'); return; }
+        if (mode !== 'presbytery' && !assignedProjects.length) { showToast('error', 'Tick at least one sub-project for this user to work on.'); return; }
     }
 
     const submitBtn = $('user-submit-btn');
@@ -1792,6 +1799,7 @@ function resetUserForm() {
     const presField = $('user-pres-field'), deptField = $('user-dept-field');
     if (presField) presField.classList.remove('hidden');
     if (deptField) deptField.classList.add('hidden');
+    if ($('user-projects-field')) $('user-projects-field').classList.add('hidden');
     populateSubsections('user-dept', 'user-subsection');
     populateUserProjectsChecklist([]);
 }
@@ -2082,13 +2090,18 @@ function renderUsersTable() {
     }
     list.forEach(u => {
         const projCount = (u.assignedProjects || []).length;
+        const assignmentSummary = u.assignMode === 'presbytery'
+            ? 'All departments & projects in Presbytery'
+            : (u.department === 'ALL')
+                ? 'All departments'
+                : shortDeptName(u.department);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(u.name)}</strong>${u.fullAccess ? ' <span class="badge" style="background:var(--primary-light);color:var(--primary-darker);">Full access</span>' : ''}</td>
             <td>${escapeHtml(u.email)}</td>
             <td><span class="badge role-${u.role}">${ROLE_LABELS[u.role] || u.role}</span></td>
             <td>${(u.presbytery === 'ALL') ? 'All presbyteries' : u.presbytery}</td>
-            <td>${(u.department === 'ALL') ? 'All departments' : shortDeptName(u.department)}${projCount ? ` <span class="muted-sm">(${projCount} project${projCount === 1 ? '' : 's'})</span>` : ''}</td>
+            <td>${assignmentSummary}${u.assignMode !== 'presbytery' && projCount ? ` <span class="muted-sm">(${projCount} project${projCount === 1 ? '' : 's'})</span>` : ''}</td>
             <td><div class="row-actions">
                 <button class="icon-action-btn user-edit-btn" data-id="${u.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-action-btn danger-hover user-delete-btn" data-id="${u.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
