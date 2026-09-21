@@ -15,7 +15,7 @@ const auth = getAuth(firebaseApp);
 
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
-    "Department of Development and Diakonia": ["Development", "Project SCA", "Project CCDP", "Diakonia"],
+    "Department of Development and Diakonia": ["Development", "Project SOH", "Project SCA", "Project CBID", "Project CEP", "Project CCDP", "Diakonia"],
     "Department of Finance and Administration": ["Functioning", "Information"],
     "Department of Education": ["Education", "CPAJ"],
     "Department of Health": ["Health Projects"]
