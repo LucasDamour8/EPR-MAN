@@ -1282,6 +1282,30 @@ select option {
     #record-detail-modal .modal-content { max-width:none; box-shadow:none; max-height:none; }
 }
 
+/* Print only the report and filtered records currently selected on screen. */
+@media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    body.print-financial-report .content-body > *:not(#view-reports),
+    body.print-custom-report .content-body > *:not(#view-reports),
+    body.print-financial-report #view-reports > *:not(.reports-layout),
+    body.print-custom-report #view-reports > *:not(.reports-layout),
+    body.print-financial-report .reports-layout > aside,
+    body.print-custom-report .reports-layout > aside,
+    body.print-financial-report .reports-layout > div > *:not(#printable-report),
+    body.print-custom-report .reports-layout > div > *:not(#custom-report-results) { display:none !important; }
+    body.print-financial-report #printable-report,
+    body.print-custom-report #custom-report-results { display:block !important; width:100% !important; max-width:none !important; margin:0 !important; }
+    body.print-financial-report .reports-layout,
+    body.print-custom-report .reports-layout { display:block !important; }
+    body.print-custom-report .custom-report-chart { display:none !important; }
+    body.print-custom-report .table-wrap { overflow:visible !important; }
+    body.print-custom-report .report-results-table { min-width:0 !important; width:100% !important; table-layout:fixed; font-size:9pt; }
+    body.print-custom-report .report-results-table th,
+    body.print-custom-report .report-results-table td { padding:6px 5px; overflow-wrap:anywhere; }
+    body.print-financial-report .financial-statement-card,
+    body.print-financial-report .financial-report-section { break-inside:avoid; }
+}
+
 /* Bank Deposit: readable account selector with live balance at its right */
 .qb-header-grid .expense-account-group,
 .qb-header-grid .deposit-account-group { grid-column:span 2; min-width:0; }
