@@ -15,7 +15,7 @@ const auth = getAuth(firebaseApp);
 
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
-    "Department of Development and Diakonia": ["Development", "Project SOH", "Project SCA", "Project CBID", "Project CEP", "Project CCDP", "Diakonia"],
+    "Department of Development and Diakonia": ["Development", "Project SCA", "Project CCDP", "Diakonia", "Project SOH", "Project CBID", "Project CEP"],
     "Department of Finance and Administration": ["Functioning", "Information"],
     "Department of Education": ["Education", "CPAJ"],
     "Department of Health": ["Health Projects"]
@@ -581,7 +581,7 @@ function setupEventListeners() {
     });
     $('confirm-modal').addEventListener('click', (e) => { if (e.target === $('confirm-modal')) closeConfirmModal(); });
 
-    $('print-btn').addEventListener('click', () => window.print());
+    $('print-btn').addEventListener('click', printCurrentReport);
     $('export-excel-btn').addEventListener('click', exportReportToExcel);
 
     qsa('#printable-report .statement-row.clickable').forEach(row => {
@@ -954,7 +954,7 @@ function getFlyoutGroups(key) {
                 { title: 'Standard reports', items: [
                     { icon: 'fa-file-invoice-dollar', label: 'Financial Statement', action: () => switchView('reports') },
                     { icon: 'fa-file-excel', label: 'Export to Excel', action: () => exportReportToExcel() },
-                    { icon: 'fa-print', label: 'Print statement', action: () => window.print() }
+                    { icon: 'fa-print', label: 'Print statement', action: () => printCurrentReport() }
                 ] },
                 { title: 'Management & performance', items: [
                     { icon: 'fa-chart-line', label: 'Chart of Accounts', action: () => switchView('coa') },
@@ -1360,17 +1360,10 @@ function hasFullScope() { return currentUser && currentUser.role === 'superadmin
 function isFinanceOrSuper() { return currentUser && (currentUser.role === 'superadmin' || currentUser.role === 'head_of_department' || currentUser.role === 'finance' || currentUser.role === 'accountant' || currentUser.role === 'general_accountant' || currentUser.role === 'cashier'); }
 function isOwnRecord(rec) { return currentUser && rec && rec.createdById === currentUser.id; }
 function canManageRecord(rec) {
-    const mode = currentUser && currentUser.assignMode;
-    const assignedScopeMatch = !!(rec && (
-        (mode === 'presbytery' && rec.presbytery === currentUser.presbytery)
-        || (mode === 'presbytery_department' && rec.presbytery === currentUser.presbytery && rec.department === currentUser.department)
-        || (mode === 'department' && rec.department === currentUser.department)
-    ));
     return !!(
         isSuper()
         || isOwnRecord(rec)
         || (isHeadOfDepartment() && rec && rec.department === currentUser.department)
-        || assignedScopeMatch
     );
 }
 
@@ -1391,13 +1384,6 @@ function buildScopedQuery(collectionName) {
         if (currentScope.department !== 'ALL') clauses.push(where('department', '==', currentScope.department));
         if (currentScope.presbytery !== 'ALL') clauses.push(where('presbytery', '==', currentScope.presbytery));
     } else if (isHeadOfDepartment()) {
-        clauses.push(where('department', '==', currentUser.department));
-    } else if (currentUser.assignMode === 'presbytery') {
-        clauses.push(where('presbytery', '==', currentUser.presbytery));
-    } else if (currentUser.assignMode === 'presbytery_department') {
-        clauses.push(where('presbytery', '==', currentUser.presbytery));
-        clauses.push(where('department', '==', currentUser.department));
-    } else if (currentUser.assignMode === 'department') {
         clauses.push(where('department', '==', currentUser.department));
     } else if (!isSuper()) {
         clauses.push(where('createdById', '==', currentUser.id));
@@ -2189,22 +2175,77 @@ function renderSearchDropdown() {
     dropdown.classList.remove('hidden');
 }
 
+function reportRowsForExcel(rows) {
+    return rows.map(item => ({
+        Date: item.date || '', Module: REPORT_SOURCE_LABELS[item.source] || item.source,
+        Name: item.name || '', Reference: item.reference || '', Status: item.status || '',
+        Amount_RF: Number(item.amount || 0), Department: item.raw?.department || '',
+        Project_Section: item.raw?.subsection || item.raw?.project || '',
+        Presbytery: item.raw?.presbytery || '',
+        Recorded_By: item.raw?.createdByName || item.raw?.createdBy || '',
+        Recorded_By_ID: item.raw?.createdById || '',
+        Details: JSON.stringify(item.raw || {})
+    }));
+}
+
+function appendReportWorksheet(workbook, name, rows, includeEmpty = false) {
+    if (!rows.length && !includeEmpty) return false;
+    const worksheet = rows.length
+        ? XLSX.utils.json_to_sheet(reportRowsForExcel(rows))
+        : XLSX.utils.aoa_to_sheet([['No records match the active filters for this module.']]);
+    worksheet['!cols'] = [{ wch: 13 }, { wch: 24 }, { wch: 32 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 30 }, { wch: 26 }, { wch: 25 }, { wch: 24 }, { wch: 24 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(workbook, worksheet, name.slice(0, 31));
+    return true;
+}
+
 function exportReportToExcel() {
     const customMode = !$('custom-report-results').classList.contains('hidden');
     const customRows = customMode ? getCustomReportRecords() : [];
     const list = customMode ? customRows : getReportTransactions();
     if (list.length === 0) { showToast('error', 'Nothing to export for the selected range/scope.'); return; }
-    const data = customMode ? customRows.map(item => ({
-        Date: item.date, Module: REPORT_SOURCE_LABELS[item.source] || item.source, Name: item.name,
-        Reference: item.reference, Status: item.status, Amount: item.amount, Details: JSON.stringify(item.raw)
-    })) : list.map(item => ({ Date: item.date, Type: item.type, Description: item.desc, Department: item.department,
-        Section: item.subsection, Presbytery: item.presbytery, Account: item.bankName || '', Amount: item.amount,
-        RecordedBy: item.createdByName || item.createdBy || '' }));
-    const worksheet = XLSX.utils.json_to_sheet(data);
+
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, customMode ? "Custom Report" : "Financial Report");
-    XLSX.writeFile(workbook, customMode ? "SAS_Custom_System_Report.xlsx" : "SAS_Financial_Report.xlsx");
-    showToast('success', `Exported ${list.length} records to Excel.`);
+    const selectedSource = customMode ? $('custom-report-source').value : 'financial';
+    if (customMode && selectedSource === 'all') {
+        Object.keys(REPORT_SOURCE_LABELS).forEach(source => {
+            appendReportWorksheet(workbook, REPORT_SOURCE_LABELS[source], customRows.filter(row => row.source === source), true);
+        });
+    } else if (customMode) {
+        appendReportWorksheet(workbook, REPORT_SOURCE_LABELS[selectedSource] || 'Custom Report', customRows);
+    } else {
+        appendReportWorksheet(workbook, 'Filtered Transactions', list.map(item => normalizeReportRecord('transactions', item)));
+        const amountFrom = id => Number($(id).textContent.replace(/[^0-9.-]/g, '')) || 0;
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+            { Item: 'Total Revenue / Income', Amount_RF: amountFrom('stmt-income') },
+            { Item: 'Cost of Sales', Amount_RF: amountFrom('stmt-cost-sales') },
+            { Item: 'Gross Margin', Amount_RF: amountFrom('stmt-gross-margin') },
+            { Item: 'Operating Expenses', Amount_RF: amountFrom('stmt-operating-expenses') },
+            { Item: 'Total Expenses', Amount_RF: amountFrom('stmt-expenses') },
+            { Item: 'Surplus / Deficit', Amount_RF: amountFrom('stmt-net') }
+        ]), 'Income Statement');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+            { Item: 'Cash and Bank Balances', Amount_RF: amountFrom('stmt-cash-assets') },
+            { Item: 'Other Assets', Amount_RF: amountFrom('stmt-other-assets') },
+            { Item: 'Total Assets', Amount_RF: amountFrom('stmt-assets') },
+            { Item: 'Total Liabilities', Amount_RF: amountFrom('stmt-liabilities') },
+            { Item: "Owner's Equity", Amount_RF: amountFrom('stmt-equity') }
+        ]), 'Balance Sheet');
+    }
+    if (!workbook.SheetNames.length) { showToast('error', 'No filtered sheets contain records to export.'); return; }
+    XLSX.writeFile(workbook, selectedSource === 'all' ? 'SAS_All_Filtered_System_Data.xlsx' : customMode ? 'SAS_Filtered_Custom_Report.xlsx' : 'SAS_Filtered_Financial_Report.xlsx');
+    showToast('success', `Exported ${list.length} filtered records to Excel.`);
+}
+
+function printCurrentReport() {
+    const customMode = !$('custom-report-results').classList.contains('hidden');
+    document.body.classList.toggle('print-custom-report', customMode);
+    document.body.classList.toggle('print-financial-report', !customMode);
+    const cleanup = () => {
+        document.body.classList.remove('print-custom-report', 'print-financial-report');
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
 }
 
 const formatRF = (amount) => "RF " + Number(amount || 0).toLocaleString();
