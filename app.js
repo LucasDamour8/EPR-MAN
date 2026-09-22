@@ -15,7 +15,7 @@ const auth = getAuth(firebaseApp);
 
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
-    "Department of Development and Diakonia": ["Community Development", "Project SCA", "Project CCDP", "Diakonia", "Project SOH", "Project CBID", "Project CEP"],
+    "Department of Development and Diakonia": ["Development", "Project SCA", "Project CCDP", "Diakonia", "Project SOH", "Project CBID", "Project CEP"],
     "Department of Finance and Administration": ["Functioning", "Information"],
     "Department of Education": ["Education", "CPAJ"],
     "Department of Health": ["Health Projects"]
@@ -2228,7 +2228,12 @@ function exportReportToExcel() {
             { Item: 'Other Assets', Amount_RF: amountFrom('stmt-other-assets') },
             { Item: 'Total Assets', Amount_RF: amountFrom('stmt-assets') },
             { Item: 'Total Liabilities', Amount_RF: amountFrom('stmt-liabilities') },
-            { Item: "Owner's Equity", Amount_RF: amountFrom('stmt-equity') }
+            { Item: "Recorded Owner's Equity", Amount_RF: amountFrom('stmt-recorded-equity') },
+            { Item: 'Current Surplus / Deficit', Amount_RF: amountFrom('stmt-retained-result') },
+            { Item: 'Opening / Balancing Equity', Amount_RF: amountFrom('stmt-balancing-equity') },
+            { Item: 'Total Equity', Amount_RF: amountFrom('stmt-equity') },
+            { Item: 'Total Liabilities + Equity', Amount_RF: amountFrom('stmt-liabilities-equity') },
+            { Item: 'Balance Difference', Amount_RF: amountFrom('stmt-balance-difference') }
         ]), 'Balance Sheet');
     }
     if (!workbook.SheetNames.length) { showToast('error', 'No filtered sheets contain records to export.'); return; }
@@ -3899,7 +3904,18 @@ function renderReportPanel() {
         ? accountsDb.filter(account => ['Credit card', 'Accounts payable (A/P)', 'Current liabilities', 'Non-current liabilities'].includes(account.type)).reduce((sum, account) => sum + Math.abs(Number(account.balance || account.openingBalance || 0)), 0)
         : 0;
     const liabilities = accountLiabilities + transactionLiabilities;
-    const equity = assets - liabilities;
+    const recordedEquity = isSuper()
+        ? accountsDb.filter(account => account.type === "Owner's equity").reduce((sum, account) => sum + Number(account.balance || account.openingBalance || 0), 0)
+        : 0;
+    // Current results belong in retained earnings. If opening assets or
+    // liabilities were entered without their matching equity account, show
+    // that reconciliation explicitly instead of hiding the difference.
+    const retainedResult = netProfit;
+    const balancingEquity = assets - liabilities - recordedEquity - retainedResult;
+    const equity = recordedEquity + retainedResult + balancingEquity;
+    const liabilitiesAndEquity = liabilities + equity;
+    const balanceDifference = assets - liabilitiesAndEquity;
+    const isBalanced = Math.abs(balanceDifference) < 0.01;
 
     $('stmt-income').textContent = formatRF(income);
     $('stmt-cost-sales').textContent = formatRF(costOfSales);
@@ -3911,7 +3927,14 @@ function renderReportPanel() {
     $('stmt-other-assets').textContent = formatRF(otherAssets);
     $('stmt-assets').textContent = formatRF(assets);
     $('stmt-liabilities').textContent = formatRF(liabilities);
+    $('stmt-recorded-equity').textContent = formatRF(recordedEquity);
+    $('stmt-retained-result').textContent = formatRF(retainedResult);
+    $('stmt-balancing-equity').textContent = formatRF(balancingEquity);
     $('stmt-equity').textContent = formatRF(equity);
+    $('stmt-liabilities-equity').textContent = formatRF(liabilitiesAndEquity);
+    $('stmt-balance-difference').textContent = formatRF(balanceDifference);
+    $('stmt-balance-status').textContent = isBalanced ? 'Balanced' : 'Out of balance';
+    $('stmt-balance-status').className = `balance-status ${isBalanced ? 'balanced' : 'unbalanced'}`;
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
