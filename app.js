@@ -15,7 +15,7 @@ const auth = getAuth(firebaseApp);
 
 const EPR_STRUCTURE = {
     "Department of Church Growth": ["Evangelization", "Youth", "Women and family", "CFD"],
-    "Department of Development and Diakonia": ["Community Development", "Project SCA", "Project CCDP", "Diakonia", "Project SOH", "Project CBID", "Project CEP"],
+    "Department of Development and Diakonia": ["Development", "Project SCA", "Project CCDP", "Diakonia", "Project SOH", "Project CBID", "Project CEP"],
     "Department of Finance and Administration": ["Functioning", "Information"],
     "Department of Education": ["Education", "CPAJ"],
     "Department of Health": ["Health Projects"]
@@ -2232,8 +2232,7 @@ function exportReportToExcel() {
             { Item: 'Current Surplus / Deficit', Amount_RF: amountFrom('stmt-retained-result') },
             { Item: 'Opening / Balancing Equity', Amount_RF: amountFrom('stmt-balancing-equity') },
             { Item: 'Total Equity', Amount_RF: amountFrom('stmt-equity') },
-            { Item: 'Total Liabilities + Equity', Amount_RF: amountFrom('stmt-liabilities-equity') },
-            { Item: 'Balance Difference', Amount_RF: amountFrom('stmt-balance-difference') }
+            { Item: 'Total Liabilities + Equity', Amount_RF: amountFrom('stmt-liabilities-equity') }
         ]), 'Balance Sheet');
     }
     if (!workbook.SheetNames.length) { showToast('error', 'No filtered sheets contain records to export.'); return; }
@@ -3915,7 +3914,6 @@ function renderReportPanel() {
     const equity = recordedEquity + retainedResult + balancingEquity;
     const liabilitiesAndEquity = liabilities + equity;
     const balanceDifference = assets - liabilitiesAndEquity;
-    const isBalanced = Math.abs(balanceDifference) < 0.01;
 
     $('stmt-income').textContent = formatRF(income);
     $('stmt-cost-sales').textContent = formatRF(costOfSales);
@@ -3932,9 +3930,6 @@ function renderReportPanel() {
     $('stmt-balancing-equity').textContent = formatRF(balancingEquity);
     $('stmt-equity').textContent = formatRF(equity);
     $('stmt-liabilities-equity').textContent = formatRF(liabilitiesAndEquity);
-    $('stmt-balance-difference').textContent = formatRF(balanceDifference);
-    $('stmt-balance-status').textContent = isBalanced ? 'Balanced' : 'Out of balance';
-    $('stmt-balance-status').className = `balance-status ${isBalanced ? 'balanced' : 'unbalanced'}`;
     $('stmt-record-count').textContent = `${list.length} record${list.length === 1 ? '' : 's'} in this range`;
 
     renderReportCharts(list);
