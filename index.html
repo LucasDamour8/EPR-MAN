@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css?v=20260910-presbytery-access-9">
+    <link rel="stylesheet" href="styles.css?v=20260922-filtered-export-11">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -593,10 +593,9 @@
 
                                 <div class="form-group" id="user-mode-group">
                                     <label>Assign Access By</label>
-                                    <div class="radio-row">
-                                        <label><input type="radio" name="user-assign-mode" value="presbytery" checked> Presbytery <span class="field-hint" style="margin:0;">(all records in the selected Presbytery)</span></label>
-                                        <label><input type="radio" name="user-assign-mode" value="presbytery_department"> Department <span class="field-hint" style="margin:0;">(selected Department within the selected Presbytery)</span></label>
-                                        <label><input type="radio" name="user-assign-mode" value="department"> Main Department <span class="field-hint" style="margin:0;">(hides location)</span></label>
+                                    <div class="radio-row access-choice-list">
+                                        <label id="user-presbytery-choice"><input type="checkbox" name="user-assign-mode" value="presbytery" checked> Presbytery <span class="field-hint" style="margin:0;">(manages everything in the selected Presbytery)</span></label>
+                                        <label id="user-department-choice"><input type="checkbox" name="user-assign-mode" value="department"> Department <span class="field-hint" style="margin:0;">(hides location)</span></label>
                                     </div>
                                 </div>
 
@@ -1463,6 +1462,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=20260910-presbytery-access-9"></script>
+    <script type="module" src="app.js?v=20260922-filtered-export-11"></script>
 </body>
 </html>
