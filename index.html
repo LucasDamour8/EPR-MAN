@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css?v=20260922-balanced-sheet-12">
+    <link rel="stylesheet" href="styles.css?v=20260922-access-style-13">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -497,7 +497,6 @@
                                     <div class="statement-row"><span>Opening / Balancing Equity</span><strong id="stmt-balancing-equity">RF 0</strong></div>
                                     <div class="statement-row highlight"><span>Total Equity</span><strong id="stmt-equity">RF 0</strong></div>
                                     <div class="statement-row highlight"><span>Total Liabilities + Equity</span><strong id="stmt-liabilities-equity">RF 0</strong></div>
-                                    <div class="statement-row balance-check-row"><span>Balance Check <small>Assets − (Liabilities + Equity)</small></span><strong id="stmt-balance-difference">RF 0</strong><em id="stmt-balance-status" class="balance-status balanced">Balanced</em></div>
                                 </div>
 
                                 <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
@@ -597,10 +596,10 @@
                                 </div>
 
                                 <div class="form-group" id="user-mode-group">
-                                    <label>Assign Access By</label>
+                                    <label>Assign User Access</label>
                                     <div class="radio-row access-choice-list">
-                                        <label id="user-presbytery-choice"><input type="checkbox" name="user-assign-mode" value="presbytery" checked> Presbytery <span class="field-hint" style="margin:0;">(manages everything in the selected Presbytery)</span></label>
-                                        <label id="user-department-choice"><input type="checkbox" name="user-assign-mode" value="department"> Department <span class="field-hint" style="margin:0;">(hides location)</span></label>
+                                        <label id="user-presbytery-choice"><input type="checkbox" name="user-assign-mode" value="presbytery" checked><span>Assign by Presbytery</span></label>
+                                        <label id="user-department-choice"><input type="checkbox" name="user-assign-mode" value="department"><span>Assign by Department</span></label>
                                     </div>
                                 </div>
 
@@ -1467,6 +1466,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=20260922-balanced-sheet-12"></script>
+    <script type="module" src="app.js?v=20260922-access-style-13"></script>
 </body>
 </html>
