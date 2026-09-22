@@ -1175,6 +1175,25 @@ select option {
     .financial-statement-card { box-shadow: none; border: none; }
 }
 
+.access-choice-list { display:grid; grid-template-columns:1fr; gap:10px; padding-top:6px; }
+.access-choice-list label {
+    width:100%; min-height:48px; padding:11px 13px; border:1px solid var(--border);
+    border-radius:10px; background:#fff; transition:border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.access-choice-list label:hover { border-color:var(--primary); background:var(--primary-lighter); }
+.access-choice-list label:has(input:checked) { border-color:var(--primary); background:var(--primary-light); box-shadow:0 0 0 2px rgba(24,124,18,.08); }
+.access-choice-list input[type="checkbox"] {
+    appearance:none; width:20px; height:20px; flex:0 0 20px; margin:0; border:2px solid #9ca3af;
+    border-radius:5px; background:#fff; display:grid; place-items:center; cursor:pointer;
+}
+.access-choice-list input[type="checkbox"]::before {
+    content:""; width:10px; height:6px; border-left:2px solid #fff; border-bottom:2px solid #fff;
+    transform:rotate(-45deg) scale(0); transition:transform .14s ease;
+}
+.access-choice-list input[type="checkbox"]:checked { border-color:var(--primary); background:var(--primary); }
+.access-choice-list input[type="checkbox"]:checked::before { transform:rotate(-45deg) scale(1); }
+.access-choice-list label > span { font-size:.9rem; font-weight:600; color:var(--text); }
+
 /* SAS right-side account drawers */
 .page-modal.drawer-modal { background: rgba(25, 31, 28, .38); justify-content: flex-end; }
 .page-modal.drawer-modal .account-drawer {
