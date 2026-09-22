@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAS — Standard Accounting Software</title>
-    <link rel="stylesheet" href="styles.css?v=20260922-filtered-export-11">
+    <link rel="stylesheet" href="styles.css?v=20260922-balanced-sheet-12">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -492,7 +492,12 @@
                                     <div class="statement-row"><span>Other Assets</span><strong id="stmt-other-assets">RF 0</strong></div>
                                     <div class="statement-row highlight"><span>Total Assets</span><strong id="stmt-assets">RF 0</strong></div>
                                     <div class="statement-row clickable" data-jump="Liability"><span>Total Liabilities</span><strong id="stmt-liabilities">RF 0</strong><i class="fa-solid fa-arrow-up-right-from-square stmt-go"></i></div>
-                                    <div class="statement-row highlight"><span>Owner's Equity</span><strong id="stmt-equity">RF 0</strong></div>
+                                    <div class="statement-row"><span>Recorded Owner's Equity</span><strong id="stmt-recorded-equity">RF 0</strong></div>
+                                    <div class="statement-row"><span>Current Surplus / Deficit</span><strong id="stmt-retained-result">RF 0</strong></div>
+                                    <div class="statement-row"><span>Opening / Balancing Equity</span><strong id="stmt-balancing-equity">RF 0</strong></div>
+                                    <div class="statement-row highlight"><span>Total Equity</span><strong id="stmt-equity">RF 0</strong></div>
+                                    <div class="statement-row highlight"><span>Total Liabilities + Equity</span><strong id="stmt-liabilities-equity">RF 0</strong></div>
+                                    <div class="statement-row balance-check-row"><span>Balance Check <small>Assets − (Liabilities + Equity)</small></span><strong id="stmt-balance-difference">RF 0</strong><em id="stmt-balance-status" class="balance-status balanced">Balanced</em></div>
                                 </div>
 
                                 <p style="text-align:center; color: var(--text-muted); font-size: .75rem; margin-top: 25px;" id="stmt-generated-line"></p>
@@ -1462,6 +1467,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=20260922-filtered-export-11"></script>
+    <script type="module" src="app.js?v=20260922-balanced-sheet-12"></script>
 </body>
 </html>
